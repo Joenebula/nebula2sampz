@@ -41,6 +41,8 @@ target_sources(Nebula2 PRIVATE
     Source/MasterProcessor.cpp
     Source/MasterProcessor.h
     Source/Transport.h
+    Source/dsp/ParametricEq.cpp
+    Source/dsp/ParametricEq.h
 )
 
 target_compile_definitions(Nebula2 PUBLIC
@@ -72,6 +74,8 @@ target_sources(Nebula2Tests PRIVATE
     Source/MasterProcessor.cpp
     Source/MasterProcessor.h
     Source/Transport.h
+    Source/dsp/ParametricEq.cpp
+    Source/dsp/ParametricEq.h
 )
 
 target_compile_definitions(Nebula2Tests PRIVATE

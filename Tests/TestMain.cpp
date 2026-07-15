@@ -10,6 +10,7 @@
 #include "../Source/ParameterIDs.h"
 #include "../Source/MasterProcessor.h"
 #include "../Source/Transport.h"
+#include "../Source/dsp/ParametricEq.h"
 
 #include <iostream>
 #include <cmath>
@@ -165,6 +166,52 @@ int main()
         const auto d = Nebula2::readTransport(empty);
         check(std::abs(d.bpm - 120.0) < 1.0e-9, "transport: default bpm when host omits it");
         check(!d.playing, "transport: not playing by default");
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Phase 3 — parametric EQ (RBJ magnitude response)
+    // ---------------------------------------------------------------------------------
+    {
+        const double sr = 48000.0;
+        const auto dB = [](double linear) { return juce::Decibels::gainToDecibels((float) linear); };
+
+        // A +6 dB peak at 1 kHz: ~+6 dB at 1 kHz, ~flat two decades away.
+        Nebula2::EqBandSettings peak;
+        peak.on = true; peak.type = Nebula2::EqBandType::Peak;
+        peak.freq = 1000.0f; peak.gainDb = 6.0f; peak.q = 1.0f;
+        auto cp = Nebula2::makeBandCoefficients(peak, sr);
+        check(std::abs(dB(cp->getMagnitudeForFrequency(1000.0, sr)) - 6.0f) < 0.5f,
+              "EQ: +6 dB peak lifts 1 kHz by ~6 dB");
+        check(std::abs(dB(cp->getMagnitudeForFrequency(20.0, sr))) < 0.5f,
+              "EQ: peak leaves 20 Hz flat");
+
+        // An off band is transparent (unity magnitude) everywhere it's asked.
+        Nebula2::EqBandSettings off = peak; off.on = false;
+        auto co = Nebula2::makeBandCoefficients(off, sr);
+        check(std::abs(co->getMagnitudeForFrequency(1000.0, sr) - 1.0) < 1.0e-3,
+              "EQ: disabled band is unity magnitude");
+
+        // A high-pass at 500 Hz cuts DC hard and passes 10 kHz near unity.
+        Nebula2::EqBandSettings hp;
+        hp.on = true; hp.type = Nebula2::EqBandType::HighPass; hp.freq = 500.0f; hp.q = 0.707f;
+        auto ch = Nebula2::makeBandCoefficients(hp, sr);
+        check(dB(ch->getMagnitudeForFrequency(50.0, sr)) < -12.0f, "EQ: high-pass attenuates 50 Hz");
+        check(std::abs(dB(ch->getMagnitudeForFrequency(10000.0, sr))) < 0.5f, "EQ: high-pass passes 10 kHz");
+
+        // Processing a signal stays finite (no NaN/inf) and doesn't blow up.
+        juce::dsp::ProcessSpec spec;
+        spec.sampleRate = sr; spec.maximumBlockSize = 512; spec.numChannels = 2;
+        Nebula2::ParametricEq eq;
+        eq.prepare(spec);
+        eq.setBand(0, peak);
+        eq.setBand(1, hp);
+        AudioBuffer<float> buf(2, 512);
+        for (int c = 0; c < 2; ++c)
+            for (int i = 0; i < 512; ++i)
+                buf.setSample(c, i, 0.5f * std::sin(0.03f * (float) i));
+        eq.process(buf);
+        check(std::isfinite(buf.getMagnitude(0, 512)), "EQ: output finite after processing");
+        check(buf.getMagnitude(0, 512) < 8.0f, "EQ: output bounded (no runaway)");
     }
 
     std::cout << (failures == 0 ? "ALL PASS" : ("FAILURES: " + String(failures)).toStdString())
