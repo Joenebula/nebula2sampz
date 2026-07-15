@@ -53,4 +53,52 @@ namespace Nebula2
 
         return ir;
     }
+
+    void Reverb::prepare(const juce::dsp::ProcessSpec& spec)
+    {
+        sampleRate = spec.sampleRate;
+        conv.prepare(spec);
+        dryScratch.setSize((int) spec.numChannels, (int) spec.maximumBlockSize, false, false, true);
+        setCharacter(currentChar);
+    }
+
+    void Reverb::reset()
+    {
+        conv.reset();
+    }
+
+    void Reverb::setCharacter(ReverbChar character)
+    {
+        currentChar = character;
+        conv.loadImpulseResponse(makeImpulseResponse(sampleRate, 2.2, character),
+                                 sampleRate,
+                                 juce::dsp::Convolution::Stereo::yes,
+                                 juce::dsp::Convolution::Trim::no,
+                                 juce::dsp::Convolution::Normalise::yes);
+    }
+
+    void Reverb::process(juce::AudioBuffer<float>& buffer, float wetMix) noexcept
+    {
+        const int numSamples  = buffer.getNumSamples();
+        const int numChannels = buffer.getNumChannels();
+        const float mix = juce::jlimit(0.0f, 1.0f, wetMix);
+
+        // Keep the dry signal (preallocated scratch — no allocation in the callback).
+        for (int c = 0; c < numChannels && c < dryScratch.getNumChannels(); ++c)
+            dryScratch.copyFrom(c, 0, buffer, c, 0, numSamples);
+
+        // Wet = convolution.
+        juce::dsp::AudioBlock<float> block(buffer);
+        juce::dsp::ProcessContextReplacing<float> ctx(block);
+        conv.process(ctx);
+
+        // Blend out = dry*(1-mix) + wet*mix.
+        for (int c = 0; c < numChannels && c < dryScratch.getNumChannels(); ++c)
+        {
+            auto* out = buffer.getWritePointer(c);
+            const auto* dry = dryScratch.getReadPointer(c);
+            for (int i = 0; i < numSamples; ++i)
+                out[i] = dry[i] * (1.0f - mix) + out[i] * mix;
+        }
+    }
 }

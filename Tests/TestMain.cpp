@@ -431,6 +431,42 @@ int main()
         // single-impulse cross-feed small but non-zero).
         check(rStraight < 1.0e-6, "delay straight: L-only input stays out of R");
         check(rPing > 1.0e-4 && rPing > rStraight * 20.0, "delay ping-pong: L-only cross-feeds into R");
+
+        // Convolution reverb engine.
+        Reverb rev;
+        rev.prepare(spec);
+        rev.setCharacter(ReverbChar::Hall);
+
+        // wetMix 0 is an exact dry pass-through (independent of async IR load).
+        {
+            AudioBuffer<float> b(2, 512);
+            for (int i = 0; i < 512; ++i) { const float v = 0.4f * std::sin(0.02f * (float) i); b.setSample(0, i, v); b.setSample(1, i, v); }
+            AudioBuffer<float> ref(b);
+            rev.process(b, 0.0f);
+            float maxDiff = 0.0f;
+            for (int i = 0; i < 512; ++i) maxDiff = std::max(maxDiff, std::abs(b.getSample(0, i) - ref.getSample(0, i)));
+            check(maxDiff < 1.0e-6f, "reverb engine: wetMix 0 is dry pass-through");
+        }
+
+        // Wait for the async IR to swap in (it loads on a background thread and is picked
+        // up by a later process()), then confirm an impulse yields a wet tail.
+        bool irReady = false;
+        for (int tries = 0; tries < 400 && ! irReady; ++tries)
+        {
+            AudioBuffer<float> warm(2, 512); warm.clear();
+            rev.process(warm, 1.0f);
+            if (rev.getCurrentIRSize() > 0) irReady = true;
+            else juce::Thread::sleep(5);
+        }
+        check(irReady, "reverb engine: async IR loaded within timeout");
+
+        AudioBuffer<float> imp(2, 8192); imp.clear();
+        imp.setSample(0, 0, 1.0f); imp.setSample(1, 0, 1.0f);
+        rev.process(imp, 1.0f);
+        double tailEnergy = 0.0;
+        for (int i = 1500; i < 6000; ++i) { const float v = imp.getSample(0, i); tailEnergy += (double) v * v; }
+        check(std::isfinite(imp.getMagnitude(0, 8192)), "reverb engine: output finite");
+        check(tailEnergy > 1.0e-6, "reverb engine: impulse produces a wet reverb tail");
     }
 
     std::cout << (failures == 0 ? "ALL PASS" : ("FAILURES: " + String(failures)).toStdString())
