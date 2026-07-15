@@ -38,6 +38,9 @@ target_sources(Nebula2 PRIVATE
     Source/Parameters.cpp
     Source/Parameters.h
     Source/ParameterIDs.h
+    Source/MasterProcessor.cpp
+    Source/MasterProcessor.h
+    Source/Transport.h
 )
 
 target_compile_definitions(Nebula2 PUBLIC
@@ -66,6 +69,9 @@ target_sources(Nebula2Tests PRIVATE
     Source/Parameters.cpp
     Source/Parameters.h
     Source/ParameterIDs.h
+    Source/MasterProcessor.cpp
+    Source/MasterProcessor.h
+    Source/Transport.h
 )
 
 target_compile_definitions(Nebula2Tests PRIVATE
@@ -76,6 +82,7 @@ target_compile_definitions(Nebula2Tests PRIVATE
 
 target_link_libraries(Nebula2Tests PRIVATE
     juce::juce_audio_processors
+    juce::juce_dsp
     juce::juce_gui_basics
     juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags

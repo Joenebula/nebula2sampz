@@ -1,13 +1,15 @@
-// Phase 1 AUTO gate: parameter round-trip + automation write/read.
-// Uses a minimal dummy AudioProcessor so the parameter layout and APVTS state mechanism
-// can be exercised without pulling in the whole plugin/host. Returns non-zero on any
-// failure so `ctest` fails the CI job.
+// AUTO-gate tests, run via ctest in CI. Returns non-zero on any failure.
+//   Phase 1 — parameter round-trip + automation write/read (dummy AudioProcessor).
+//   Phase 2 — master chain (silence, no-clip, finite) + transport parse.
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
+#include <juce_dsp/juce_dsp.h>
 
 #include "../Source/Parameters.h"
 #include "../Source/ParameterIDs.h"
+#include "../Source/MasterProcessor.h"
+#include "../Source/Transport.h"
 
 #include <iostream>
 #include <cmath>
@@ -102,6 +104,68 @@ int main()
           "master value survives save/load");
     check(b.apvts.getParameter(Nebula2::ParamID::limiter)->getValue() < 0.5f,
           "limiter value survives save/load");
+
+    // ---------------------------------------------------------------------------------
+    // Phase 2 — master chain
+    // ---------------------------------------------------------------------------------
+    {
+        juce::dsp::ProcessSpec spec;
+        spec.sampleRate       = 44100.0;
+        spec.maximumBlockSize = 512;
+        spec.numChannels      = 2;
+
+        Nebula2::MasterProcessor mp;
+        mp.prepare(spec);
+
+        // Silence in -> silence out.
+        AudioBuffer<float> silent(2, 512);
+        silent.clear();
+        mp.process(silent, 0.9f, true);
+        check(silent.getMagnitude(0, 512) == 0.0f, "master: silence stays silent");
+
+        // A signal well over 0 dBFS must come out clamped to [-1, 1] and finite.
+        Nebula2::MasterProcessor mp2;
+        mp2.prepare(spec);
+        AudioBuffer<float> loud(2, 512);
+        for (int c = 0; c < 2; ++c)
+            for (int i = 0; i < 512; ++i)
+                loud.setSample(c, i, 2.0f * std::sin(0.05f * (float) i));
+        mp2.process(loud, 1.0f, true);
+        const float mag = loud.getMagnitude(0, 512);
+        check(std::isfinite(mag), "master: output is finite (no NaN/inf)");
+        check(mag <= 1.0f + 1.0e-4f, "master: output never exceeds 0 dBFS");
+
+        // Gain 0 mutes: over a long buffer the smoothed gain settles to silence.
+        Nebula2::MasterProcessor mp3;
+        mp3.prepare(spec);
+        AudioBuffer<float> tone(1, 8192);
+        for (int i = 0; i < 8192; ++i) tone.setSample(0, i, 0.5f);
+        mp3.process(tone, 0.0f, false);
+        float tail = 0.0f;
+        for (int i = 8092; i < 8192; ++i) tail = std::max(tail, std::abs(tone.getSample(0, i)));
+        check(tail < 1.0e-3f, "master: gain 0 mutes the signal");
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Phase 2 — transport parse
+    // ---------------------------------------------------------------------------------
+    {
+        AudioPlayHead::PositionInfo pos;
+        pos.setBpm(Optional<double>(140.0));
+        pos.setPpqPosition(Optional<double>(4.0));
+        pos.setIsPlaying(true);
+
+        const auto t = Nebula2::readTransport(pos);
+        check(std::abs(t.bpm - 140.0) < 1.0e-9, "transport: bpm read from host");
+        check(std::abs(t.ppq - 4.0) < 1.0e-9, "transport: ppq read from host");
+        check(t.playing, "transport: playing flag read from host");
+
+        // Missing fields fall back to sane defaults, not garbage.
+        AudioPlayHead::PositionInfo empty;
+        const auto d = Nebula2::readTransport(empty);
+        check(std::abs(d.bpm - 120.0) < 1.0e-9, "transport: default bpm when host omits it");
+        check(!d.playing, "transport: not playing by default");
+    }
 
     std::cout << (failures == 0 ? "ALL PASS" : ("FAILURES: " + String(failures)).toStdString())
               << std::endl;
