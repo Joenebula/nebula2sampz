@@ -43,6 +43,8 @@ target_sources(Nebula2 PRIVATE
     Source/Transport.h
     Source/dsp/ParametricEq.cpp
     Source/dsp/ParametricEq.h
+    Source/dsp/Saturator.cpp
+    Source/dsp/Saturator.h
 )
 
 target_compile_definitions(Nebula2 PUBLIC
@@ -76,6 +78,8 @@ target_sources(Nebula2Tests PRIVATE
     Source/Transport.h
     Source/dsp/ParametricEq.cpp
     Source/dsp/ParametricEq.h
+    Source/dsp/Saturator.cpp
+    Source/dsp/Saturator.h
 )
 
 target_compile_definitions(Nebula2Tests PRIVATE

@@ -11,6 +11,7 @@
 #include "../Source/MasterProcessor.h"
 #include "../Source/Transport.h"
 #include "../Source/dsp/ParametricEq.h"
+#include "../Source/dsp/Saturator.h"
 
 #include <iostream>
 #include <cmath>
@@ -212,6 +213,88 @@ int main()
         eq.process(buf);
         check(std::isfinite(buf.getMagnitude(0, 512)), "EQ: output finite after processing");
         check(buf.getMagnitude(0, 512) < 8.0f, "EQ: output bounded (no runaway)");
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Phase 3 — saturator (drive curves, crush, width)
+    // ---------------------------------------------------------------------------------
+    {
+        using namespace Nebula2;
+
+        // Drive transfer curve: pass-through at 0, bounded to [-1,1], monotonic on tube.
+        check(std::abs(driveCurveSample(0.5f, 0.0f, DriveChar::Tube) - 0.5f) < 1.0e-6f,
+              "drive: amt 0 is pass-through");
+        for (auto ch : { DriveChar::Tube, DriveChar::Fuzz, DriveChar::Fold })
+        {
+            bool bounded = true, monotonicUp = true;
+            float prev = driveCurveSample(-1.0f, 1.0f, ch);
+            for (int i = -100; i <= 100; ++i)
+            {
+                const float x = (float) i / 100.0f;
+                const float y = driveCurveSample(x, 1.0f, ch);
+                if (! std::isfinite(y) || std::abs(y) > 1.0001f) bounded = false;
+                if (ch == DriveChar::Tube && y < prev - 1.0e-4f) monotonicUp = false;
+                prev = y;
+            }
+            check(bounded, "drive: output bounded to [-1,1] and finite");
+            if (ch == DriveChar::Tube) check(monotonicUp, "drive(tube): monotonic increasing");
+        }
+        // Tube at full drive still maps the extremes to the rails.
+        check(std::abs(driveCurveSample(1.0f, 1.0f, DriveChar::Tube) - 1.0f) < 1.0e-3f,
+              "drive(tube): x=1 -> 1");
+
+        juce::dsp::ProcessSpec spec;
+        spec.sampleRate = 48000.0; spec.maximumBlockSize = 512; spec.numChannels = 2;
+
+        // Crush: a constant 0.4 quantised to 3 bits then reconstruction-LP settles to a
+        // quantised level (round(0.4 * 4) / 4 = 0.5). Proves quantiser + LP together.
+        {
+            Saturator sat;
+            sat.prepare(spec);
+            float tail = 0.0f;
+            for (int blk = 0; blk < 8; ++blk)
+            {
+                AudioBuffer<float> buf(2, 512);
+                for (int c = 0; c < 2; ++c)
+                    for (int i = 0; i < 512; ++i) buf.setSample(c, i, 0.4f);
+                sat.process(buf, 0.0f, DriveChar::Tube, 1.0f, 1.0f);
+                if (blk == 7) tail = buf.getSample(0, 511);
+            }
+            check(std::abs(tail - 0.5f) < 0.02f, "crush: DC 0.4 -> quantised 0.5 after recon LP");
+        }
+
+        // Crush off + drive off + width 1 = exact pass-through.
+        {
+            Saturator sat;
+            sat.prepare(spec);
+            AudioBuffer<float> buf(2, 512);
+            for (int c = 0; c < 2; ++c)
+                for (int i = 0; i < 512; ++i) buf.setSample(c, i, 0.3f * std::sin(0.02f * (float) i));
+            AudioBuffer<float> ref(buf);
+            sat.process(buf, 0.0f, DriveChar::Tube, 0.0f, 1.0f);
+            float maxDiff = 0.0f;
+            for (int i = 0; i < 512; ++i) maxDiff = std::max(maxDiff, std::abs(buf.getSample(0, i) - ref.getSample(0, i)));
+            check(maxDiff < 1.0e-6f, "saturator: fully neutral settings are bit-exact pass-through");
+        }
+
+        // Width: 0 collapses to mono (L==R), 2 widens (|L-R| grows).
+        {
+            Saturator sat;
+            sat.prepare(spec);
+            AudioBuffer<float> mono(2, 512);
+            for (int i = 0; i < 512; ++i) { mono.setSample(0, i, 0.5f); mono.setSample(1, i, -0.2f); }
+            AudioBuffer<float> wide(mono);
+
+            sat.process(mono, 0.0f, DriveChar::Tube, 0.0f, 0.0f);
+            check(std::abs(mono.getSample(0, 100) - mono.getSample(1, 100)) < 1.0e-5f,
+                  "width 0: collapses to mono (L==R)");
+
+            Saturator sat2; sat2.prepare(spec);
+            sat2.process(wide, 0.0f, DriveChar::Tube, 0.0f, 2.0f);
+            const float before = std::abs(0.5f - (-0.2f));
+            const float after  = std::abs(wide.getSample(0, 100) - wide.getSample(1, 100));
+            check(after > before, "width 2: widens the stereo difference");
+        }
     }
 
     std::cout << (failures == 0 ? "ALL PASS" : ("FAILURES: " + String(failures)).toStdString())
