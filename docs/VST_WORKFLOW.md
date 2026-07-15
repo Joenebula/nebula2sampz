@@ -134,18 +134,28 @@ Gate legend: **AUTO** = Claude Code runs it. **MANUAL** = print a `MANUAL CHECK`
   this phase done until CI is green or a local build has actually run and its output (or
   failure) is pasted here, AND the MANUAL DAW check has passed.
 
-### Phase 1 — Parameter + state spine
+### Phase 1 — Parameter + state spine  ✅ AUTO gate met (2026-07-15)
 - Deliver: parameter registry (id, range, default, unit, smoothing), preset save/load,
   host automation exposure, undo. No DSP yet — a couple of test params.
 - Gate **AUTO**: round-trip test (set → save → load → equal); automation write/read test.
   **MANUAL**: automate a test param from the DAW, confirm it moves.
-- Note: the prototype has no structured parameter registry (plain JS variables) — the
-  full parameter list needs enumerating from the prototype before this phase can be
-  scoped precisely (drive/crush/squeeze/tone/pump/width/reso/ratchet/revMix/dlyMix/haunt/
-  bpm/swing plus every rack-module knob). Also: the step order / FX-grid cell matrix /
-  drum pattern are structured blobs, not flat automatable floats — these need a
-  state-chunk save/load path (`getStateInformation`/`setStateInformation`), distinct
-  from per-parameter host automation.
+- Status (2026-07-15): DONE and CI-green (Build #7). Implemented as
+  `AudioProcessorValueTreeState` (`Source/Parameters.cpp`, `Source/ParameterIDs.h`), state
+  save/load via `getStateInformation`/`setStateInformation` (ValueTree ↔ binary), undo via
+  an attached `UndoManager`. Verified by `Tests/TestMain.cpp` (a `ctest` step in CI):
+  parameter existence, automation write/read, and a save→load→save byte round-trip — all
+  passing on Windows + macOS. **MANUAL (pending):** automate a param from the DAW — batch
+  this with the Phase 0 DAW load check.
+- **Scope decision (2026-07-15):** the spine is seeded with *representative* params (one of
+  each shape: linear float, log-skewed float, choice, bool). The remaining ~90 from
+  `docs/parameter-inventory.md` are added **per phase, alongside the DSP they drive** — not
+  bulk-added now, which would create ~90 inert params controlling nothing (a "looks wired
+  but isn't" surface the working agreement forbids). `ParameterIDs.h` is the running
+  registry; each Phase 3 effect adds its own params there when its DSP lands.
+- Open decisions from the inventory (Section C of `parameter-inventory.md`) — resolve as
+  each param group is added: the Morph pad's 4-scene/X-Y model (architectural), enum→
+  StringList encodings, and a few range/unit confirmations. Rack dials WILL be
+  host-automatable in the VST (the prototype excluded them; we include them).
 
 ### Phase 2 — Audio graph skeleton + transport
 - Deliver: real-time-safe audio callback, sample+drum layer buses, master limiter,
