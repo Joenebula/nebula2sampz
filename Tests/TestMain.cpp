@@ -80,8 +80,9 @@ int main()
     limiter->setValueNotifyingHost(0.0f);                        // -> false
     cutoff->setValueNotifyingHost(0.8f);
     revChar->setValueNotifyingHost(revChar->convertTo0to1(3.0f)); // -> "Cathedral"
-    MessageManager::getInstance()->runDispatchLoopUntil(50);
 
+    // APVTS keeps its state tree and parameters in sync synchronously for these ops —
+    // no message-loop pump needed.
     check(std::abs(master->getValue() - 0.25f) < 1.0e-4f, "master automation read-back");
     check(limiter->getValue() < 0.5f, "limiter automation read-back == false");
 
@@ -91,7 +92,6 @@ int main()
 
     DummyProcessor b;
     b.setStateInformation(stateA.getData(), (int) stateA.getSize());
-    MessageManager::getInstance()->runDispatchLoopUntil(50);
 
     MemoryBlock stateB;
     b.getStateInformation(stateB);

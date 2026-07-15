@@ -14,7 +14,7 @@ public:
     void resized() override;
 
 private:
-    Nebula2AudioProcessor& processorRef;
+    [[maybe_unused]] Nebula2AudioProcessor& processorRef;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Nebula2AudioProcessorEditor)
 };
