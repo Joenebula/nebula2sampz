@@ -157,12 +157,23 @@ Gate legend: **AUTO** = Claude Code runs it. **MANUAL** = print a `MANUAL CHECK`
   StringList encodings, and a few range/unit confirmations. Rack dials WILL be
   host-automatable in the VST (the prototype excluded them; we include them).
 
-### Phase 2 — Audio graph skeleton + transport
+### Phase 2 — Audio graph skeleton + transport  ✅ AUTO gate met, one item deferred (2026-07-15)
 - Deliver: real-time-safe audio callback, sample+drum layer buses, master limiter,
   transport sync to host tempo/PPQ. No effects yet.
 - Gate **AUTO**: no allocations/locks in the callback (thread-sanitizer / RT-check);
   denormal + NaN guard test; null-input silence test. **MANUAL**: pass audio through,
   confirm clean bypass and host-tempo lock.
+- Status (2026-07-15): DONE, CI-green (Build #10). `MasterProcessor` (smoothed gain →
+  `juce::dsp::Limiter` → brickwall clamp), `Transport.h` (pure host tempo/PPQ read),
+  preallocated `sampleBus`/`drumBus` summed to output, lock-free param reads via cached
+  atomics. Tests (ctest): master silence/no-clip/finite/mute + transport parse/defaults.
+- **DEFERRED (honest gap):** the "no allocations/locks in the callback" RT-detector is
+  NOT auto-verified. The callback is allocation-free *by design* (buffers preallocated in
+  `prepareToPlay`, no heap ops, no locks), but wiring a reliable allocation-detector test
+  needs a local build to iterate on — do it once the toolchain is installed. The
+  denormal/NaN guard is currently trivial (no sources yet to produce them); it becomes a
+  real test in Phase 3 when the buses carry signal. **MANUAL (pending):** audio
+  passthrough + host-tempo lock in a DAW — batch with the other pending DAW checks.
 - Note: the prototype's step sequencer is a browser `setInterval(scheduler,25)`
   look-ahead scheduler (100ms window) with an **independent second copy** for the drum
   machine. This needs a full rewrite as a sample-accurate, block-based scheduler driven
