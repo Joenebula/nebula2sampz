@@ -37,11 +37,12 @@ authoritative and this file should be updated to match.
 
 - CMake: being installed (2026-07-15).
 - Visual Studio Build Tools (C++ desktop workload): being installed (2026-07-15).
-- No GitHub remote yet — repo is local-only. CI workflow file exists
-  (`.github/workflows/build.yml`) but has never run. Phase 0's AUTO gate ("CI green,
-  plugin binary produced") is only locally verifiable once the toolchain install finishes;
-  it is NOT yet proven — don't report Phase 0 complete until a local build has actually
-  been run and its output observed.
+- GitHub remote: `https://github.com/Joenebula/nebula2sampz` (private). Phase 0 scaffold
+  pushed to `main` (2026-07-15). CI workflow (`.github/workflows/build.yml`) runs on push
+  — its first run may still be building JUCE via FetchContent; check Actions for the result.
+- Phase 0's AUTO gate ("CI green, plugin binary produced") is NOT yet proven — don't report
+  Phase 0 complete until either CI is green or a local build has actually run and its output
+  (or failure) has been observed and pasted.
 
 ## Reference material
 

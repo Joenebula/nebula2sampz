@@ -24,9 +24,10 @@ the design tokens and control specs to carry over, not the implementation).
 **2026-07-15 — Target formats: VST3 only for now.** AU/CLAP/AAX deferred; Phase 7's
 validation scope is VST3-only until this is revisited.
 
-**2026-07-15 — Repo: local-only, no GitHub remote yet.** Phase 0's CI deliverable exists
-as a workflow file but cannot run until a remote is created. Local toolchain (CMake +
-Visual Studio Build Tools) is the only build verification path for now.
+**2026-07-15 — Repo: private GitHub remote `Joenebula/nebula2sampz`.** (Superseded the
+initial "local-only" call the same day.) Phase 0 scaffold pushed to `main`. CI
+(`.github/workflows/build.yml`) runs on push; a local toolchain (CMake + Visual Studio
+Build Tools) is being installed in parallel as a second verification path.
 
 Everything below this point is the **original planning document**, written before the
 above decisions, and is being updated in place as phases complete. Part B's recommendation
@@ -124,13 +125,14 @@ Gate legend: **AUTO** = Claude Code runs it. **MANUAL** = print a `MANUAL CHECK`
 
 ### Phase 0 — Repo, toolchain, CI, decision
 - Deliver: repo scaffold (JUCE + CMake), builds an empty plugin that loads; CI on
-  GitHub Actions (build all targets) — **blocked until a GitHub remote exists**;
-  `CLAUDE.md` seeded with Part A.
-- Gate **AUTO**: local build succeeds, VST3 binary produced. **MANUAL**: load the empty
-  plugin in your DAW; confirm it instantiates and makes no sound. (Claude Code can't open a DAW.)
-- Status: scaffold in progress (2026-07-15). Toolchain (CMake, VS Build Tools) install
-  in progress. Not yet built or verified — do not mark this phase done until a local
-  build has actually run and its output (or failure) is pasted here.
+  GitHub Actions (build all targets); `CLAUDE.md` seeded with Part A.
+- Gate **AUTO**: local build succeeds OR CI green, VST3 binary produced. **MANUAL**: load
+  the empty plugin in your DAW; confirm it instantiates and makes no sound. (Claude Code
+  can't open a DAW.)
+- Status (2026-07-15): scaffold written and pushed to `Joenebula/nebula2sampz` `main`.
+  Toolchain (CMake, VS Build Tools) installing. NOT yet built or verified — do not mark
+  this phase done until CI is green or a local build has actually run and its output (or
+  failure) is pasted here, AND the MANUAL DAW check has passed.
 
 ### Phase 1 — Parameter + state spine
 - Deliver: parameter registry (id, range, default, unit, smoothing), preset save/load,
