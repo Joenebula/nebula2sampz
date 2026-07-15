@@ -12,6 +12,7 @@
 #include "../Source/Transport.h"
 #include "../Source/dsp/ParametricEq.h"
 #include "../Source/dsp/Saturator.h"
+#include "../Source/dsp/Colour.h"
 
 #include <iostream>
 #include <cmath>
@@ -295,6 +296,63 @@ int main()
             const float after  = std::abs(wide.getSample(0, 100) - wide.getSample(1, 100));
             check(after > before, "width 2: widens the stereo difference");
         }
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Phase 3 — compressor (squeeze) + tone
+    // ---------------------------------------------------------------------------------
+    {
+        using namespace Nebula2;
+        const double sr = 48000.0;
+        juce::dsp::ProcessSpec spec;
+        spec.sampleRate = sr; spec.maximumBlockSize = 512; spec.numChannels = 2;
+
+        auto rmsCh0 = [](const AudioBuffer<float>& b)
+        {
+            double s = 0.0; const int n = b.getNumSamples();
+            for (int i = 0; i < n; ++i) { const float v = b.getSample(0, i); s += (double) v * v; }
+            return std::sqrt(s / (double) n);
+        };
+
+        // Drive a steady 440 Hz sine at 0.5 through the compressor for several blocks,
+        // measure the settled output level. ratio 1 (squeeze 0) ~= unity; heavy squeeze
+        // pulls it down (gain reduction).
+        auto settledRms = [&](float squeeze)
+        {
+            Compressor c; c.prepare(spec);
+            int phase = 0; double rms = 0.0;
+            for (int blk = 0; blk < 10; ++blk)
+            {
+                AudioBuffer<float> b(2, 512);
+                for (int i = 0; i < 512; ++i)
+                {
+                    const float v = 0.5f * std::sin(2.0f * juce::MathConstants<float>::pi * 440.0f * (float) phase / (float) sr);
+                    b.setSample(0, i, v); b.setSample(1, i, v); ++phase;
+                }
+                c.process(b, squeeze);
+                if (blk == 9) rms = rmsCh0(b);
+            }
+            return rms;
+        };
+
+        const double rmsNoComp = settledRms(0.0f);
+        const double rmsComp   = settledRms(1.0f);
+        check(std::abs(rmsNoComp - 0.5 / std::sqrt(2.0)) < 0.05, "comp: squeeze 0 (ratio 1) is ~unity gain");
+        check(rmsComp < rmsNoComp * 0.8, "comp: squeeze 1 applies gain reduction");
+        check(std::isfinite(rmsComp), "comp: output finite");
+
+        // Tone: fully closed is a hard lowpass (cuts 5 kHz); fully open is ~flat.
+        const auto dB = [](double m) { return juce::Decibels::gainToDecibels((float) m); };
+        auto lo = ToneFilter::coefficientsFor(0.0f, sr);
+        auto hi = ToneFilter::coefficientsFor(1.0f, sr);
+        check(dB(lo->getMagnitudeForFrequency(5000.0, sr)) < -12.0f, "tone 0: lowpass cuts 5 kHz");
+        check(std::abs(dB(hi->getMagnitudeForFrequency(1000.0, sr))) < 1.0f, "tone 1: ~flat at 1 kHz");
+
+        ToneFilter tf; tf.prepare(spec);
+        AudioBuffer<float> tb(2, 512);
+        for (int i = 0; i < 512; ++i) { const float v = 0.4f * std::sin(0.05f * (float) i); tb.setSample(0, i, v); tb.setSample(1, i, v); }
+        tf.process(tb, 0.5f);
+        check(std::isfinite(tb.getMagnitude(0, 512)), "tone: output finite after processing");
     }
 
     std::cout << (failures == 0 ? "ALL PASS" : ("FAILURES: " + String(failures)).toStdString())

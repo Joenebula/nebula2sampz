@@ -45,6 +45,8 @@ target_sources(Nebula2 PRIVATE
     Source/dsp/ParametricEq.h
     Source/dsp/Saturator.cpp
     Source/dsp/Saturator.h
+    Source/dsp/Colour.cpp
+    Source/dsp/Colour.h
 )
 
 target_compile_definitions(Nebula2 PUBLIC
@@ -80,6 +82,8 @@ target_sources(Nebula2Tests PRIVATE
     Source/dsp/ParametricEq.h
     Source/dsp/Saturator.cpp
     Source/dsp/Saturator.h
+    Source/dsp/Colour.cpp
+    Source/dsp/Colour.h
 )
 
 target_compile_definitions(Nebula2Tests PRIVATE
