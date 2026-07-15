@@ -35,6 +35,9 @@ target_sources(Nebula2 PRIVATE
     Source/PluginProcessor.h
     Source/PluginEditor.cpp
     Source/PluginEditor.h
+    Source/Parameters.cpp
+    Source/Parameters.h
+    Source/ParameterIDs.h
 )
 
 target_compile_definitions(Nebula2 PUBLIC

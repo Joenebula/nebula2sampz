@@ -1,8 +1,10 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "Parameters.h"
 
 Nebula2AudioProcessor::Nebula2AudioProcessor()
-    : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true))
+    : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true)),
+      apvts(*this, &undoManager, "PARAMS", Nebula2::createParameterLayout())
 {
 }
 
@@ -24,6 +26,21 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
     juce::ScopedNoDenormals noDenormals;
     buffer.clear();
     midiMessages.clear();
+}
+
+void Nebula2AudioProcessor::getStateInformation(juce::MemoryBlock& destData)
+{
+    // Persist the whole parameter tree. Structured/blob state (step order, grid matrix,
+    // drum patterns) will be added as extra child branches of this tree in later phases.
+    if (auto xml = apvts.copyState().createXml())
+        copyXmlToBinary(*xml, destData);
+}
+
+void Nebula2AudioProcessor::setStateInformation(const void* data, int sizeInBytes)
+{
+    if (auto xml = getXmlFromBinary(data, sizeInBytes))
+        if (xml->hasTagName(apvts.state.getType()))
+            apvts.replaceState(juce::ValueTree::fromXml(*xml));
 }
 
 juce::AudioProcessorEditor* Nebula2AudioProcessor::createEditor()
