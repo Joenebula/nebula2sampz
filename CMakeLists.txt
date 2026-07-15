@@ -55,3 +55,30 @@ target_link_libraries(Nebula2
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# --- Phase 1 test target: parameter round-trip + automation, run via ctest ---
+enable_testing()
+
+juce_add_console_app(Nebula2Tests PRODUCT_NAME "Nebula2Tests")
+
+target_sources(Nebula2Tests PRIVATE
+    Tests/TestMain.cpp
+    Source/Parameters.cpp
+    Source/Parameters.h
+    Source/ParameterIDs.h
+)
+
+target_compile_definitions(Nebula2Tests PRIVATE
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0
+    JUCE_STANDALONE_APPLICATION=1
+)
+
+target_link_libraries(Nebula2Tests PRIVATE
+    juce::juce_audio_processors
+    juce::juce_gui_basics
+    juce::juce_recommended_config_flags
+    juce::juce_recommended_warning_flags
+)
+
+add_test(NAME Nebula2Tests COMMAND Nebula2Tests)
