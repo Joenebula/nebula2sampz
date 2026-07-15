@@ -47,6 +47,10 @@ target_sources(Nebula2 PRIVATE
     Source/dsp/Saturator.h
     Source/dsp/Colour.cpp
     Source/dsp/Colour.h
+    Source/dsp/Reverb.cpp
+    Source/dsp/Reverb.h
+    Source/dsp/Delay.cpp
+    Source/dsp/Delay.h
 )
 
 target_compile_definitions(Nebula2 PUBLIC
@@ -84,6 +88,10 @@ target_sources(Nebula2Tests PRIVATE
     Source/dsp/Saturator.h
     Source/dsp/Colour.cpp
     Source/dsp/Colour.h
+    Source/dsp/Reverb.cpp
+    Source/dsp/Reverb.h
+    Source/dsp/Delay.cpp
+    Source/dsp/Delay.h
 )
 
 target_compile_definitions(Nebula2Tests PRIVATE

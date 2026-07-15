@@ -13,6 +13,8 @@
 #include "../Source/dsp/ParametricEq.h"
 #include "../Source/dsp/Saturator.h"
 #include "../Source/dsp/Colour.h"
+#include "../Source/dsp/Reverb.h"
+#include "../Source/dsp/Delay.h"
 
 #include <iostream>
 #include <cmath>
@@ -353,6 +355,79 @@ int main()
         for (int i = 0; i < 512; ++i) { const float v = 0.4f * std::sin(0.05f * (float) i); tb.setSample(0, i, v); tb.setSample(1, i, v); }
         tf.process(tb, 0.5f);
         check(std::isfinite(tb.getMagnitude(0, 512)), "tone: output finite after processing");
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Phase 3 — Space: reverb IR synthesis + ping-pong delay
+    // ---------------------------------------------------------------------------------
+    {
+        using namespace Nebula2;
+
+        auto windowRms = [](const AudioBuffer<float>& b, int start, int n)
+        {
+            double s = 0.0;
+            for (int i = start; i < start + n; ++i) { const float v = b.getSample(0, i); s += (double) v * v; }
+            return std::sqrt(s / (double) n);
+        };
+
+        // Reverb IR: length, determinism, decay shape.
+        auto ir1 = makeImpulseResponse(48000.0, 1.0, ReverbChar::Hall, 42);
+        auto ir2 = makeImpulseResponse(48000.0, 1.0, ReverbChar::Hall, 42);
+        check(ir1.getNumSamples() == 48000, "reverb IR: length = sampleRate * seconds");
+        bool identical = true;
+        for (int i = 0; i < ir1.getNumSamples() && identical; i += 97)
+            if (ir1.getSample(0, i) != ir2.getSample(0, i)) identical = false;
+        check(identical, "reverb IR: seeded -> reproducible");
+        check(std::isfinite(ir1.getMagnitude(0, ir1.getNumSamples())), "reverb IR: finite");
+        check(windowRms(ir1, 2000, 2000) > windowRms(ir1, 40000, 2000), "reverb IR (hall): decays over time");
+
+        auto irRev = makeImpulseResponse(48000.0, 1.0, ReverbChar::Reverse, 42);
+        check(windowRms(irRev, 40000, 2000) > windowRms(irRev, 2000, 2000), "reverb IR (reverse): swells into the hit");
+
+        auto irCath = makeImpulseResponse(48000.0, 1.0, ReverbChar::Cathedral, 42);
+        check(std::abs(irCath.getSample(0, 100)) < 1.0e-9f, "reverb IR (cathedral): pre-delay silence at start");
+
+        // Ping-pong delay.
+        juce::dsp::ProcessSpec spec;
+        spec.sampleRate = 48000.0; spec.maximumBlockSize = 1024; spec.numChannels = 2;
+
+        // wetMix 0 = dry pass-through.
+        {
+            PingPongDelay d; d.prepare(spec);
+            AudioBuffer<float> b(2, 1024);
+            for (int i = 0; i < 1024; ++i) { const float v = 0.4f * std::sin(0.02f * (float) i); b.setSample(0, i, v); b.setSample(1, i, v); }
+            AudioBuffer<float> ref(b);
+            d.process(b, 100.0f / 48000.0f, 0.5f, 0.0f, true);
+            float maxDiff = 0.0f;
+            for (int i = 0; i < 1024; ++i) maxDiff = std::max(maxDiff, std::abs(b.getSample(0, i) - ref.getSample(0, i)));
+            check(maxDiff < 1.0e-6f, "delay: wetMix 0 is dry pass-through");
+        }
+
+        // A single echo lands one delay-time later.
+        {
+            PingPongDelay d; d.prepare(spec);
+            AudioBuffer<float> b(2, 1024); b.clear();
+            b.setSample(0, 0, 1.0f); b.setSample(1, 0, 1.0f);   // impulse
+            d.process(b, 100.0f / 48000.0f, 0.0f, 1.0f, false); // 100-sample delay, no feedback
+            check(std::abs(b.getSample(0, 0) - 1.0f) < 1.0e-4f, "delay: dry impulse present at t=0");
+            check(std::abs(b.getSample(0, 50)) < 1.0e-4f, "delay: silence before the echo");
+            check(b.getSample(0, 100) > 0.5f, "delay: echo lands at the delay time");
+        }
+
+        // Ping-pong cross-feed leaks an L-only input into R; straight feedback does not.
+        auto rChannelEnergy = [&](bool pingPong)
+        {
+            PingPongDelay d; d.prepare(spec);
+            AudioBuffer<float> b(2, 1024); b.clear();
+            b.setSample(0, 0, 1.0f);   // impulse in L only
+            d.process(b, 100.0f / 48000.0f, 0.6f, 1.0f, pingPong);
+            double s = 0.0; for (int i = 0; i < 1024; ++i) { const float v = b.getSample(1, i); s += (double) v * v; }
+            return std::sqrt(s / 1024.0);
+        };
+        const double rPing = rChannelEnergy(true);
+        const double rStraight = rChannelEnergy(false);
+        check(rPing > 0.01, "delay ping-pong: L-only input cross-feeds into R");
+        check(rStraight < rPing * 0.5, "delay straight: L-only input stays out of R");
     }
 
     std::cout << (failures == 0 ? "ALL PASS" : ("FAILURES: " + String(failures)).toStdString())
