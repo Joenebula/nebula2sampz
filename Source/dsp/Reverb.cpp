@@ -33,7 +33,11 @@ namespace Nebula2
                     case ReverbChar::Plate:     env = std::pow(1.0f - t, 1.9f) * (1.0f + 0.35f * std::sin(t * 180.0f + (float) ch)); break;
                     case ReverbChar::Room:      env = std::pow(1.0f - t, 5.5f);  break;
                     case ReverbChar::Cathedral: env = std::pow(1.0f - t, 1.15f); break;
-                    case ReverbChar::Reverse:   env = std::pow(t, 2.2f);         break;
+                    // Reverse = a decaying (hall-like) envelope, time-reversed below, so it
+                    // genuinely SWELLS into the hit. The prototype computed a *growing*
+                    // envelope then reversed it, which cancels to a plain decay (the
+                    // "reverse" never actually reversed) — corrected here to match intent.
+                    case ReverbChar::Reverse:   env = std::pow(1.0f - t, 2.6f);  break;
                     case ReverbChar::Hall:
                     default:                    env = std::pow(1.0f - t, 2.6f);  break;
                 }

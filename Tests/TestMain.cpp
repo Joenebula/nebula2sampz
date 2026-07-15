@@ -426,8 +426,11 @@ int main()
         };
         const double rPing = rChannelEnergy(true);
         const double rStraight = rChannelEnergy(false);
-        check(rPing > 0.01, "delay ping-pong: L-only input cross-feeds into R");
-        check(rStraight < rPing * 0.5, "delay straight: L-only input stays out of R");
+        // Straight feedback leaves R silent (== 0); ping-pong leaks L into R. Test the
+        // routing by relative dominance, not an absolute floor (the damping LP makes the
+        // single-impulse cross-feed small but non-zero).
+        check(rStraight < 1.0e-6, "delay straight: L-only input stays out of R");
+        check(rPing > 1.0e-4 && rPing > rStraight * 20.0, "delay ping-pong: L-only cross-feeds into R");
     }
 
     std::cout << (failures == 0 ? "ALL PASS" : ("FAILURES: " + String(failures)).toStdString())

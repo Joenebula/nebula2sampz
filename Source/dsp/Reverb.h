@@ -13,7 +13,9 @@ namespace Nebula2
     //   * returned as a plain AudioBuffer for a juce::dsp::Convolution to load.
     // Length = max(64, sampleRate*seconds). Character envelopes:
     //   room (1-t)^5.5 · hall (1-t)^2.6 · plate (1-t)^1.9·shimmer · cathedral (1-t)^1.15
-    //   · reverse t^2.2 then time-reversed. preDelay: cathedral 45ms, hall 20ms.
+    //   · reverse = a decaying envelope time-reversed, so it swells into the hit (the
+    //     prototype grew-then-reversed, cancelling to a decay — fixed here). preDelay:
+    //     cathedral 45ms, hall 20ms.
     juce::AudioBuffer<float> makeImpulseResponse(double sampleRate, double seconds,
                                                  ReverbChar character, int seed = 20250715);
 }
