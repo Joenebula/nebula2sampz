@@ -432,8 +432,9 @@ int main()
         check(rStraight < 1.0e-6, "delay straight: L-only input stays out of R");
         check(rPing > 1.0e-4 && rPing > rStraight * 20.0, "delay ping-pong: L-only cross-feeds into R");
 
-        // Convolution reverb engine.
-        Reverb rev;
+        // Convolution reverb engine. (Qualified: juce also has a juce::Reverb, and this
+        // scope has `using namespace juce`, so the bare name would be ambiguous.)
+        Nebula2::Reverb rev;
         rev.prepare(spec);
         rev.setCharacter(ReverbChar::Hall);
 
