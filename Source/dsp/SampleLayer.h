@@ -38,6 +38,12 @@ namespace Nebula2
         void noteOn(int midiNoteNumber, float velocity) noexcept;
         void render(juce::AudioBuffer<float>& bus, int startSample, int numSamples) noexcept;
 
+        // Host tempo, so slices can be stretched to fit the grid. 0 = unknown (no stretch).
+        void setHostBpm(double bpm) noexcept { hostBpm = bpm; }
+
+        // Time-stretch on/off. Off = classic repitch (slice plays at its own speed).
+        void setStretchEnabled(bool shouldStretch) noexcept { stretchEnabled = shouldStretch; }
+
         bool hasSample() const noexcept { return current.load() != nullptr; }
         juce::String getSampleName() const;
         int getNumSlices() const noexcept;
@@ -55,12 +61,22 @@ namespace Nebula2
             using Ptr = juce::ReferenceCountedObjectPtr<SampleData>;
         };
 
+        // Granular OLA voice (the prototype's playStretched, ported):
+        // grains are read at native pitch; the SPACING between grain start points is what
+        // compresses or expands time. So a 136 BPM break fits a 174 BPM session without
+        // pitching up. stretch = outDur/inDur (= nativeBpm/hostBpm); 1.0 = no stretch.
         struct Voice
         {
-            double pos = 0.0;      // fractional read position (resampling)
-            double end = 0.0;
-            float gain = 1.0f;
             bool active = false;
+            double sliceStart = 0.0, sliceEnd = 0.0;
+            float gain = 1.0f;
+
+            double outSample = 0.0;     // output samples since note-on
+            double outDur = 0.0;        // total output samples for this slice
+            double grainOut = 0.0;      // grain length, in OUTPUT samples
+            double hopOut = 0.0;        // grain spacing out (= grainOut/2, 50% overlap)
+            double hopIn = 0.0;         // grain spacing in INPUT samples
+            double pitchRate = 1.0;     // input samples per output sample (native pitch)
         };
 
         juce::AudioFormatManager formats;
@@ -68,5 +84,7 @@ namespace Nebula2
         std::atomic<SampleData*> current { nullptr };
         std::array<Voice, maxVoices> voices;
         double hostRate = 44100.0;
+        double hostBpm = 0.0;
+        bool stretchEnabled = true;
     };
 }

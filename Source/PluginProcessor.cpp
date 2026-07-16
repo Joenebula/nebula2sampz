@@ -75,6 +75,13 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
     sampleBus.clear();
     drumBus.clear();
 
+    // Host transport FIRST — noteOn below computes its time-stretch from the tempo, so a
+    // stale BPM here would mis-stretch the first slice of every block.
+    if (auto* ph = getPlayHead())
+        if (auto pos = ph->getPosition())
+            transport = Nebula2::readTransport(*pos);
+    sampleLayer.setHostBpm(transport.bpm);
+
     // Both layers render in sub-blocks split at MIDI event positions, so hits land
     // sample-accurately rather than snapping to the block grid. Notes route by range:
     // GM drum notes -> the kit, note 84 (C5) and up -> sample slices.
@@ -110,11 +117,6 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
         buffer.addFrom(c, 0, sampleBus, c, 0, numSamples);
         buffer.addFrom(c, 0, drumBus,   c, 0, numSamples);
     }
-
-    // Host transport snapshot (musical time) for the future scheduler/UI.
-    if (auto* ph = getPlayHead())
-        if (auto pos = ph->getPosition())
-            transport = Nebula2::readTransport(*pos);
 
     // Colour: drive -> crush/width -> squeeze -> tone, on the summed layers.
     {

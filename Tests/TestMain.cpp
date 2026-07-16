@@ -989,6 +989,93 @@ int main()
             AudioBuffer<float> loud(2, 512); loud.clear(); layer.render(loud, 0, 512);
             check(loud.getMagnitude(0, 512) > soft.getMagnitude(0, 512), "sample: velocity scales level");
         }
+
+        // --- granular time-stretch ---
+        // How long does a slice sound for, in output samples?
+        const auto sliceDuration = [&](double hostBpmValue, bool stretchOn)
+        {
+            layer.setHostBpm(hostBpmValue);
+            layer.setStretchEnabled(stretchOn);
+            layer.reset();
+            layer.noteOn(SampleLayer::baseNote + 4, 1.0f);
+            int rendered = 0;
+            while (layer.activeVoiceCount() > 0 && rendered < 48000 * 4)
+            {
+                AudioBuffer<float> bus(2, 512); bus.clear();
+                layer.render(bus, 0, 512);
+                rendered += 512;
+            }
+            return rendered;
+        };
+
+        const int natLen  = sliceDuration(140.0, true);   // host == the loop's own 140
+        const int fastLen = sliceDuration(174.0, true);   // faster session -> shorter slice
+        const int slowLen = sliceDuration(100.0, true);   // slower session -> longer slice
+        check(fastLen < natLen, "stretch: a faster session shortens the slice");
+        check(slowLen > natLen, "stretch: a slower session lengthens the slice");
+
+        // The ratio should track the tempo ratio (140/174 ~= 0.80), give or take block rounding.
+        {
+            const double ratio = (double) fastLen / (double) natLen;
+            check(std::abs(ratio - (140.0 / 174.0)) < 0.15, "stretch: slice length tracks the tempo ratio");
+        }
+
+        // Stretch OFF = native length regardless of host tempo (classic repitch behaviour).
+        {
+            const int a = sliceDuration(174.0, false);
+            const int b = sliceDuration(100.0, false);
+            check(std::abs(a - b) <= 512, "stretch: disabled -> host tempo doesn't change length");
+        }
+
+        // Unknown host tempo must not stretch (and must not divide by zero).
+        {
+            const int unknown = sliceDuration(0.0, true);
+            check(unknown > 0, "stretch: unknown host tempo still plays");
+        }
+
+        // Pitch is preserved: stretch a steady tone and it stays the same frequency.
+        // Zero crossings per second is a cheap, robust frequency proxy.
+        {
+            const int toneLen = 48000 * 2;
+            AudioBuffer<float> tone(2, toneLen);
+            for (int i = 0; i < toneLen; ++i)
+            {
+                const float v = 0.5f * std::sin(2.0f * juce::MathConstants<float>::pi * 440.0f * (float) i / 48000.0f);
+                tone.setSample(0, i, v); tone.setSample(1, i, v);
+            }
+            SampleLayer toneLayer;
+            toneLayer.prepare(48000.0, 512);
+            toneLayer.loadBuffer(std::move(tone), 48000.0, "tone_120bpm.wav", 2);
+
+            const auto crossingsPerSec = [&](double hostBpmValue)
+            {
+                toneLayer.setHostBpm(hostBpmValue);
+                toneLayer.setStretchEnabled(true);
+                toneLayer.reset();
+                toneLayer.noteOn(SampleLayer::baseNote, 1.0f);
+                int crossings = 0, rendered = 0; float prev = 0.0f;
+                while (toneLayer.activeVoiceCount() > 0 && rendered < 48000 * 4)
+                {
+                    AudioBuffer<float> bus(2, 512); bus.clear();
+                    toneLayer.render(bus, 0, 512);
+                    for (int i = 0; i < 512; ++i)
+                    {
+                        const float v = bus.getSample(0, i);
+                        if (prev <= 0.0f && v > 0.0f) ++crossings;
+                        prev = v;
+                    }
+                    rendered += 512;
+                }
+                return rendered > 0 ? (double) crossings * 48000.0 / (double) rendered : 0.0;
+            };
+
+            const double fNative = crossingsPerSec(120.0);
+            const double fFast   = crossingsPerSec(174.0);   // much faster session
+            check(fNative > 300.0, "stretch: tone plays (crossings detected)");
+            // The whole point: time changed, pitch did NOT.
+            check(std::abs(fFast - fNative) < fNative * 0.15,
+                  "stretch: pitch is preserved when the slice is time-compressed");
+        }
     }
 
     std::cout << (failures == 0 ? "ALL PASS" : ("FAILURES: " + String(failures)).toStdString())

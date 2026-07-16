@@ -113,13 +113,38 @@ namespace Nebula2
         {
             double best = -1.0;
             for (int i = 0; i < maxVoices; ++i)
-                if (voices[(size_t) i].pos > best) { best = voices[(size_t) i].pos; slot = i; }
+                if (voices[(size_t) i].outSample > best) { best = voices[(size_t) i].outSample; slot = i; }
         }
 
         auto& v = voices[(size_t) slot];
-        v.pos    = (double) s->sliceStarts[(size_t) slice];
-        v.end    = (double) s->sliceStarts[(size_t) slice + 1];
-        v.gain   = juce::jlimit(0.0f, 1.0f, velocity);
+        v.sliceStart = (double) s->sliceStarts[(size_t) slice];
+        v.sliceEnd   = (double) s->sliceStarts[(size_t) slice + 1];
+        v.gain       = juce::jlimit(0.0f, 1.0f, velocity);
+        v.outSample  = 0.0;
+
+        // Native pitch: 1 output sample advances the source by sourceSR/hostSR.
+        v.pitchRate = s->sourceSampleRate / hostRate;
+
+        const double inSamples = juce::jmax(1.0, v.sliceEnd - v.sliceStart);
+        const double inSeconds = inSamples / s->sourceSampleRate;
+
+        // stretch = outDur/inDur. Fitting a nativeBpm loop into a hostBpm session means
+        // playing it at native/host. Unknown tempo (or stretch off) = play as-is.
+        double stretch = 1.0;
+        if (stretchEnabled && s->detectedBpm > 0.0 && hostBpm > 0.0)
+            stretch = juce::jlimit(0.25, 4.0, s->detectedBpm / hostBpm);
+
+        const double outSeconds = inSeconds * stretch;
+        v.outDur = outSeconds * hostRate;
+
+        // 35-90 ms grains, 50% overlap (the prototype's numbers).
+        const double grainSeconds = juce::jlimit(0.035, 0.09, inSeconds * 0.35);
+        v.grainOut = juce::jmax(8.0, grainSeconds * hostRate);
+        v.hopOut   = v.grainOut * 0.5;
+        // Input hop: how far through the source each successive grain starts. This is the
+        // only thing that changes with stretch — the grains themselves stay at native pitch.
+        v.hopIn    = v.hopOut * v.pitchRate / juce::jmax(1.0e-6, stretch);
+
         v.active = true;
     }
 
@@ -133,29 +158,59 @@ namespace Nebula2
         const int busChs  = bus.getNumChannels();
         if (srcLen <= 0 || srcChs <= 0) return;
 
-        // Play at the sample's own pitch regardless of session rate (44.1k file in a 48k
-        // session must not run sharp). Tempo-matching comes with the OLA stretch.
-        const double rate = s->sourceSampleRate / hostRate;
+        // Reads the source with linear interpolation (a 44.1k file in a 48k session must
+        // not run sharp).
+        const auto readAt = [&](int chan, double pos) -> float
+        {
+            const int i0 = (int) pos;
+            if (i0 < 0 || i0 >= srcLen) return 0.0f;
+            const int i1 = juce::jmin(i0 + 1, srcLen - 1);
+            const float frac = (float) (pos - (double) i0);
+            const auto* src = s->audio.getReadPointer(juce::jmin(chan, srcChs - 1));
+            return src[i0] + frac * (src[i1] - src[i0]);
+        };
 
         for (auto& v : voices)
         {
             if (! v.active) continue;
 
+            const double grainIn = v.grainOut * v.pitchRate;                 // grain len, input samples
+            const double span    = juce::jmax(1.0, (v.sliceEnd - v.sliceStart) - grainIn);
+
             for (int i = 0; i < numSamples; ++i)
             {
-                if (v.pos >= v.end || v.pos >= (double) (srcLen - 1)) { v.active = false; break; }
+                if (v.outSample >= v.outDur) { v.active = false; break; }
 
-                const int i0 = (int) v.pos;
-                const int i1 = juce::jmin(i0 + 1, srcLen - 1);
-                const float frac = (float) (v.pos - (double) i0);
+                // 50% overlap means at most two grains are sounding at any instant.
+                const int k0 = (int) std::floor(v.outSample / v.hopOut);
+                float acc[2] = { 0.0f, 0.0f };
 
-                for (int c = 0; c < busChs; ++c)
+                for (int k = juce::jmax(0, k0 - 1); k <= k0; ++k)
                 {
-                    const auto* src = s->audio.getReadPointer(juce::jmin(c, srcChs - 1));
-                    const float sample = src[i0] + frac * (src[i1] - src[i0]);   // linear interp
-                    bus.addSample(c, startSample + i, sample * v.gain);
+                    const double localT = v.outSample - (double) k * v.hopOut;
+                    if (localT < 0.0 || localT >= v.grainOut) continue;
+
+                    // Triangular window: up to the midpoint, back down. Summed at 50%
+                    // overlap this reconstructs unity, so grains don't pump.
+                    const double half = v.grainOut * 0.5;
+                    const float w = (float) (localT < half ? localT / half
+                                                           : (v.grainOut - localT) / half);
+
+                    double read = v.sliceStart + (double) k * v.hopIn + localT * v.pitchRate;
+
+                    // Stay inside the slice — wrap rather than bleed into the next chop.
+                    if (read > v.sliceEnd - grainIn)
+                        read = v.sliceStart + std::fmod(read - v.sliceStart, span);
+                    if (read < v.sliceStart) read = v.sliceStart;
+
+                    for (int c = 0; c < busChs && c < 2; ++c)
+                        acc[c] += readAt(c, read) * w;
                 }
-                v.pos += rate;
+
+                for (int c = 0; c < busChs && c < 2; ++c)
+                    bus.addSample(c, startSample + i, acc[c] * v.gain);
+
+                v.outSample += 1.0;
             }
         }
     }
