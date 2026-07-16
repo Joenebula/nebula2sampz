@@ -953,6 +953,17 @@ int main()
         check(std::abs(playSlice(0) - 0.05f) < 0.01f, "sample: note 84 plays slice 0");
         check(std::abs(playSlice(8) - 0.45f) < 0.02f, "sample: note 92 plays slice 8");
 
+        // The attack must survive granular playback: the chop is at full level almost
+        // immediately, NOT ramped in over a grain (which would blunt every transient).
+        {
+            layer.reset();
+            layer.noteOn(SampleLayer::baseNote + 8, 1.0f);
+            AudioBuffer<float> bus(2, 512); bus.clear();
+            layer.render(bus, 0, 512);
+            check(std::abs(bus.getSample(0, 4) - 0.45f) < 0.05f,
+                  "sample: attack is intact - full level within a few samples, no grain fade-in");
+        }
+
         // Out-of-range notes (incl. the drum range) don't trigger the sample layer.
         {
             layer.reset();

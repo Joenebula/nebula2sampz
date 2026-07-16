@@ -192,9 +192,19 @@ namespace Nebula2
 
                     // Triangular window: up to the midpoint, back down. Summed at 50%
                     // overlap this reconstructs unity, so grains don't pump.
+                    //
+                    // EXCEPT the first grain, which does NOT fade in. Nothing overlaps it
+                    // yet, so a rising window would ramp the chop up from silence over
+                    // ~45ms — softening the transient, which on a breakbeat slicer is the
+                    // whole sound. (The prototype's playStretched ramps its first grain
+                    // from ~0 and has exactly this problem in stretch mode.) Holding it at
+                    // full keeps the attack AND still sums to unity from t=0.
                     const double half = v.grainOut * 0.5;
-                    const float w = (float) (localT < half ? localT / half
-                                                           : (v.grainOut - localT) / half);
+                    const bool risingEdge = localT < half;
+                    const float w = (k == 0 && risingEdge)
+                                      ? 1.0f
+                                      : (float) (risingEdge ? localT / half
+                                                            : (v.grainOut - localT) / half);
 
                     double read = v.sliceStart + (double) k * v.hopIn + localT * v.pitchRate;
 
