@@ -463,14 +463,17 @@ int main()
 
         // Feed an impulse, then flush enough blocks to capture the whole wet response
         // regardless of the convolution's processing latency. Sum total wet energy.
+        // Block size MUST NOT exceed the prepared maximumBlockSize (1024) — the reverb's
+        // dry scratch is sized to it; a bigger block overruns it. 128 blocks ~= 2.7 s > IR.
+        constexpr int blockLen = 1024;
         double tailEnergy = 0.0;
         bool finiteAll = true;
-        for (int blk = 0; blk < 16; ++blk)
+        for (int blk = 0; blk < 128; ++blk)
         {
-            AudioBuffer<float> b(2, 8192); b.clear();
+            AudioBuffer<float> b(2, blockLen); b.clear();
             if (blk == 0) { b.setSample(0, 0, 1.0f); b.setSample(1, 0, 1.0f); }   // impulse (wet=1, so no dry spike)
             rev.process(b, 1.0f);
-            for (int i = 0; i < 8192; ++i)
+            for (int i = 0; i < blockLen; ++i)
             {
                 const float v = b.getSample(0, i);
                 if (! std::isfinite(v)) finiteAll = false;
