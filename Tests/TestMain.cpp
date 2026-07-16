@@ -15,6 +15,7 @@
 #include "../Source/dsp/Colour.h"
 #include "../Source/dsp/Reverb.h"
 #include "../Source/dsp/Delay.h"
+#include "../Source/dsp/DrumSynth.h"
 
 #include <iostream>
 #include <cmath>
@@ -482,6 +483,38 @@ int main()
         }
         check(finiteAll, "reverb engine: output finite");
         check(tailEnergy > 1.0e-4, "reverb engine: impulse produces a wet reverb tail");
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Phase 3 — drum voices (kick, snare)
+    // ---------------------------------------------------------------------------------
+    {
+        namespace D = Nebula2::Drums;
+        const double sr = 48000.0;
+
+        const auto kick  = D::vKick(0.8f, 42, sr);
+        const auto kick2 = D::vKick(0.8f, 42, sr);
+        check((int) kick.size() == 24000, "drum kick: length = dur*sr");
+        bool detK = true; for (size_t i = 0; i < kick.size() && detK; i += 13) if (kick[i] != kick2[i]) detK = false;
+        check(detK, "drum kick: deterministic for a given seed");
+        bool finK = true; for (float v : kick) if (! std::isfinite(v)) { finK = false; break; }
+        check(finK, "drum kick: finite (no NaN/inf)");
+        check(D::peak(kick) > 0.1f, "drum kick: produces sound");
+        check(D::peak(kick) < 2.0f, "drum kick: bounded (no runaway)");
+
+        const auto snare = D::vSnare(0.8f, 7, sr);
+        check((int) snare.size() == 14400, "drum snare: length = dur*sr");
+        bool finS = true; for (float v : snare) if (! std::isfinite(v)) { finS = false; break; }
+        check(finS, "drum snare: finite (no NaN/inf)");
+        check(D::peak(snare) > 0.1f, "drum snare: produces sound");
+        check(D::peak(snare) < 2.0f, "drum snare: bounded");
+
+        // The seed actually changes the voice (noise/detune differ).
+        const auto kA = D::vKick(0.8f, 1, sr);
+        const auto kB = D::vKick(0.8f, 2, sr);
+        bool differ = false;
+        for (size_t i = 0; i < kA.size(); ++i) if (std::abs(kA[i] - kB[i]) > 1.0e-6f) { differ = true; break; }
+        check(differ, "drum kick: different seeds -> different voice");
     }
 
     std::cout << (failures == 0 ? "ALL PASS" : ("FAILURES: " + String(failures)).toStdString())
