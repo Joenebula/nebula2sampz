@@ -57,6 +57,8 @@ target_sources(Nebula2 PRIVATE
     Source/dsp/TempoDetect.h
     Source/dsp/Slicer.cpp
     Source/dsp/Slicer.h
+    Source/dsp/DrumKit.cpp
+    Source/dsp/DrumKit.h
 )
 
 target_compile_definitions(Nebula2 PUBLIC
@@ -104,6 +106,8 @@ target_sources(Nebula2Tests PRIVATE
     Source/dsp/TempoDetect.h
     Source/dsp/Slicer.cpp
     Source/dsp/Slicer.h
+    Source/dsp/DrumKit.cpp
+    Source/dsp/DrumKit.h
 )
 
 target_compile_definitions(Nebula2Tests PRIVATE

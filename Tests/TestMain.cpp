@@ -18,6 +18,7 @@
 #include "../Source/dsp/DrumSynth.h"
 #include "../Source/dsp/TempoDetect.h"
 #include "../Source/dsp/Slicer.h"
+#include "../Source/dsp/DrumKit.h"
 
 #include <iostream>
 #include <cmath>
@@ -629,6 +630,77 @@ int main()
             check(std::abs(tempoRatio(140.0, 140.0) - 1.0) < 1.0e-9, "slicer: tempoRatio unity at native tempo");
             check(std::abs(tempoRatio(70.0, 140.0) - 0.5) < 1.0e-9, "slicer: tempoRatio halves at half tempo");
             check(std::abs(tempoRatio(120.0, 0.0) - 1.0) < 1.0e-9, "slicer: tempoRatio safe with unknown native");
+        }
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Phase 4 — MIDI-triggered drum kit (the first thing that makes sound)
+    // ---------------------------------------------------------------------------------
+    {
+        using namespace Nebula2;
+
+        // GM map matches the prototype's own MIDI exporter.
+        check(midiNoteToDrumVoice(36) == (int) DrumVoiceId::Kick,      "kit: note 36 -> kick");
+        check(midiNoteToDrumVoice(38) == (int) DrumVoiceId::Snare,     "kit: note 38 -> snare");
+        check(midiNoteToDrumVoice(42) == (int) DrumVoiceId::HatClosed, "kit: note 42 -> closed hat");
+        check(midiNoteToDrumVoice(46) == (int) DrumVoiceId::HatOpen,   "kit: note 46 -> open hat");
+        check(midiNoteToDrumVoice(60) == -1,                            "kit: unmapped note -> none");
+
+        DrumKit kit;
+        kit.prepare(48000.0);
+        check(kit.isPrepared(), "kit: prepares (pre-renders all voices x velocity layers)");
+
+        // Silent until something is triggered.
+        {
+            AudioBuffer<float> bus(2, 512); bus.clear();
+            kit.render(bus, 0, 512);
+            check(bus.getMagnitude(0, 512) == 0.0f, "kit: silent with no notes");
+        }
+
+        // A kick note produces sound, and it decays away to silence on its own.
+        {
+            kit.reset();
+            kit.noteOn(36, 0.9f);
+            check(kit.activeVoiceCount() == 1, "kit: note-on allocates one voice");
+
+            double energy = 0.0; bool finite = true;
+            for (int blk = 0; blk < 64; ++blk)          // 64*512 = 32768 samples > kick length
+            {
+                AudioBuffer<float> bus(2, 512); bus.clear();
+                kit.render(bus, 0, 512);
+                for (int i = 0; i < 512; ++i)
+                {
+                    const float v = bus.getSample(0, i);
+                    if (! std::isfinite(v)) finite = false;
+                    energy += (double) v * v;
+                }
+            }
+            check(finite, "kit: output finite");
+            check(energy > 1.0e-3, "kit: a kick note actually makes sound");
+            check(kit.activeVoiceCount() == 0, "kit: voice frees itself once the one-shot ends");
+        }
+
+        // An unmapped note triggers nothing (and doesn't crash).
+        {
+            kit.reset();
+            kit.noteOn(60, 0.9f);
+            check(kit.activeVoiceCount() == 0, "kit: unmapped note triggers nothing");
+        }
+
+        // Polyphony: several voices at once, and it never exceeds the pool.
+        {
+            kit.reset();
+            for (int i = 0; i < 100; ++i) kit.noteOn(36, 0.8f);
+            check(kit.activeVoiceCount() <= DrumKit::maxPolyphony, "kit: polyphony capped at the pool size");
+            check(kit.activeVoiceCount() > 1, "kit: plays multiple voices at once");
+        }
+
+        // Velocity changes the timbre (different layer), not just the level.
+        {
+            AudioBuffer<float> soft(2, 4096), loud(2, 4096);
+            kit.reset(); soft.clear(); kit.noteOn(36, 0.25f); kit.render(soft, 0, 4096);
+            kit.reset(); loud.clear(); kit.noteOn(36, 1.0f);  kit.render(loud, 0, 4096);
+            check(loud.getMagnitude(0, 4096) > soft.getMagnitude(0, 4096), "kit: harder hits are louder");
         }
     }
 

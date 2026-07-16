@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "MasterProcessor.h"
 #include "Transport.h"
+#include "dsp/DrumKit.h"
 
 // Phase 2: audio-engine skeleton. Real-time-safe callback, sample + drum layer buses,
 // host transport read, master chain (gain -> limiter -> clamp). No sources/effects yet,
@@ -52,8 +53,10 @@ private:
     Nebula2::MasterProcessor masterProcessor;
 
     // Layer buses: sample-slicer layer and synth-drum layer, summed into the main output.
-    // Silent until Phase 3 adds sources; the routing skeleton lives here now.
+    // The drum layer is live (MIDI-triggered); the sample layer awaits the slicer.
     juce::AudioBuffer<float> sampleBus, drumBus;
+
+    Nebula2::DrumKit drumKit;
 
     Nebula2::TransportState transport;
 
