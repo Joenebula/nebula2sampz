@@ -17,6 +17,7 @@
 #include "../Source/dsp/Delay.h"
 #include "../Source/dsp/DrumSynth.h"
 #include "../Source/dsp/TempoDetect.h"
+#include "../Source/dsp/Slicer.h"
 
 #include <iostream>
 #include <cmath>
@@ -575,6 +576,60 @@ int main()
 
         // Junk/short input is rejected rather than guessed.
         check(! detectTempo(0.05, "140.wav").valid, "tempo: too-short buffer returns no result");
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Phase 3 — slicer maths (zero-snap, grid slices, transients, tempo ratio)
+    // ---------------------------------------------------------------------------------
+    {
+        using namespace Nebula2;
+
+        // snapZero: a buffer that flips sign at 50 — an index near it snaps onto the crossing.
+        {
+            std::vector<float> sq(200);
+            for (int i = 0; i < 200; ++i) sq[(size_t) i] = i < 50 ? 1.0f : -1.0f;
+            check(snapZero(sq.data(), 200, 52, 10) == 50, "slicer: snapZero finds the zero crossing");
+            check(snapZero(sq.data(), 200, 5, 2) == 5, "slicer: snapZero keeps put when no crossing is near");
+        }
+
+        // Grid slices: n+1 boundaries, anchored at 0 and the end, strictly increasing.
+        {
+            const int n = 4800;
+            std::vector<float> sine((size_t) n);
+            for (int i = 0; i < n; ++i) sine[(size_t) i] = std::sin(2.0f * juce::MathConstants<float>::pi * 100.0f * (float) i / 48000.0f);
+            const auto s = computeGridSlices(sine.data(), n, 16, 96);
+            check((int) s.size() == 17, "slicer: 16 slices -> 17 boundaries");
+            check(s.front() == 0 && s.back() == n, "slicer: grid anchored at 0 and end");
+            bool inc = true; for (size_t i = 1; i < s.size(); ++i) if (s[i] <= s[i - 1]) inc = false;
+            check(inc, "slicer: grid boundaries strictly increasing");
+        }
+
+        // Transients: three clear bursts in silence should be found.
+        {
+            const double sr = 48000.0;
+            const int n = 48000;
+            std::vector<float> b((size_t) n, 0.0f);
+            const int hits[3] = { 4800, 16000, 30000 };
+            for (const int h : hits)
+                for (int i = 0; i < 600 && h + i < n; ++i)
+                    b[(size_t) (h + i)] = 0.9f * std::sin(0.2f * (float) i) * std::exp(-0.004f * (float) i);
+
+            const auto s = detectTransients(b.data(), n, sr, 0.5f);
+            check(s.front() == 0 && s.back() == n, "slicer: transients anchored at 0 and end");
+            bool inc = true; for (size_t i = 1; i < s.size(); ++i) if (s[i] <= s[i - 1]) inc = false;
+            check(inc, "slicer: transient boundaries strictly increasing");
+            check(s.size() >= 4, "slicer: finds the bursts in silence");
+        }
+
+        // Derived tempo: a 4-bar loop of 6.857 s is 140 BPM — the same evidence the
+        // detector uses, from the other direction.
+        {
+            const int n = (int) (6.857 * 48000.0);
+            check(std::abs(derivedBpm(4, n, 48000.0) - 140.0) < 0.2, "slicer: 4 bars over 6.857s -> 140 BPM");
+            check(std::abs(tempoRatio(140.0, 140.0) - 1.0) < 1.0e-9, "slicer: tempoRatio unity at native tempo");
+            check(std::abs(tempoRatio(70.0, 140.0) - 0.5) < 1.0e-9, "slicer: tempoRatio halves at half tempo");
+            check(std::abs(tempoRatio(120.0, 0.0) - 1.0) < 1.0e-9, "slicer: tempoRatio safe with unknown native");
+        }
     }
 
     std::cout << (failures == 0 ? "ALL PASS" : ("FAILURES: " + String(failures)).toStdString())
