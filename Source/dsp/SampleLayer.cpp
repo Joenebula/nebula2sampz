@@ -20,7 +20,7 @@ namespace Nebula2
 
     void SampleLayer::reset() noexcept
     {
-        for (auto& v : voices) { v.active = false; v.pos = 0.0; v.end = 0.0; }
+        for (auto& v : voices) { v.active = false; v.outSample = 0.0; v.outDur = 0.0; }
     }
 
     void SampleLayer::loadBuffer(juce::AudioBuffer<float>&& audio, double sourceSampleRate,
