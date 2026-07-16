@@ -455,17 +455,20 @@ int main()
             check(maxDiff < 1.0e-6f, "reverb engine: wetMix 0 is dry pass-through");
         }
 
-        // Wait for the async IR to swap in (it loads on a background thread and is picked
-        // up by a later process()), then confirm an impulse yields a wet tail.
+        // Wait for the async IR to swap in. NOTE: juce::dsp::Convolution starts life with a
+        // 1-sample IDENTITY IR (so it passes audio through until a real one lands), so
+        // `size > 0` is satisfied instantly by that placeholder and waits for nothing — a
+        // real IR here is ~105k samples. Discriminate against the placeholder, or the test
+        // races the background loader and passes only by luck.
         bool irReady = false;
         for (int tries = 0; tries < 400 && ! irReady; ++tries)
         {
             AudioBuffer<float> warm(2, 512); warm.clear();
             rev.process(warm, 1.0f);
-            if (rev.getCurrentIRSize() > 0) irReady = true;
+            if (rev.getCurrentIRSize() > 1) irReady = true;
             else juce::Thread::sleep(5);
         }
-        check(irReady, "reverb engine: async IR loaded within timeout");
+        check(irReady, "reverb engine: async IR loaded within timeout (not the 1-sample placeholder)");
 
         // Feed an impulse, then flush enough blocks to capture the whole wet response
         // regardless of the convolution's processing latency. Sum total wet energy.
@@ -876,14 +879,15 @@ int main()
         {
             SpaceProcessor sp3; sp3.prepare(spec);
             SpaceProcessor::Params warm; warm.revMix = 100.0f; warm.dlyMix = 0.0f;
+            // > 1, not > 0: JUCE seeds the convolution with a 1-sample identity IR.
             bool irReady = false;
             for (int tries = 0; tries < 400 && ! irReady; ++tries)
             {
                 AudioBuffer<float> b(2, 512); b.clear();
                 sp3.process(b, warm);
-                if (sp3.reverbIRSize() > 0) irReady = true; else juce::Thread::sleep(5);
+                if (sp3.reverbIRSize() > 1) irReady = true; else juce::Thread::sleep(5);
             }
-            check(irReady, "space: reverb IR loads");
+            check(irReady, "space: reverb IR loads (real IR, not the placeholder)");
 
             // Flush well past the IR length + convolution latency before judging.
             double tail = 0.0, peakAbs = 0.0;
@@ -916,7 +920,7 @@ int main()
                 {
                     AudioBuffer<float> w(2, 512); w.clear();
                     bare.process(w, 1.0f);
-                    if (bare.getCurrentIRSize() > 0) ready = true; else juce::Thread::sleep(5);
+                    if (bare.getCurrentIRSize() > 1) ready = true; else juce::Thread::sleep(5);
                 }
                 double bareTail = 0.0;
                 for (int blk = 0; blk < 256; ++blk)
