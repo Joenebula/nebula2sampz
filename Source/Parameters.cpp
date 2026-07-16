@@ -53,10 +53,16 @@ namespace Nebula2
             juce::StringArray{ "Tube", "Fuzz", "Fold" }, 0));
         layout.add(std::make_unique<APB>(PID{ ParamID::fxOn, version }, "FX On", true));
 
-        // --- Space (not yet wired) ---
+        // --- Space (live) ---
+        layout.add(std::make_unique<APF>(PID{ ParamID::revMix, version }, "Reverb Mix", pct(), 0.0f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::dlyMix, version }, "Delay Mix",  pct(), 0.0f));
         layout.add(std::make_unique<APF>(
-            PID{ ParamID::revMix, version }, "Reverb Mix",
-            juce::NormalisableRange<float>(0.0f, 100.0f, 1.0f), 0.0f));
+            PID{ ParamID::dlyFb, version }, "Delay Feedback",
+            juce::NormalisableRange<float>(0.0f, 92.0f, 1.0f), 40.0f));
+        layout.add(std::make_unique<APC>(
+            PID{ ParamID::dlySync, version }, "Delay Sync",
+            juce::StringArray{ "1/16", "1/8T", "1/8", "1/8.", "1/4", "1/4." }, 2));   // default 1/8
+        layout.add(std::make_unique<APB>(PID{ ParamID::spaceOn, version }, "Space On", true));
 
         // --- Rack log dial (representative) ---
         layout.add(std::make_unique<APF>(

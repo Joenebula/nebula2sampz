@@ -61,6 +61,8 @@ target_sources(Nebula2 PRIVATE
     Source/dsp/DrumKit.h
     Source/dsp/ColourChain.cpp
     Source/dsp/ColourChain.h
+    Source/dsp/SpaceProcessor.cpp
+    Source/dsp/SpaceProcessor.h
 )
 
 target_compile_definitions(Nebula2 PUBLIC
@@ -119,6 +121,8 @@ target_sources(Nebula2Tests PRIVATE
     Source/dsp/DrumKit.h
     Source/dsp/ColourChain.cpp
     Source/dsp/ColourChain.h
+    Source/dsp/SpaceProcessor.cpp
+    Source/dsp/SpaceProcessor.h
 )
 
 target_compile_definitions(Nebula2Tests PRIVATE

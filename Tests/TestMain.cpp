@@ -20,6 +20,7 @@
 #include "../Source/dsp/Slicer.h"
 #include "../Source/dsp/DrumKit.h"
 #include "../Source/dsp/ColourChain.h"
+#include "../Source/dsp/SpaceProcessor.h"
 
 #include <iostream>
 #include <cmath>
@@ -794,6 +795,105 @@ int main()
             //    not a bug (it's why a tone sweep sings).
             check(settled(0.0f, 200.0f) > settled(100.0f, 200.0f) * 2.0f,
                   "colour: tone closed resonates at its cutoff (200 Hz peak)");
+        }
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Phase 4 — Space send (tempo-synced delay + reverb, parallel)
+    // ---------------------------------------------------------------------------------
+    {
+        using namespace Nebula2;
+
+        // Musical time, never milliseconds: an 1/8 at 120 BPM is 0.25 s, and it follows
+        // the tempo (at 140 the same division is shorter).
+        check(std::abs(delayTimeSeconds(DelaySync::Eighth, 120.0) - 0.25) < 1.0e-9, "space: 1/8 at 120 BPM = 0.25 s");
+        check(std::abs(delayTimeSeconds(DelaySync::Quarter, 120.0) - 0.5) < 1.0e-9, "space: 1/4 at 120 BPM = 0.5 s");
+        check(delayTimeSeconds(DelaySync::Eighth, 140.0) < delayTimeSeconds(DelaySync::Eighth, 120.0),
+              "space: the echo follows the host tempo (faster BPM -> shorter delay)");
+        check(std::abs(delayTimeSeconds(DelaySync::Eighth, 0.0) - 0.25) < 1.0e-9, "space: safe fallback when BPM is unknown");
+
+        juce::dsp::ProcessSpec spec;
+        spec.sampleRate = 48000.0; spec.maximumBlockSize = 512; spec.numChannels = 2;
+
+        SpaceProcessor sp;
+        sp.prepare(spec);
+
+        const auto makeImpulse = []
+        {
+            AudioBuffer<float> b(2, 512); b.clear();
+            b.setSample(0, 0, 1.0f); b.setSample(1, 0, 1.0f);
+            return b;
+        };
+
+        // Zero means zero: both sends down = untouched dry.
+        {
+            auto b = makeImpulse();
+            AudioBuffer<float> ref(b);
+            SpaceProcessor::Params p; p.revMix = 0.0f; p.dlyMix = 0.0f;
+            sp.process(b, p);
+            float maxDiff = 0.0f;
+            for (int i = 0; i < 512; ++i) maxDiff = std::max(maxDiff, std::abs(b.getSample(0, i) - ref.getSample(0, i)));
+            check(maxDiff == 0.0f, "space: both sends at zero leaves the dry signal untouched");
+        }
+
+        // spaceOn=false is neutral even with the sends open.
+        {
+            auto b = makeImpulse();
+            AudioBuffer<float> ref(b);
+            SpaceProcessor::Params p; p.revMix = 100.0f; p.dlyMix = 100.0f; p.on = false;
+            sp.process(b, p);
+            float maxDiff = 0.0f;
+            for (int i = 0; i < 512; ++i) maxDiff = std::max(maxDiff, std::abs(b.getSample(0, i) - ref.getSample(0, i)));
+            check(maxDiff == 0.0f, "space: off means off, even with sends maxed");
+        }
+
+        // The delay send adds echoes while preserving the dry hit.
+        {
+            SpaceProcessor sp2; sp2.prepare(spec);
+            SpaceProcessor::Params p; p.revMix = 0.0f; p.dlyMix = 100.0f; p.dlyFb = 50.0f;
+            p.dlySync = DelaySync::Sixteenth; p.bpm = 120.0;   // 0.125 s = 6000 samples
+
+            double echoEnergy = 0.0; bool finite = true; float dryHit = 0.0f;
+            for (int blk = 0; blk < 24; ++blk)
+            {
+                AudioBuffer<float> b(2, 512); b.clear();
+                if (blk == 0) { b.setSample(0, 0, 1.0f); b.setSample(1, 0, 1.0f); }
+                sp2.process(b, p);
+                if (blk == 0) dryHit = b.getSample(0, 0);
+                else for (int i = 0; i < 512; ++i)
+                {
+                    const float v = b.getSample(0, i);
+                    if (! std::isfinite(v)) finite = false;
+                    echoEnergy += (double) v * v;
+                }
+            }
+            check(std::abs(dryHit - 1.0f) < 1.0e-4f, "space: delay send preserves the dry hit");
+            check(finite, "space: delay send output finite");
+            check(echoEnergy > 1.0e-4, "space: delay send produces echoes");
+        }
+
+        // The reverb send adds a tail once its IR has loaded.
+        {
+            SpaceProcessor sp3; sp3.prepare(spec);
+            SpaceProcessor::Params warm; warm.revMix = 100.0f; warm.dlyMix = 0.0f;
+            bool irReady = false;
+            for (int tries = 0; tries < 400 && ! irReady; ++tries)
+            {
+                AudioBuffer<float> b(2, 512); b.clear();
+                sp3.process(b, warm);
+                if (sp3.reverbIRSize() > 0) irReady = true; else juce::Thread::sleep(5);
+            }
+            check(irReady, "space: reverb IR loads");
+
+            double tail = 0.0;
+            for (int blk = 0; blk < 64; ++blk)
+            {
+                AudioBuffer<float> b(2, 512); b.clear();
+                if (blk == 0) { b.setSample(0, 0, 1.0f); b.setSample(1, 0, 1.0f); }
+                sp3.process(b, warm);
+                if (blk > 0) for (int i = 0; i < 512; ++i) { const float v = b.getSample(0, i); tail += (double) v * v; }
+            }
+            check(tail > 1.0e-6, "space: reverb send produces a tail");
         }
     }
 

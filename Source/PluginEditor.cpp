@@ -12,40 +12,49 @@ namespace
 Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& p)
     : AudioProcessorEditor(&p), processorRef(p)
 {
-    addKnob(drive,   Nebula2::ParamID::drive,   "Drive");
-    addKnob(crush,   Nebula2::ParamID::crush,   "Crush");
-    addKnob(squeeze, Nebula2::ParamID::squeeze, "Squeeze");
-    addKnob(tone,    Nebula2::ParamID::tone,    "Tone");
-    addKnob(width,   Nebula2::ParamID::width,   "Width");
-    addKnob(master,  Nebula2::ParamID::master,  "Master");
+    // Colour
+    addKnob(drive,   Nebula2::ParamID::drive,   "Drive",   " %");
+    addKnob(crush,   Nebula2::ParamID::crush,   "Crush",   " %");
+    addKnob(squeeze, Nebula2::ParamID::squeeze, "Squeeze", " %");
+    addKnob(tone,    Nebula2::ParamID::tone,    "Tone",    " %");
+    addKnob(width,   Nebula2::ParamID::width,   "Width",   " %");
+    addKnob(master,  Nebula2::ParamID::master,  "Master",  "");
 
-    charLabel.setText("Character", juce::dontSendNotification);
-    charLabel.setJustificationType(juce::Justification::centredLeft);
-    charLabel.setColour(juce::Label::textColourId, kSub);
-    addAndMakeVisible(charLabel);
+    // Master reads as a gain 0..1 — show it as a percentage rather than "0.356".
+    master.slider.textFromValueFunction = [](double v) { return juce::String(juce::roundToInt(v * 100.0)) + " %"; };
+    master.slider.valueFromTextFunction = [](const juce::String& t) { return t.getDoubleValue() / 100.0; };
+    master.slider.updateText();
 
-    charBox.addItemList({ "Tube", "Fuzz", "Fold" }, 1);
-    addAndMakeVisible(charBox);
-    charAttachment = std::make_unique<APVTS::ComboBoxAttachment>(
-        processorRef.getValueTreeState(), Nebula2::ParamID::driveChar, charBox);
+    // Space
+    addKnob(revMix, Nebula2::ParamID::revMix, "Reverb", " %");
+    addKnob(dlyMix, Nebula2::ParamID::dlyMix, "Delay",  " %");
+    addKnob(dlyFb,  Nebula2::ParamID::dlyFb,  "Feedbk", " %");
 
-    fxOnButton.setColour(juce::ToggleButton::textColourId, kSub);
-    addAndMakeVisible(fxOnButton);
-    fxOnAttachment = std::make_unique<APVTS::ButtonAttachment>(
-        processorRef.getValueTreeState(), Nebula2::ParamID::fxOn, fxOnButton);
+    addCombo(charBox, charLabel, Nebula2::ParamID::driveChar, "Character",
+             { "Tube", "Fuzz", "Fold" }, charAttachment);
+    addCombo(revCharBox, revCharLabel, Nebula2::ParamID::revChar, "Reverb",
+             { "Room", "Hall", "Plate", "Cathedral", "Reverse" }, revCharAttachment);
+    addCombo(dlySyncBox, dlySyncLabel, Nebula2::ParamID::dlySync, "Sync",
+             { "1/16", "1/8T", "1/8", "1/8.", "1/4", "1/4." }, dlySyncAttachment);
 
-    limiterButton.setColour(juce::ToggleButton::textColourId, kSub);
-    addAndMakeVisible(limiterButton);
-    limiterAttachment = std::make_unique<APVTS::ButtonAttachment>(
-        processorRef.getValueTreeState(), Nebula2::ParamID::limiter, limiterButton);
+    for (auto* b : { &fxOnButton, &limiterButton, &spaceOnButton })
+    {
+        b->setColour(juce::ToggleButton::textColourId, kSub);
+        addAndMakeVisible(*b);
+    }
+    fxOnAttachment    = std::make_unique<APVTS::ButtonAttachment>(processorRef.getValueTreeState(), Nebula2::ParamID::fxOn, fxOnButton);
+    limiterAttachment = std::make_unique<APVTS::ButtonAttachment>(processorRef.getValueTreeState(), Nebula2::ParamID::limiter, limiterButton);
+    spaceOnAttachment = std::make_unique<APVTS::ButtonAttachment>(processorRef.getValueTreeState(), Nebula2::ParamID::spaceOn, spaceOnButton);
 
-    setSize(560, 300);
+    setSize(600, 400);
 }
 
-void Nebula2AudioProcessorEditor::addKnob(Knob& k, const juce::String& paramID, const juce::String& name)
+void Nebula2AudioProcessorEditor::addKnob(Knob& k, const juce::String& paramID,
+                                          const juce::String& name, const juce::String& suffix)
 {
     k.slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
     k.slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 62, 16);
+    k.slider.setTextValueSuffix(suffix);
     k.slider.setColour(juce::Slider::rotarySliderFillColourId, kAccent);
     k.slider.setColour(juce::Slider::thumbColourId, kAccent);
     k.slider.setColour(juce::Slider::textBoxTextColourId, juce::Colours::white);
@@ -57,47 +66,94 @@ void Nebula2AudioProcessorEditor::addKnob(Knob& k, const juce::String& paramID, 
     k.label.setColour(juce::Label::textColourId, kSub);
     addAndMakeVisible(k.label);
 
-    k.attachment = std::make_unique<APVTS::SliderAttachment>(
-        processorRef.getValueTreeState(), paramID, k.slider);
+    k.attachment = std::make_unique<APVTS::SliderAttachment>(processorRef.getValueTreeState(), paramID, k.slider);
+}
+
+void Nebula2AudioProcessorEditor::addCombo(juce::ComboBox& box, juce::Label& label,
+                                           const juce::String& paramID, const juce::String& name,
+                                           const juce::StringArray& items,
+                                           std::unique_ptr<APVTS::ComboBoxAttachment>& attachment)
+{
+    label.setText(name, juce::dontSendNotification);
+    label.setJustificationType(juce::Justification::centredLeft);
+    label.setColour(juce::Label::textColourId, kSub);
+    addAndMakeVisible(label);
+
+    box.addItemList(items, 1);
+    addAndMakeVisible(box);
+    attachment = std::make_unique<APVTS::ComboBoxAttachment>(processorRef.getValueTreeState(), paramID, box);
 }
 
 void Nebula2AudioProcessorEditor::paint(juce::Graphics& g)
 {
     g.fillAll(kBg);
 
-    auto header = getLocalBounds().removeFromTop(46).reduced(16, 8);
+    auto header = getLocalBounds().removeFromTop(44).reduced(16, 8);
     g.setColour(juce::Colours::white);
     g.setFont(juce::FontOptions(18.0f));
-    g.drawFittedText("Nebula2", header.removeFromLeft(120), juce::Justification::centredLeft, 1);
-
+    g.drawFittedText("Nebula2", header.removeFromLeft(100), juce::Justification::centredLeft, 1);
     g.setColour(kSub);
     g.setFont(juce::FontOptions(11.0f));
-    g.drawFittedText("drums: 36 kick  38 snare  39 clap  42/46 hats  45 tom  37 rim  75 perc",
+    g.drawFittedText("36 kick  38 snare  39 clap  42/46 hats  45 tom  37 rim  75 perc",
                      header, juce::Justification::centredLeft, 1);
 
+    auto body = getLocalBounds().reduced(12).withTrimmedTop(38);
+    auto colour = body.removeFromTop(200);
     g.setColour(kPanel);
-    g.fillRoundedRectangle(getLocalBounds().reduced(12).withTrimmedTop(40).toFloat(), 8.0f);
+    g.fillRoundedRectangle(colour.toFloat(), 8.0f);
+    body.removeFromTop(8);
+    g.fillRoundedRectangle(body.toFloat(), 8.0f);
+
+    g.setColour(kAccent);
+    g.setFont(juce::FontOptions(10.0f));
+    g.drawFittedText("COLOUR", colour.reduced(12, 6).removeFromTop(12), juce::Justification::topLeft, 1);
+    g.drawFittedText("SPACE", body.reduced(12, 6).removeFromTop(12), juce::Justification::topLeft, 1);
 }
 
 void Nebula2AudioProcessorEditor::resized()
 {
-    auto area = getLocalBounds().reduced(12).withTrimmedTop(40).reduced(10);
+    auto body = getLocalBounds().reduced(12).withTrimmedTop(38);
 
-    auto knobRow = area.removeFromTop(140);
-    Knob* knobs[] = { &drive, &crush, &squeeze, &tone, &width, &master };
-    const int w = knobRow.getWidth() / 6;
-    for (auto* k : knobs)
+    // --- Colour panel ---
+    auto colour = body.removeFromTop(200).reduced(10);
+    colour.removeFromTop(12);
+    auto knobRow = colour.removeFromTop(120);
+    Knob* cKnobs[] = { &drive, &crush, &squeeze, &tone, &width, &master };
+    const int cw = knobRow.getWidth() / 6;
+    for (auto* k : cKnobs)
     {
-        auto cell = knobRow.removeFromLeft(w);
-        k->label.setBounds(cell.removeFromTop(18));
-        k->slider.setBounds(cell.reduced(4));
+        auto cell = knobRow.removeFromLeft(cw);
+        k->label.setBounds(cell.removeFromTop(16));
+        k->slider.setBounds(cell.reduced(3));
     }
+    colour.removeFromTop(8);
+    auto cRow = colour.removeFromTop(24);
+    charLabel.setBounds(cRow.removeFromLeft(64));
+    charBox.setBounds(cRow.removeFromLeft(100).reduced(0, 1));
+    cRow.removeFromLeft(16);
+    fxOnButton.setBounds(cRow.removeFromLeft(80));
+    limiterButton.setBounds(cRow.removeFromLeft(80));
 
-    area.removeFromTop(12);
-    auto bottom = area.removeFromTop(28);
-    charLabel.setBounds(bottom.removeFromLeft(70));
-    charBox.setBounds(bottom.removeFromLeft(110).reduced(0, 2));
-    bottom.removeFromLeft(24);
-    fxOnButton.setBounds(bottom.removeFromLeft(90));
-    limiterButton.setBounds(bottom.removeFromLeft(90));
+    // --- Space panel ---
+    body.removeFromTop(8);
+    auto sp = body.reduced(10);
+    sp.removeFromTop(12);
+    auto sRow = sp.removeFromTop(90);
+    Knob* sKnobs[] = { &revMix, &dlyMix, &dlyFb };
+    const int sw = 90;
+    for (auto* k : sKnobs)
+    {
+        auto cell = sRow.removeFromLeft(sw);
+        k->label.setBounds(cell.removeFromTop(16));
+        k->slider.setBounds(cell.reduced(3));
+    }
+    sRow.removeFromLeft(12);
+    auto right = sRow.removeFromTop(24);
+    revCharLabel.setBounds(right.removeFromLeft(50));
+    revCharBox.setBounds(right.removeFromLeft(96).reduced(0, 1));
+    right.removeFromLeft(10);
+    dlySyncLabel.setBounds(right.removeFromLeft(36));
+    dlySyncBox.setBounds(right.removeFromLeft(70).reduced(0, 1));
+    right.removeFromLeft(10);
+    spaceOnButton.setBounds(right.removeFromLeft(86));
 }

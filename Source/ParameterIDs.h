@@ -19,8 +19,12 @@ namespace Nebula2::ParamID
     inline constexpr auto width     = "width";     // float 0..200  % (100 = unchanged)
     inline constexpr auto fxOn      = "fxOn";      // bool
 
-    // --- Space (not yet wired) ---
-    inline constexpr auto revMix   = "revMix";     // float 0..100      (linear, %)
+    // --- Space (live: parallel reverb + tempo-synced delay send) ---
+    inline constexpr auto revMix   = "revMix";     // float 0..100  %
+    inline constexpr auto dlyMix   = "dlyMix";     // float 0..100  %
+    inline constexpr auto dlyFb    = "dlyFb";      // float 0..92   %
+    inline constexpr auto dlySync  = "dlySync";    // choice: 1/16, 1/8T, 1/8, 1/8., 1/4, 1/4.
+    inline constexpr auto spaceOn  = "spaceOn";    // bool
 
     // --- Rack — one representative logarithmic dial ---
     inline constexpr auto fltCut   = "flt.cut";    // float 40..14000   (log skew, Hz)

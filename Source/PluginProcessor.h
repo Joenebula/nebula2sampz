@@ -5,11 +5,15 @@
 #include "Transport.h"
 #include "dsp/DrumKit.h"
 #include "dsp/ColourChain.h"
+#include "dsp/SpaceProcessor.h"
 
-// Phase 2: audio-engine skeleton. Real-time-safe callback, sample + drum layer buses,
-// host transport read, master chain (gain -> limiter -> clamp). No sources/effects yet,
-// so the output is still silent — Phase 3 fills the buses with sound.
-class Nebula2AudioProcessor final : public juce::AudioProcessor
+// MIDI-triggered drum voices -> Colour FX -> Space send -> master chain.
+//
+// Inherits AsyncUpdater for one specific reason: changing the reverb character rebuilds an
+// impulse response, which allocates. processBlock can only NOTE that the character changed
+// and kick an async update; the rebuild itself happens on the message thread.
+class Nebula2AudioProcessor final : public juce::AudioProcessor,
+                                    private juce::AsyncUpdater
 {
 public:
     Nebula2AudioProcessor();
@@ -57,6 +61,12 @@ private:
     std::atomic<float>* toneParam { nullptr };
     std::atomic<float>* widthParam { nullptr };
     std::atomic<float>* fxOnParam { nullptr };
+    std::atomic<float>* revMixParam { nullptr };
+    std::atomic<float>* revCharParam { nullptr };
+    std::atomic<float>* dlyMixParam { nullptr };
+    std::atomic<float>* dlyFbParam { nullptr };
+    std::atomic<float>* dlySyncParam { nullptr };
+    std::atomic<float>* spaceOnParam { nullptr };
 
     Nebula2::MasterProcessor masterProcessor;
 
@@ -66,6 +76,12 @@ private:
 
     Nebula2::DrumKit drumKit;
     Nebula2::ColourChain colourChain;
+    Nebula2::SpaceProcessor space;
+
+    // Reverb-character reload: the audio thread only sets `wantedRevChar` and pokes the
+    // async updater; handleAsyncUpdate() does the (allocating) IR rebuild off-thread.
+    std::atomic<int> wantedRevChar { 1 };   // 1 = Hall, matches the param default
+    void handleAsyncUpdate() override;
 
     Nebula2::TransportState transport;
 

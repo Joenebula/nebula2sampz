@@ -16,6 +16,20 @@ Nebula2AudioProcessor::Nebula2AudioProcessor()
     toneParam      = apvts.getRawParameterValue(Nebula2::ParamID::tone);
     widthParam     = apvts.getRawParameterValue(Nebula2::ParamID::width);
     fxOnParam      = apvts.getRawParameterValue(Nebula2::ParamID::fxOn);
+    revMixParam    = apvts.getRawParameterValue(Nebula2::ParamID::revMix);
+    revCharParam   = apvts.getRawParameterValue(Nebula2::ParamID::revChar);
+    dlyMixParam    = apvts.getRawParameterValue(Nebula2::ParamID::dlyMix);
+    dlyFbParam     = apvts.getRawParameterValue(Nebula2::ParamID::dlyFb);
+    dlySyncParam   = apvts.getRawParameterValue(Nebula2::ParamID::dlySync);
+    spaceOnParam   = apvts.getRawParameterValue(Nebula2::ParamID::spaceOn);
+}
+
+void Nebula2AudioProcessor::handleAsyncUpdate()
+{
+    // Message thread: safe to synthesise + load a new impulse response here.
+    const auto wanted = (Nebula2::ReverbChar) juce::jlimit(0, 4, wantedRevChar.load());
+    if (wanted != space.getCharacter())
+        space.setCharacter(wanted);
 }
 
 void Nebula2AudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
@@ -29,6 +43,8 @@ void Nebula2AudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
     masterProcessor.reset();
     colourChain.prepare(spec);
     colourChain.reset();
+    space.prepare(spec);
+    space.reset();
 
     // Preallocate the layer buses here (never in the audio callback).
     sampleBus.setSize(2, samplesPerBlock, false, false, true);
@@ -97,6 +113,25 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
         cp.driveChar = driveCharParam != nullptr ? (int) driveCharParam->load() : 0;
         cp.on        = fxOnParam      != nullptr ? fxOnParam->load() > 0.5f : true;
         colourChain.process(buffer, cp);
+    }
+
+    // Space: parallel reverb + tempo-synced delay send (dry is preserved).
+    {
+        const int wantChar = revCharParam != nullptr ? (int) revCharParam->load() : 1;
+        if (wantChar != wantedRevChar.load())
+        {
+            wantedRevChar.store(wantChar);
+            triggerAsyncUpdate();          // rebuild the IR off the audio thread
+        }
+
+        Nebula2::SpaceProcessor::Params sp;
+        sp.revMix   = revMixParam  != nullptr ? revMixParam->load()  : 0.0f;
+        sp.dlyMix   = dlyMixParam  != nullptr ? dlyMixParam->load()  : 0.0f;
+        sp.dlyFb    = dlyFbParam   != nullptr ? dlyFbParam->load()   : 40.0f;
+        sp.dlySync  = (Nebula2::DelaySync) (dlySyncParam != nullptr ? juce::jlimit(0, 5, (int) dlySyncParam->load()) : 2);
+        sp.on       = spaceOnParam != nullptr ? spaceOnParam->load() > 0.5f : true;
+        sp.bpm      = transport.bpm;       // musical time, from the host
+        space.process(buffer, sp);
     }
 
     // Master chain: gain -> limiter -> safety clamp.
