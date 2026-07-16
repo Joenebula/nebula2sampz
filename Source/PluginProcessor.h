@@ -33,11 +33,12 @@ public:
     bool producesMidi() const override { return false; }
     double getTailLengthSeconds() const override { return 0.0; }
 
-    int getNumPrograms() override { return 1; }
-    int getCurrentProgram() override { return 0; }
-    void setCurrentProgram(int) override {}
-    const juce::String getProgramName(int) override { return {}; }
-    void changeProgramName(int, const juce::String&) override {}
+    // Factory presets via the host's own preset menu (no bespoke browser to maintain).
+    int getNumPrograms() override;
+    int getCurrentProgram() override { return currentProgram; }
+    void setCurrentProgram(int) override;
+    const juce::String getProgramName(int) override;
+    void changeProgramName(int, const juce::String&) override {}   // factory presets are read-only
 
     void getStateInformation(juce::MemoryBlock&) override;
     void setStateInformation(const void*, int) override;
@@ -101,6 +102,8 @@ private:
     // on the message thread, so the load is deferred to handleAsyncUpdate).
     juce::CriticalSection pendingPathLock;
     juce::String pendingSamplePath;
+
+    int currentProgram = 0;
 
     void handleAsyncUpdate() override;
 

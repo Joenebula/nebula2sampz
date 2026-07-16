@@ -2,6 +2,7 @@
 #include "PluginEditor.h"
 #include "Parameters.h"
 #include "ParameterIDs.h"
+#include "Presets.h"
 
 Nebula2AudioProcessor::Nebula2AudioProcessor()
     : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true)),
@@ -25,6 +26,24 @@ Nebula2AudioProcessor::Nebula2AudioProcessor()
     sliceModeParam   = apvts.getRawParameterValue(Nebula2::ParamID::sliceMode);
     sliceCountParam  = apvts.getRawParameterValue(Nebula2::ParamID::sliceCount);
     sensitivityParam = apvts.getRawParameterValue(Nebula2::ParamID::sensitivity);
+}
+
+int Nebula2AudioProcessor::getNumPrograms()
+{
+    return (int) Nebula2::getFactoryPresets().size();
+}
+
+const juce::String Nebula2AudioProcessor::getProgramName(int index)
+{
+    const auto& p = Nebula2::getFactoryPresets();
+    return (index >= 0 && index < (int) p.size()) ? juce::String(p[(size_t) index].name) : juce::String();
+}
+
+void Nebula2AudioProcessor::setCurrentProgram(int index)
+{
+    if (index < 0 || index >= getNumPrograms()) return;
+    currentProgram = index;
+    Nebula2::applyPreset(apvts, index);   // resets to defaults first, then applies
 }
 
 int Nebula2AudioProcessor::sliceCountFromChoice(int choiceIndex) noexcept

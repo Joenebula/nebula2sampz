@@ -8,6 +8,7 @@
 
 #include "../Source/Parameters.h"
 #include "../Source/ParameterIDs.h"
+#include "../Source/Presets.h"
 #include "../Source/MasterProcessor.h"
 #include "../Source/Transport.h"
 #include "../Source/dsp/ParametricEq.h"
@@ -1330,6 +1331,107 @@ int main()
             // The whole point: time changed, pitch did NOT.
             check(std::abs(fFast - fNative) < fNative * 0.15,
                   "stretch: pitch is preserved when the slice is time-compressed");
+        }
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Phase 6 — factory presets
+    // ---------------------------------------------------------------------------------
+    {
+        using namespace Nebula2;
+        const auto& presets = getFactoryPresets();
+
+        check(presets.size() >= 10, "presets: a usable factory set exists");
+
+        // Names are unique and non-empty — a duplicate would be indistinguishable in the
+        // host's menu.
+        {
+            juce::StringArray names;
+            bool ok = true;
+            for (const auto& p : presets)
+            {
+                const juce::String n(p.name);
+                if (n.isEmpty() || names.contains(n)) ok = false;
+                names.add(n);
+            }
+            check(ok, "presets: names are unique and non-empty");
+            check(juce::String(presets[0].name) == "Init", "presets: first is Init");
+        }
+
+        // Every preset references only REAL parameters, with values inside their range.
+        // A typo'd id would silently do nothing — the exact 'looks wired but isn't' trap.
+        {
+            DummyProcessor dp;
+            bool allIdsExist = true, allInRange = true;
+            for (const auto& p : presets)
+                for (const auto& v : p.values)
+                {
+                    auto* rp = dp.apvts.getParameter(v.id);
+                    if (rp == nullptr) { allIdsExist = false; continue; }
+                    const float norm = rp->convertTo0to1(v.value);
+                    if (norm < -0.001f || norm > 1.001f) allInRange = false;
+                }
+            check(allIdsExist, "presets: every id refers to a real parameter (no silent typos)");
+            check(allInRange, "presets: every value sits inside its parameter's range");
+        }
+
+        // The gate the roadmap names: "preset load applies fully".
+        {
+            DummyProcessor dp;
+
+            // Dirty the state first, so a partial apply would be visible.
+            dp.apvts.getParameter(ParamID::drive)->setValueNotifyingHost(1.0f);
+            dp.apvts.getParameter(ParamID::crush)->setValueNotifyingHost(1.0f);
+            dp.apvts.getParameter(ParamID::revMix)->setValueNotifyingHost(1.0f);
+
+            // Find "Tube Drive": it sets drive but says nothing about crush/revMix, which
+            // must therefore come back to DEFAULT rather than inheriting the dirt.
+            int tubeIdx = -1;
+            for (int i = 0; i < (int) presets.size(); ++i)
+                if (juce::String(presets[(size_t) i].name) == "Tube Drive") tubeIdx = i;
+            check(tubeIdx > 0, "presets: Tube Drive present");
+
+            applyPreset(dp.apvts, tubeIdx);
+
+            const float drive = *dp.apvts.getRawParameterValue(ParamID::drive);
+            const float crush = *dp.apvts.getRawParameterValue(ParamID::crush);
+            const float rev   = *dp.apvts.getRawParameterValue(ParamID::revMix);
+            check(std::abs(drive - 60.0f) < 1.5f, "presets: applies its own values (drive 60)");
+            check(crush < 1.0f, "presets: params it doesn't mention RESET to default (no leak from before)");
+            check(rev < 1.0f, "presets: recall is total, not partial");
+        }
+
+        // Switching presets is deterministic: A -> B -> A lands back where it started.
+        {
+            DummyProcessor dp;
+            int dubIdx = -1, tubeIdx = -1;
+            for (int i = 0; i < (int) presets.size(); ++i)
+            {
+                if (juce::String(presets[(size_t) i].name) == "Dub Echo")   dubIdx = i;
+                if (juce::String(presets[(size_t) i].name) == "Tube Drive") tubeIdx = i;
+            }
+
+            applyPreset(dp.apvts, tubeIdx);
+            const float driveA = *dp.apvts.getRawParameterValue(ParamID::drive);
+            const float dlyA   = *dp.apvts.getRawParameterValue(ParamID::dlyMix);
+
+            applyPreset(dp.apvts, dubIdx);
+            const float dlyB = *dp.apvts.getRawParameterValue(ParamID::dlyMix);
+            check(dlyB > dlyA, "presets: Dub Echo actually changes the delay");
+
+            applyPreset(dp.apvts, tubeIdx);
+            const float driveBack = *dp.apvts.getRawParameterValue(ParamID::drive);
+            const float dlyBack   = *dp.apvts.getRawParameterValue(ParamID::dlyMix);
+            check(std::abs(driveBack - driveA) < 0.01f, "presets: A -> B -> A restores A exactly");
+            check(std::abs(dlyBack - dlyA) < 0.01f, "presets: no residue from B after returning to A");
+        }
+
+        // Init really is the default state.
+        {
+            DummyProcessor dp;
+            dp.apvts.getParameter(ParamID::drive)->setValueNotifyingHost(1.0f);
+            applyPreset(dp.apvts, 0);   // Init
+            check(*dp.apvts.getRawParameterValue(ParamID::drive) < 1.0f, "presets: Init returns everything to default");
         }
     }
 
