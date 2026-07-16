@@ -964,6 +964,69 @@ int main()
                   "sample: attack is intact - full level within a few samples, no grain fade-in");
         }
 
+        // THE WHOLE slice must play. Each synthetic slice is a distinct DC level, so if the
+        // read ever wraps back to the chop's start the level would drop away from its own.
+        // (This is the bug joe heard: chops stopping ~3/4 through and replaying the front.)
+        {
+            layer.setHostBpm(140.0);            // stretch == 1, so out length == slice length
+            layer.setStretchEnabled(true);
+            layer.reset();
+            layer.noteOn(SampleLayer::baseNote + 8, 1.0f);   // slice 8 -> level 0.45
+
+            int rendered = 0; bool heldLevel = true; int samplesChecked = 0;
+            while (layer.activeVoiceCount() > 0 && rendered < 48000 * 2)
+            {
+                AudioBuffer<float> bus(2, 512); bus.clear();
+                layer.render(bus, 0, 512);
+                // Ignore the last grain's natural fade-out at the very end of the slice.
+                if (rendered < 16000)
+                    for (int i = 0; i < 512; ++i)
+                    {
+                        const float v = bus.getSample(0, i);
+                        ++samplesChecked;
+                        if (std::abs(v - 0.45f) > 0.08f) heldLevel = false;
+                    }
+                rendered += 512;
+            }
+            check(samplesChecked > 8000, "sample: slice plays for its full length");
+            check(heldLevel, "sample: slice reads straight through - never wraps back to its start");
+        }
+
+        // Note-off gates the chop: hold it briefly and it stops, rather than running the
+        // full slice and piling voices up.
+        {
+            layer.reset();
+            layer.noteOn(SampleLayer::baseNote + 8, 1.0f);
+            AudioBuffer<float> bus(2, 512); bus.clear();
+            layer.render(bus, 0, 512);
+            check(layer.activeVoiceCount() == 1, "sample: chop sounds while held");
+
+            layer.noteOff(SampleLayer::baseNote + 8);
+            int guard = 0;
+            while (layer.activeVoiceCount() > 0 && guard < 20)
+            {
+                AudioBuffer<float> b2(2, 512); b2.clear();
+                layer.render(b2, 0, 512);
+                ++guard;
+            }
+            check(layer.activeVoiceCount() == 0, "sample: note-off stops the chop (gated, not full length)");
+            check(guard <= 2, "sample: note-off releases quickly (~5ms, no long tail)");
+        }
+
+        // A fast pattern must not exhaust the voice pool and steal from itself.
+        {
+            layer.reset();
+            for (int n = 0; n < 12; ++n)
+            {
+                layer.noteOn(SampleLayer::baseNote + n, 1.0f);
+                layer.noteOff(SampleLayer::baseNote + n);
+                AudioBuffer<float> b(2, 512); b.clear();
+                layer.render(b, 0, 512);
+            }
+            check(layer.activeVoiceCount() <= SampleLayer::maxVoices,
+                  "sample: gated pattern stays within the voice pool");
+        }
+
         // Out-of-range notes (incl. the drum range) don't trigger the sample layer.
         {
             layer.reset();

@@ -117,10 +117,13 @@ namespace Nebula2
         }
 
         auto& v = voices[(size_t) slot];
+        v.note       = note;
         v.sliceStart = (double) s->sliceStarts[(size_t) slice];
         v.sliceEnd   = (double) s->sliceStarts[(size_t) slice + 1];
         v.gain       = juce::jlimit(0.0f, 1.0f, velocity);
         v.outSample  = 0.0;
+        v.release    = -1.0;
+        v.releaseLen = juce::jmax(1.0, 0.005 * hostRate);   // 5 ms
 
         // Native pitch: 1 output sample advances the source by sourceSR/hostSR.
         v.pitchRate = s->sourceSampleRate / hostRate;
@@ -148,6 +151,13 @@ namespace Nebula2
         v.active = true;
     }
 
+    void SampleLayer::noteOff(int note) noexcept
+    {
+        for (auto& v : voices)
+            if (v.active && v.note == note && v.release < 0.0)
+                v.release = v.releaseLen;      // start the 5 ms fade
+    }
+
     void SampleLayer::render(juce::AudioBuffer<float>& bus, int startSample, int numSamples) noexcept
     {
         auto* s = current.load();
@@ -173,9 +183,6 @@ namespace Nebula2
         for (auto& v : voices)
         {
             if (! v.active) continue;
-
-            const double grainIn = v.grainOut * v.pitchRate;                 // grain len, input samples
-            const double span    = juce::jmax(1.0, (v.sliceEnd - v.sliceStart) - grainIn);
 
             for (int i = 0; i < numSamples; ++i)
             {
@@ -206,21 +213,32 @@ namespace Nebula2
                                       : (float) (risingEdge ? localT / half
                                                             : (v.grainOut - localT) / half);
 
-                    double read = v.sliceStart + (double) k * v.hopIn + localT * v.pitchRate;
-
-                    // Stay inside the slice — wrap rather than bleed into the next chop.
-                    if (read > v.sliceEnd - grainIn)
-                        read = v.sliceStart + std::fmod(read - v.sliceStart, span);
-                    if (read < v.sliceStart) read = v.sliceStart;
+                    // Read straight through. Do NOT wrap back to the slice start: the
+                    // source is one continuous break, so a grain reading slightly past a
+                    // slice edge is just the next moment of the same recording — exactly
+                    // what should follow. Wrapping instead jumped mid-grain back to the
+                    // chop's beginning, so the last chunk of every slice never played.
+                    // readAt() returns 0 outside the buffer, so the end is safe.
+                    const double read = v.sliceStart + (double) k * v.hopIn + localT * v.pitchRate;
 
                     for (int c = 0; c < busChs && c < 2; ++c)
                         acc[c] += readAt(c, read) * w;
                 }
 
+                // Note-off gate: 5 ms fade, then the voice frees itself.
+                float env = v.gain;
+                if (v.release >= 0.0)
+                {
+                    env *= (float) (v.release / v.releaseLen);
+                    v.release -= 1.0;
+                    if (v.release <= 0.0) { v.active = false; }
+                }
+
                 for (int c = 0; c < busChs && c < 2; ++c)
-                    bus.addSample(c, startSample + i, acc[c] * v.gain);
+                    bus.addSample(c, startSample + i, acc[c] * env);
 
                 v.outSample += 1.0;
+                if (! v.active) break;
             }
         }
     }

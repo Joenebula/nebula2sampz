@@ -103,6 +103,12 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
                 drumKit.noteOn(msg.getNoteNumber(), msg.getFloatVelocity());
                 sampleLayer.noteOn(msg.getNoteNumber(), msg.getFloatVelocity());
             }
+            else if (msg.isNoteOff())
+            {
+                // Drums are one-shots (a kick doesn't stop when you lift the key), but a
+                // chop is gated by its note length — that's what makes it a slicer.
+                sampleLayer.noteOff(msg.getNoteNumber());
+            }
         }
         if (cursor < numSamples)
         {

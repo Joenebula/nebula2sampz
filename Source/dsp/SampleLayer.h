@@ -36,6 +36,12 @@ namespace Nebula2
                         const juce::String& name, int numSlices);
 
         void noteOn(int midiNoteNumber, float velocity) noexcept;
+
+        // Gates the chop to the note, like a slicer should: hold a 16th, get a 16th-long
+        // chop. Without this, every slice runs its full length and a fast pattern turns
+        // into overlapping mush (and steals voices from itself).
+        void noteOff(int midiNoteNumber) noexcept;
+
         void render(juce::AudioBuffer<float>& bus, int startSample, int numSamples) noexcept;
 
         // Host tempo, so slices can be stretched to fit the grid. 0 = unknown (no stretch).
@@ -68,6 +74,7 @@ namespace Nebula2
         struct Voice
         {
             bool active = false;
+            int note = -1;
             double sliceStart = 0.0, sliceEnd = 0.0;
             float gain = 1.0f;
 
@@ -77,6 +84,10 @@ namespace Nebula2
             double hopOut = 0.0;        // grain spacing out (= grainOut/2, 50% overlap)
             double hopIn = 0.0;         // grain spacing in INPUT samples
             double pitchRate = 1.0;     // input samples per output sample (native pitch)
+
+            // Short fade on note-off so gating a chop doesn't click.
+            double release = -1.0;      // samples remaining; < 0 = not releasing
+            double releaseLen = 1.0;
         };
 
         juce::AudioFormatManager formats;
