@@ -7,7 +7,8 @@
 // and the UI can never disagree (law: one source of truth — the visual derives from state).
 // This is deliberately plain — the designed UI is Phase 5. It exists so the FX can be
 // judged BY EAR, which is the only test that matters for whether the port sounds right.
-class Nebula2AudioProcessorEditor final : public juce::AudioProcessorEditor
+class Nebula2AudioProcessorEditor final : public juce::AudioProcessorEditor,
+                                          public juce::FileDragAndDropTarget
 {
 public:
     explicit Nebula2AudioProcessorEditor(Nebula2AudioProcessor&);
@@ -15,6 +16,12 @@ public:
 
     void paint(juce::Graphics&) override;
     void resized() override;
+
+    // Drop a break straight onto the plugin.
+    bool isInterestedInFileDrag(const juce::StringArray& files) override;
+    void filesDropped(const juce::StringArray& files, int x, int y) override;
+    void fileDragEnter(const juce::StringArray&, int, int) override;
+    void fileDragExit(const juce::StringArray&) override;
 
 private:
     using APVTS = juce::AudioProcessorValueTreeState;
@@ -42,6 +49,15 @@ private:
 
     juce::ToggleButton spaceOnButton { "Space On" };
     std::unique_ptr<APVTS::ButtonAttachment> spaceOnAttachment;
+
+    // Sample layer
+    juce::TextButton loadButton { "Load Sample..." };
+    juce::Label sampleInfo;
+    std::unique_ptr<juce::FileChooser> chooser;
+    bool dragHighlight = false;
+
+    void loadSampleFile(const juce::File& f);
+    void refreshSampleInfo();
 
     juce::ToggleButton fxOnButton { "FX On" };
     std::unique_ptr<APVTS::ButtonAttachment> fxOnAttachment;

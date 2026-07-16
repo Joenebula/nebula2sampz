@@ -6,6 +6,7 @@
 #include "dsp/DrumKit.h"
 #include "dsp/ColourChain.h"
 #include "dsp/SpaceProcessor.h"
+#include "dsp/SampleLayer.h"
 
 // MIDI-triggered drum voices -> Colour FX -> Space send -> master chain.
 //
@@ -44,6 +45,9 @@ public:
     juce::AudioProcessorValueTreeState& getValueTreeState() noexcept { return apvts; }
     juce::UndoManager& getUndoManager() noexcept { return undoManager; }
 
+    // The editor drives sample loading (message thread — decoding allocates).
+    Nebula2::SampleLayer& getSampleLayer() noexcept { return sampleLayer; }
+
     // Most-recent host transport the audio thread saw (for the editor to display later).
     Nebula2::TransportState getTransport() const noexcept { return transport; }
 
@@ -75,6 +79,7 @@ private:
     juce::AudioBuffer<float> sampleBus, drumBus;
 
     Nebula2::DrumKit drumKit;
+    Nebula2::SampleLayer sampleLayer;
     Nebula2::ColourChain colourChain;
     Nebula2::SpaceProcessor space;
 

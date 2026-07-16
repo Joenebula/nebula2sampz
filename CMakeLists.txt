@@ -63,6 +63,8 @@ target_sources(Nebula2 PRIVATE
     Source/dsp/ColourChain.h
     Source/dsp/SpaceProcessor.cpp
     Source/dsp/SpaceProcessor.h
+    Source/dsp/SampleLayer.cpp
+    Source/dsp/SampleLayer.h
 )
 
 target_compile_definitions(Nebula2 PUBLIC
@@ -123,6 +125,8 @@ target_sources(Nebula2Tests PRIVATE
     Source/dsp/ColourChain.h
     Source/dsp/SpaceProcessor.cpp
     Source/dsp/SpaceProcessor.h
+    Source/dsp/SampleLayer.cpp
+    Source/dsp/SampleLayer.h
 )
 
 target_compile_definitions(Nebula2Tests PRIVATE
@@ -133,6 +137,7 @@ target_compile_definitions(Nebula2Tests PRIVATE
 
 target_link_libraries(Nebula2Tests PRIVATE
     juce::juce_audio_processors
+    juce::juce_audio_formats
     juce::juce_dsp
     juce::juce_gui_basics
     juce::juce_recommended_config_flags

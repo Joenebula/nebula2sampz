@@ -52,6 +52,7 @@ void Nebula2AudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
 
     // Pre-render the drum kit (heavy + allocates — must not happen on the audio thread).
     drumKit.prepare(sampleRate);
+    sampleLayer.prepare(sampleRate, samplesPerBlock);
 }
 
 void Nebula2AudioProcessor::releaseResources()
@@ -74,23 +75,36 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
     sampleBus.clear();
     drumBus.clear();
 
-    // Drum layer: render in sub-blocks split at MIDI event positions, so hits land
-    // sample-accurately rather than snapping to the block grid.
+    // Both layers render in sub-blocks split at MIDI event positions, so hits land
+    // sample-accurately rather than snapping to the block grid. Notes route by range:
+    // GM drum notes -> the kit, note 84 (C5) and up -> sample slices.
     {
         int cursor = 0;
         for (const auto meta : midiMessages)
         {
             const int pos = juce::jlimit(0, numSamples, meta.samplePosition);
-            if (pos > cursor) { drumKit.render(drumBus, cursor, pos - cursor); cursor = pos; }
+            if (pos > cursor)
+            {
+                drumKit.render(drumBus, cursor, pos - cursor);
+                sampleLayer.render(sampleBus, cursor, pos - cursor);
+                cursor = pos;
+            }
 
             const auto msg = meta.getMessage();
             if (msg.isNoteOn())
+            {
                 drumKit.noteOn(msg.getNoteNumber(), msg.getFloatVelocity());
+                sampleLayer.noteOn(msg.getNoteNumber(), msg.getFloatVelocity());
+            }
         }
-        if (cursor < numSamples) drumKit.render(drumBus, cursor, numSamples - cursor);
+        if (cursor < numSamples)
+        {
+            drumKit.render(drumBus, cursor, numSamples - cursor);
+            sampleLayer.render(sampleBus, cursor, numSamples - cursor);
+        }
     }
 
-    // Layer buses -> main. (sampleBus stays silent until the slicer lands.)
+    // Layer buses -> main.
     for (int c = 0; c < numChannels && c < 2; ++c)
     {
         buffer.addFrom(c, 0, sampleBus, c, 0, numSamples);

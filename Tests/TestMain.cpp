@@ -21,6 +21,7 @@
 #include "../Source/dsp/DrumKit.h"
 #include "../Source/dsp/ColourChain.h"
 #include "../Source/dsp/SpaceProcessor.h"
+#include "../Source/dsp/SampleLayer.h"
 
 #include <iostream>
 #include <cmath>
@@ -890,51 +891,103 @@ int main()
             check(irReady, "space: reverb IR loads (real IR, not the placeholder)");
 
             // Flush well past the IR length + convolution latency before judging.
-            double tail = 0.0, peakAbs = 0.0;
-            int firstNonZeroBlk = -1;
+            double tail = 0.0;
             for (int blk = 0; blk < 256; ++blk)
             {
                 AudioBuffer<float> b(2, 512); b.clear();
                 if (blk == 0) { b.setSample(0, 0, 1.0f); b.setSample(1, 0, 1.0f); }
                 sp3.process(b, warm);
-                if (blk > 0)
-                    for (int i = 0; i < 512; ++i)
-                    {
-                        const float v = b.getSample(0, i);
-                        tail += (double) v * v;
-                        peakAbs = std::max(peakAbs, (double) std::abs(v));
-                        if (firstNonZeroBlk < 0 && std::abs(v) > 1.0e-9f) firstNonZeroBlk = blk;
-                    }
+                if (blk > 0) for (int i = 0; i < 512; ++i) { const float v = b.getSample(0, i); tail += (double) v * v; }
             }
-            // Diagnostics: two wrong guesses is enough — print what's actually happening.
-            std::cout << "  [diag] space reverb: IRsize=" << sp3.reverbIRSize()
-                      << " tailEnergy=" << tail << " peak=" << peakAbs
-                      << " firstNonZeroBlk=" << firstNonZeroBlk << std::endl;
-
-            // Same probe straight through a bare Reverb, for comparison.
-            {
-                Nebula2::Reverb bare;
-                bare.prepare(spec);
-                bool ready = false;
-                for (int t = 0; t < 400 && ! ready; ++t)
-                {
-                    AudioBuffer<float> w(2, 512); w.clear();
-                    bare.process(w, 1.0f);
-                    if (bare.getCurrentIRSize() > 1) ready = true; else juce::Thread::sleep(5);
-                }
-                double bareTail = 0.0;
-                for (int blk = 0; blk < 256; ++blk)
-                {
-                    AudioBuffer<float> b(2, 512); b.clear();
-                    if (blk == 0) { b.setSample(0, 0, 1.0f); b.setSample(1, 0, 1.0f); }
-                    bare.process(b, 1.0f);
-                    if (blk > 0) for (int i = 0; i < 512; ++i) { const float v = b.getSample(0, i); bareTail += (double) v * v; }
-                }
-                std::cout << "  [diag] bare reverb: IRsize=" << bare.getCurrentIRSize()
-                          << " tailEnergy=" << bareTail << std::endl;
-            }
-
             check(tail > 1.0e-6, "space: reverb send produces a tail");
+        }
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Phase 4 — sample layer (load, slice, play slices from MIDI)
+    // ---------------------------------------------------------------------------------
+    {
+        using namespace Nebula2;
+
+        SampleLayer layer;
+        layer.prepare(48000.0, 512);
+
+        // Nothing loaded: silent, and notes do nothing.
+        {
+            check(! layer.hasSample(), "sample: starts with no sample");
+            AudioBuffer<float> bus(2, 512); bus.clear();
+            layer.noteOn(SampleLayer::baseNote, 1.0f);
+            layer.render(bus, 0, 512);
+            check(bus.getMagnitude(0, 512) == 0.0f, "sample: silent with no sample loaded");
+        }
+
+        // Load a synthetic 4-bar-at-140 loop: each slice is a distinct DC level so we can
+        // prove the right slice plays. 6.857 s at 48k, sliced into 16.
+        const int len = (int) (6.857 * 48000.0);
+        {
+            AudioBuffer<float> audio(2, len);
+            for (int i = 0; i < len; ++i)
+            {
+                const int slice = juce::jlimit(0, 15, (int) ((double) i / len * 16.0));
+                const float v = 0.05f * (float) (slice + 1);      // slice N -> level (N+1)*0.05
+                audio.setSample(0, i, v);
+                audio.setSample(1, i, v);
+            }
+            layer.loadBuffer(std::move(audio), 48000.0, "VEC1 Loops BB140 077.wav", 16);
+        }
+
+        check(layer.hasSample(), "sample: loads");
+        check(layer.getNumSlices() == 16, "sample: slices into 16");
+        check(std::abs(layer.getDetectedBpm() - 140.0) < 0.5,
+              "sample: tempo detected as 140 from the loop length (not 077 in the name)");
+
+        // Slice 0 plays the first slice's level; slice 8 plays the ninth's.
+        const auto playSlice = [&](int sliceIndex)
+        {
+            layer.reset();
+            layer.noteOn(SampleLayer::baseNote + sliceIndex, 1.0f);
+            AudioBuffer<float> bus(2, 512); bus.clear();
+            layer.render(bus, 0, 512);
+            return bus.getSample(0, 100);
+        };
+        check(std::abs(playSlice(0) - 0.05f) < 0.01f, "sample: note 84 plays slice 0");
+        check(std::abs(playSlice(8) - 0.45f) < 0.02f, "sample: note 92 plays slice 8");
+
+        // Out-of-range notes (incl. the drum range) don't trigger the sample layer.
+        {
+            layer.reset();
+            layer.noteOn(36, 1.0f);                      // a kick note
+            check(layer.activeVoiceCount() == 0, "sample: drum notes don't trigger slices");
+            layer.noteOn(SampleLayer::baseNote + 99, 1.0f);
+            check(layer.activeVoiceCount() == 0, "sample: notes past the last slice do nothing");
+        }
+
+        // A slice stops at its own boundary rather than running on into the next.
+        {
+            layer.reset();
+            layer.noteOn(SampleLayer::baseNote, 1.0f);
+            const int sliceLen = len / 16;
+            int rendered = 0;
+            bool finite = true;
+            while (rendered < sliceLen + 4096 && layer.activeVoiceCount() > 0)
+            {
+                AudioBuffer<float> bus(2, 512); bus.clear();
+                layer.render(bus, 0, 512);
+                for (int i = 0; i < 512; ++i) if (! std::isfinite(bus.getSample(0, i))) finite = false;
+                rendered += 512;
+            }
+            check(finite, "sample: output finite");
+            check(layer.activeVoiceCount() == 0, "sample: slice ends at its boundary and frees its voice");
+            check(rendered <= sliceLen + 4096, "sample: slice doesn't run past its length");
+        }
+
+        // Velocity scales level.
+        {
+            layer.reset(); layer.noteOn(SampleLayer::baseNote + 8, 0.25f);
+            AudioBuffer<float> soft(2, 512); soft.clear(); layer.render(soft, 0, 512);
+            layer.reset(); layer.noteOn(SampleLayer::baseNote + 8, 1.0f);
+            AudioBuffer<float> loud(2, 512); loud.clear(); layer.render(loud, 0, 512);
+            check(loud.getMagnitude(0, 512) > soft.getMagnitude(0, 512), "sample: velocity scales level");
         }
     }
 

@@ -46,8 +46,72 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     limiterAttachment = std::make_unique<APVTS::ButtonAttachment>(processorRef.getValueTreeState(), Nebula2::ParamID::limiter, limiterButton);
     spaceOnAttachment = std::make_unique<APVTS::ButtonAttachment>(processorRef.getValueTreeState(), Nebula2::ParamID::spaceOn, spaceOnButton);
 
-    setSize(600, 400);
+    // --- sample layer ---
+    loadButton.onClick = [this]
+    {
+        chooser = std::make_unique<juce::FileChooser>("Load a break or loop",
+                                                      juce::File{}, "*.wav;*.aif;*.aiff;*.flac;*.mp3");
+        chooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                             [this](const juce::FileChooser& fc)
+                             {
+                                 const auto f = fc.getResult();
+                                 if (f.existsAsFile()) loadSampleFile(f);
+                             });
+    };
+    addAndMakeVisible(loadButton);
+
+    sampleInfo.setColour(juce::Label::textColourId, kSub);
+    sampleInfo.setJustificationType(juce::Justification::centredLeft);
+    addAndMakeVisible(sampleInfo);
+    refreshSampleInfo();
+
+    setSize(600, 470);
 }
+
+void Nebula2AudioProcessorEditor::loadSampleFile(const juce::File& f)
+{
+    // Message thread: decoding + slicing allocate, so they must never touch the audio thread.
+    const bool ok = processorRef.getSampleLayer().loadFile(f, 16);
+    if (! ok)
+        sampleInfo.setText("Couldn't read that file", juce::dontSendNotification);
+    else
+        refreshSampleInfo();
+}
+
+void Nebula2AudioProcessorEditor::refreshSampleInfo()
+{
+    auto& layer = processorRef.getSampleLayer();
+    if (! layer.hasSample())
+    {
+        sampleInfo.setText("No sample - drop a file here, or Load", juce::dontSendNotification);
+        return;
+    }
+
+    const auto bpm = layer.getDetectedBpm();
+    juce::String t = layer.getSampleName() + "  -  " + juce::String(layer.getNumSlices()) + " slices";
+    if (bpm > 0.0) t += "  -  " + juce::String(bpm, 1) + " BPM detected";
+    t += "   (play from C5)";
+    sampleInfo.setText(t, juce::dontSendNotification);
+}
+
+bool Nebula2AudioProcessorEditor::isInterestedInFileDrag(const juce::StringArray& files)
+{
+    for (const auto& f : files)
+        if (f.endsWithIgnoreCase(".wav") || f.endsWithIgnoreCase(".aif") || f.endsWithIgnoreCase(".aiff")
+            || f.endsWithIgnoreCase(".flac") || f.endsWithIgnoreCase(".mp3"))
+            return true;
+    return false;
+}
+
+void Nebula2AudioProcessorEditor::filesDropped(const juce::StringArray& files, int, int)
+{
+    dragHighlight = false;
+    if (! files.isEmpty()) loadSampleFile(juce::File(files[0]));
+    repaint();
+}
+
+void Nebula2AudioProcessorEditor::fileDragEnter(const juce::StringArray&, int, int) { dragHighlight = true;  repaint(); }
+void Nebula2AudioProcessorEditor::fileDragExit(const juce::StringArray&)            { dragHighlight = false; repaint(); }
 
 void Nebula2AudioProcessorEditor::addKnob(Knob& k, const juce::String& paramID,
                                           const juce::String& name, const juce::String& suffix)
@@ -98,6 +162,20 @@ void Nebula2AudioProcessorEditor::paint(juce::Graphics& g)
                      header, juce::Justification::centredLeft, 1);
 
     auto body = getLocalBounds().reduced(12).withTrimmedTop(38);
+
+    auto sampleArea = body.removeFromTop(56);
+    g.setColour(dragHighlight ? kAccent.withAlpha(0.25f) : kPanel);
+    g.fillRoundedRectangle(sampleArea.toFloat(), 8.0f);
+    if (dragHighlight)
+    {
+        g.setColour(kAccent);
+        g.drawRoundedRectangle(sampleArea.toFloat().reduced(1.0f), 8.0f, 1.5f);
+    }
+    g.setColour(kAccent);
+    g.setFont(juce::FontOptions(10.0f));
+    g.drawFittedText("SAMPLE", sampleArea.reduced(12, 6).removeFromTop(12), juce::Justification::topLeft, 1);
+
+    body.removeFromTop(8);
     auto colour = body.removeFromTop(200);
     g.setColour(kPanel);
     g.fillRoundedRectangle(colour.toFloat(), 8.0f);
@@ -113,6 +191,15 @@ void Nebula2AudioProcessorEditor::paint(juce::Graphics& g)
 void Nebula2AudioProcessorEditor::resized()
 {
     auto body = getLocalBounds().reduced(12).withTrimmedTop(38);
+
+    // --- Sample panel ---
+    auto sampleArea = body.removeFromTop(56).reduced(10);
+    sampleArea.removeFromTop(12);
+    auto sRow2 = sampleArea.removeFromTop(26);
+    loadButton.setBounds(sRow2.removeFromLeft(120));
+    sRow2.removeFromLeft(12);
+    sampleInfo.setBounds(sRow2);
+    body.removeFromTop(8);
 
     // --- Colour panel ---
     auto colour = body.removeFromTop(200).reduced(10);
