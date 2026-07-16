@@ -8,6 +8,7 @@ on:
 jobs:
   build:
     strategy:
+      fail-fast: false     # one platform failing shouldn't hide the other's result
       matrix:
         os: [windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
@@ -22,6 +23,33 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
+
+      # pluginval is Tracktion's validator: it abuses the plugin the way real hosts do —
+      # state round-trips, parameter fuzzing, buffer-size and sample-rate changes, editor
+      # open/close under load, threading. Strictness 10 is the maximum. It catches the class
+      # of bug that only ever shows up in someone else's DAW.
+      - name: pluginval (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          curl -L -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip
+          Expand-Archive pluginval.zip -DestinationPath pluginval_bin
+          $exe = Get-ChildItem -Recurse -Filter pluginval.exe -Path pluginval_bin | Select-Object -First 1
+          $vst3 = Get-ChildItem -Recurse -Directory -Filter "Nebula2.vst3" -Path build | Select-Object -First 1
+          if (-not $vst3) { throw "no VST3 found to validate" }
+          Write-Host "validating $($vst3.FullName)"
+          & $exe.FullName --strictness-level 10 --validate-in-process --timeout-ms 600000 --validate "$($vst3.FullName)"
+          if ($LASTEXITCODE -ne 0) { throw "pluginval failed with $LASTEXITCODE" }
+
+      - name: pluginval (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          curl -L -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip
+          unzip -q pluginval.zip
+          VST3=$(find build -name "Nebula2.vst3" -maxdepth 6 | head -1)
+          if [ -z "$VST3" ]; then echo "no VST3 found to validate"; exit 1; fi
+          echo "validating $VST3"
+          ./pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate-in-process --timeout-ms 600000 --validate "$VST3"
 
       - name: Upload VST3
         uses: actions/upload-artifact@v4
