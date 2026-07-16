@@ -53,6 +53,8 @@ target_sources(Nebula2 PRIVATE
     Source/dsp/Delay.h
     Source/dsp/DrumSynth.cpp
     Source/dsp/DrumSynth.h
+    Source/dsp/TempoDetect.cpp
+    Source/dsp/TempoDetect.h
 )
 
 target_compile_definitions(Nebula2 PUBLIC
@@ -96,6 +98,8 @@ target_sources(Nebula2Tests PRIVATE
     Source/dsp/Delay.h
     Source/dsp/DrumSynth.cpp
     Source/dsp/DrumSynth.h
+    Source/dsp/TempoDetect.cpp
+    Source/dsp/TempoDetect.h
 )
 
 target_compile_definitions(Nebula2Tests PRIVATE

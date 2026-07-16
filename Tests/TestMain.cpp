@@ -16,6 +16,7 @@
 #include "../Source/dsp/Reverb.h"
 #include "../Source/dsp/Delay.h"
 #include "../Source/dsp/DrumSynth.h"
+#include "../Source/dsp/TempoDetect.h"
 
 #include <iostream>
 #include <cmath>
@@ -537,6 +538,43 @@ int main()
 
         // A noise-based voice is deterministic for its seed.
         check(D::vClap(0.8f, 5, sr) == D::vClap(0.8f, 5, sr), "drum clap: deterministic for a seed");
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Phase 3 — tempo detection ("metadata is a hint; the data is the evidence")
+    // ---------------------------------------------------------------------------------
+    {
+        using namespace Nebula2;
+
+        // The real file that broke the prototype: a 6.857 s loop named "...BB140 077.wav".
+        // A naive parser grabs 077 and plays it at double speed. 140 explains the length
+        // exactly (4 bars); 77 needs 2.2 bars, so it must be thrown away.
+        const double dur = 6.857;
+
+        const auto cands = nameBpmCandidates("VEC1 Loops BB140 077.wav");
+        bool has140 = false, has77 = false;
+        for (const auto& c : cands) { if (std::abs(c.value - 140.0f) < 0.01f) has140 = true; if (std::abs(c.value - 77.0f) < 0.01f) has77 = true; }
+        check(has140 && has77, "tempo: gathers BOTH 140 and 077 from the name (digits glued to letters too)");
+
+        check(fitsDuration(140.0f, dur) > 0.9f, "tempo: 140 explains a 6.857s loop (exactly 4 bars)");
+        check(fitsDuration(77.0f, dur) == 0.0f, "tempo: 077 cannot explain it (2.2 bars) -> rejected");
+
+        const auto det = detectTempo(dur, "VEC1 Loops BB140 077.wav");
+        check(det.valid, "tempo: detection returns a result");
+        check(std::abs(det.bpm - 140.0f) < 0.15f, "tempo: picks 140, not 77 (the evidence wins)");
+        check(det.bars == 4, "tempo: reports 4 bars");
+
+        // An explicit "128bpm" is trusted when it also fits the length.
+        const double dur128 = (4.0 * 4.0 * 60.0) / 128.0;   // exactly 4 bars at 128
+        const auto det128 = detectTempo(dur128, "break_128bpm.wav");
+        check(std::abs(det128.bpm - 128.0f) < 0.15f, "tempo: explicit '128bpm' that fits is honoured");
+
+        // A name with no usable number still resolves from the loop length alone.
+        const auto detNoName = detectTempo(dur, "untitled.wav");
+        check(detNoName.valid, "tempo: falls back to loop-length evidence with no name hint");
+
+        // Junk/short input is rejected rather than guessed.
+        check(! detectTempo(0.05, "140.wav").valid, "tempo: too-short buffer returns no result");
     }
 
     std::cout << (failures == 0 ? "ALL PASS" : ("FAILURES: " + String(failures)).toStdString())
