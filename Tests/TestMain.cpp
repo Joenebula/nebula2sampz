@@ -1066,6 +1066,50 @@ int main()
             check(layer.activeVoiceCount() == 0, "sample: notes past the last slice do nothing");
         }
 
+        // B4 plays the WHOLE break, not a slice — it must run far longer than one chop and
+        // sweep the entire file.
+        {
+            layer.setHostBpm(140.0);          // == detected, so stretch is 1
+            layer.setStretchEnabled(true);
+
+            const auto lengthOf = [&](int note)
+            {
+                layer.reset();
+                layer.noteOn(note, 1.0f);
+                int rendered = 0;
+                while (layer.activeVoiceCount() > 0 && rendered < 48000 * 12)
+                {
+                    AudioBuffer<float> b(2, 512); b.clear();
+                    layer.render(b, 0, 512);
+                    rendered += 512;
+                }
+                return rendered;
+            };
+
+            const int oneSlice = lengthOf(SampleLayer::baseNote);
+            const int wholeLen = lengthOf(SampleLayer::wholeSampleNote);
+            check(wholeLen > oneSlice * 10, "sample: B4 plays the whole break, not one slice");
+            check(std::abs((double) wholeLen - (double) len) < 48000 * 0.2,
+                  "sample: whole-break length matches the file (~6.86s)");
+
+            // The playhead sweeps the whole file, not just one chop.
+            layer.reset();
+            layer.noteOn(SampleLayer::wholeSampleNote, 1.0f);
+            AudioBuffer<float> b(2, 512); b.clear();
+            layer.render(b, 0, 512);
+            const float early = layer.getPlayheadNormalised();
+            for (int i = 0; i < 300; ++i) { AudioBuffer<float> t(2, 512); t.clear(); layer.render(t, 0, 512); }
+            const float later = layer.getPlayheadNormalised();
+            check(early >= 0.0f && early < 0.05f, "sample: whole-break playhead starts at the top");
+            check(later > early, "sample: whole-break playhead sweeps the file");
+
+            // And it follows the host tempo like everything else.
+            layer.setHostBpm(174.0);
+            const int fastWhole = lengthOf(SampleLayer::wholeSampleNote);
+            layer.setHostBpm(140.0);
+            check(fastWhole < wholeLen, "sample: whole break stretches to the host tempo too");
+        }
+
         // A slice stops at its own boundary rather than running on into the next.
         {
             layer.reset();

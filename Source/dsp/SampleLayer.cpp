@@ -171,7 +171,8 @@ namespace Nebula2
 
         const int numSlices = (int) s->sliceStarts.size() - 1;
         const int slice = note - baseNote;
-        if (slice < 0 || slice >= numSlices) return;
+        const bool whole = (note == wholeSampleNote);
+        if (! whole && (slice < 0 || slice >= numSlices)) return;
 
         // Free voice, else steal the most-advanced one.
         int slot = -1;
@@ -185,9 +186,10 @@ namespace Nebula2
 
         auto& v = voices[(size_t) slot];
         v.note       = note;
-        v.sliceIndex = slice;
-        v.sliceStart = (double) s->sliceStarts[(size_t) slice];
-        v.sliceEnd   = (double) s->sliceStarts[(size_t) slice + 1];
+        v.sliceIndex = whole ? -1 : slice;
+        v.sliceStart = whole ? 0.0 : (double) s->sliceStarts[(size_t) slice];
+        v.sliceEnd   = whole ? (double) s->audio.getNumSamples()
+                             : (double) s->sliceStarts[(size_t) slice + 1];
         v.gain       = juce::jlimit(0.0f, 1.0f, velocity);
         v.outSample  = 0.0;
         v.release    = -1.0;

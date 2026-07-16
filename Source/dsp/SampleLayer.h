@@ -14,12 +14,15 @@ namespace Nebula2
     // thread only ever reads that pointer. Superseded data is retained (never freed while
     // the audio thread might still be reading it).
     //
-    // Slices are mapped from note 84 (C5) upward, clear of the GM drum notes (36-46, 75),
-    // so the two layers can't fight over a key.
+    // Note map: B4 (83) plays the WHOLE break; C5 (84) upward plays slice 1, 2, 3...
+    // All clear of the GM drum notes (36-46, 75), so the two layers can't fight over a key.
+    // Both are gated by note length and both follow the host tempo, so hitting B4 in a
+    // 174 BPM session plays a 140 BPM break in time.
     class SampleLayer
     {
     public:
-        static constexpr int baseNote = 84;
+        static constexpr int baseNote = 84;                     // C5 = slice 1, upward
+        static constexpr int wholeSampleNote = baseNote - 1;    // B4 = the WHOLE break
         static constexpr int maxVoices = 8;
 
         SampleLayer();

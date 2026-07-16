@@ -94,8 +94,8 @@ void Nebula2AudioProcessorEditor::refreshSampleInfo()
 
     const auto bpm = layer.getDetectedBpm();
     juce::String t = layer.getSampleName() + "  -  " + juce::String(layer.getNumSlices()) + " slices";
-    if (bpm > 0.0) t += "  -  " + juce::String(bpm, 1) + " BPM detected";
-    t += "   (play from C5)";
+    if (bpm > 0.0) t += "  -  " + juce::String(bpm, 1) + " BPM";
+    t += "   (B4 = whole break, C5+ = slices)";
     sampleInfo.setText(t, juce::dontSendNotification);
 }
 
@@ -163,7 +163,7 @@ void Nebula2AudioProcessorEditor::paint(juce::Graphics& g)
     g.drawFittedText("Nebula2", header.removeFromLeft(100), juce::Justification::centredLeft, 1);
     g.setColour(kSub);
     g.setFont(juce::FontOptions(11.0f));
-    g.drawFittedText("36 kick  38 snare  39 clap  42/46 hats  45 tom  37 rim  75 perc",
+    g.drawFittedText("drums 36-46, 75    |    B4 whole break    |    C5+ slices",
                      header, juce::Justification::centredLeft, 1);
 
     auto body = getLocalBounds().reduced(12).withTrimmedTop(38);
