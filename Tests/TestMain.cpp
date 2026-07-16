@@ -886,14 +886,50 @@ int main()
             check(irReady, "space: reverb IR loads");
 
             // Flush well past the IR length + convolution latency before judging.
-            double tail = 0.0;
+            double tail = 0.0, peakAbs = 0.0;
+            int firstNonZeroBlk = -1;
             for (int blk = 0; blk < 256; ++blk)
             {
                 AudioBuffer<float> b(2, 512); b.clear();
                 if (blk == 0) { b.setSample(0, 0, 1.0f); b.setSample(1, 0, 1.0f); }
                 sp3.process(b, warm);
-                if (blk > 0) for (int i = 0; i < 512; ++i) { const float v = b.getSample(0, i); tail += (double) v * v; }
+                if (blk > 0)
+                    for (int i = 0; i < 512; ++i)
+                    {
+                        const float v = b.getSample(0, i);
+                        tail += (double) v * v;
+                        peakAbs = std::max(peakAbs, (double) std::abs(v));
+                        if (firstNonZeroBlk < 0 && std::abs(v) > 1.0e-9f) firstNonZeroBlk = blk;
+                    }
             }
+            // Diagnostics: two wrong guesses is enough — print what's actually happening.
+            std::cout << "  [diag] space reverb: IRsize=" << sp3.reverbIRSize()
+                      << " tailEnergy=" << tail << " peak=" << peakAbs
+                      << " firstNonZeroBlk=" << firstNonZeroBlk << std::endl;
+
+            // Same probe straight through a bare Reverb, for comparison.
+            {
+                Nebula2::Reverb bare;
+                bare.prepare(spec);
+                bool ready = false;
+                for (int t = 0; t < 400 && ! ready; ++t)
+                {
+                    AudioBuffer<float> w(2, 512); w.clear();
+                    bare.process(w, 1.0f);
+                    if (bare.getCurrentIRSize() > 0) ready = true; else juce::Thread::sleep(5);
+                }
+                double bareTail = 0.0;
+                for (int blk = 0; blk < 256; ++blk)
+                {
+                    AudioBuffer<float> b(2, 512); b.clear();
+                    if (blk == 0) { b.setSample(0, 0, 1.0f); b.setSample(1, 0, 1.0f); }
+                    bare.process(b, 1.0f);
+                    if (blk > 0) for (int i = 0; i < 512; ++i) { const float v = b.getSample(0, i); bareTail += (double) v * v; }
+                }
+                std::cout << "  [diag] bare reverb: IRsize=" << bare.getCurrentIRSize()
+                          << " tailEnergy=" << bareTail << std::endl;
+            }
+
             check(tail > 1.0e-6, "space: reverb send produces a tail");
         }
     }
