@@ -461,13 +461,24 @@ int main()
         }
         check(irReady, "reverb engine: async IR loaded within timeout");
 
-        AudioBuffer<float> imp(2, 8192); imp.clear();
-        imp.setSample(0, 0, 1.0f); imp.setSample(1, 0, 1.0f);
-        rev.process(imp, 1.0f);
+        // Feed an impulse, then flush enough blocks to capture the whole wet response
+        // regardless of the convolution's processing latency. Sum total wet energy.
         double tailEnergy = 0.0;
-        for (int i = 1500; i < 6000; ++i) { const float v = imp.getSample(0, i); tailEnergy += (double) v * v; }
-        check(std::isfinite(imp.getMagnitude(0, 8192)), "reverb engine: output finite");
-        check(tailEnergy > 1.0e-6, "reverb engine: impulse produces a wet reverb tail");
+        bool finiteAll = true;
+        for (int blk = 0; blk < 16; ++blk)
+        {
+            AudioBuffer<float> b(2, 8192); b.clear();
+            if (blk == 0) { b.setSample(0, 0, 1.0f); b.setSample(1, 0, 1.0f); }   // impulse (wet=1, so no dry spike)
+            rev.process(b, 1.0f);
+            for (int i = 0; i < 8192; ++i)
+            {
+                const float v = b.getSample(0, i);
+                if (! std::isfinite(v)) finiteAll = false;
+                tailEnergy += (double) v * v;
+            }
+        }
+        check(finiteAll, "reverb engine: output finite");
+        check(tailEnergy > 1.0e-4, "reverb engine: impulse produces a wet reverb tail");
     }
 
     std::cout << (failures == 0 ? "ALL PASS" : ("FAILURES: " + String(failures)).toStdString())
