@@ -203,4 +203,113 @@ namespace Nebula2::Drums
 
         return scale(sat(out, drive), 0.85f);
     }
+
+    std::vector<float> vHat(float vel, uint32_t seed, double sr, bool open)
+    {
+        const double dur = open ? 0.28 : 0.05;
+        const float hi = 8600;
+        const float base[5] = { 3200, 4400, 5900, 7600, 9400 };
+        const float decay = (open ? 5.0f : 46.0f) * (1.25f - 0.4f * vel);
+
+        Mulberry32 rnd(seed);
+        const int n = (int) (dur * sr);
+        std::vector<float> metal((size_t) n, 0.0f);
+        for (int b = 0; b < 5; ++b)
+        {
+            const float f = base[b] * (1.0f + (rnd.next() - 0.5f) * 0.024f);
+            for (int i = 0; i < n; ++i) metal[(size_t) i] += (float) std::sin(2.0 * PI * f * i / sr);
+        }
+        metal = hp(scale(metal, 1.0f / 5.0f), 3600.0f, sr);
+
+        const auto hiss = bp(noise(n, rnd), hi * (0.55f + 0.22f * vel), 0.9f, sr);
+        std::vector<float> out((size_t) n, 0.0f);
+        for (int k = 0; k < n; ++k)
+        {
+            const float e = (float) std::exp(-((double) k / sr) * decay);
+            out[(size_t) k] = metal[(size_t) k] * 0.7f * e
+                            + hiss[(size_t) k] * (float) std::exp(-((double) k / sr) * decay * 0.8) * 0.4f * vel;
+        }
+        return scale(lp(out, 11500.0f, sr), open ? 0.26f : 0.2f);
+    }
+
+    std::vector<float> vClap(float vel, uint32_t seed, double sr)
+    {
+        const double dur = 0.28;
+        Mulberry32 rnd(seed);
+        const int n = (int) (dur * sr);
+        std::vector<float> out((size_t) n, 0.0f);
+
+        const double offs[4] = { 0.0, 0.011, 0.021, 0.03 };
+        const float g[4] = { 1.0f, 0.8f, 0.65f, 0.5f };
+        for (int j = 0; j < 4; ++j)
+        {
+            const int off = (int) (offs[j] * sr);
+            const auto seg = bp(noise(n, rnd), 1300.0f, 0.9f, sr);
+            const auto env = adsr(n, 0.0004, 8.0f, sr);
+            for (int i = off; i < n; ++i)
+                out[(size_t) i] += seg[(size_t) (i - off)] * env[(size_t) (i - off)] * g[j] * (0.6f + 0.4f * vel);
+        }
+        const auto tail = bp(noise(n, rnd), 1100.0f, 0.8f, sr);
+        const auto te = expEnv(n, 22.0f, sr);
+        for (int k = 0; k < n; ++k) out[(size_t) k] += tail[(size_t) k] * te[(size_t) k] * 0.3f;
+
+        return scale(sat(out, 1.4f), 0.8f);
+    }
+
+    std::vector<float> vTom(float vel, uint32_t seed, double sr)
+    {
+        (void) seed;
+        const float f_top = 200, f_bot = 110, bend = 16;
+        const double dur = 0.42;
+        const int n = (int) (dur * sr);
+        std::vector<float> out((size_t) n, 0.0f);
+        double ph = 0.0;
+        const auto env = adsr(n, 0.001, 2.4f, sr);
+        for (int i = 0; i < n; ++i)
+        {
+            const double t = (double) i / sr;
+            const double pit = f_bot + (f_top - f_bot) * std::exp(-t * bend);
+            ph += 2.0 * PI * pit / sr;
+            out[(size_t) i] = (float) std::sin(ph) * env[(size_t) i];
+        }
+        const auto h = mode(f_bot * 2.6f, dur, 22.0f, 0.25f, sr);
+        const auto he = adsr(n, 0.001, 3.0f, sr);
+        for (int k = 0; k < n; ++k) out[(size_t) k] += (k < (int) h.size() ? h[(size_t) k] : 0.0f) * he[(size_t) k];
+
+        return scale(sat(out, 1.5f), 0.8f);
+    }
+
+    std::vector<float> vRim(float vel, uint32_t seed, double sr)
+    {
+        (void) seed;
+        const double dur = 0.09;
+        const int n = (int) (dur * sr);
+        std::vector<float> out((size_t) n, 0.0f);
+        const auto env = adsr(n, 0.0004, 4.0f, sr);
+        addModal(out, { { 1720.0f, 50.0f, 1.0f }, { 2550.0f, 60.0f, 0.6f }, { 3900.0f, 80.0f, 0.3f } }, dur, sr);
+        for (int i = 0; i < n; ++i) out[(size_t) i] *= env[(size_t) i];
+        return scale(sat(out, 2.2f), 0.6f * (0.6f + 0.4f * vel));
+    }
+
+    std::vector<float> vPerc(float vel, uint32_t seed, double sr)
+    {
+        const float f = 320, slap = 0.2f;
+        const double dur = 0.26;
+        Mulberry32 rnd(seed);
+        const int n = (int) (dur * sr);
+        std::vector<float> out((size_t) n, 0.0f);
+        const auto env = adsr(n, 0.0008, 3.2f, sr);
+        for (int i = 0; i < n; ++i) out[(size_t) i] = (float) std::sin(2.0 * PI * f * i / sr) * env[(size_t) i];
+
+        const auto h = mode(f * 2.8f, dur, 26.0f, 0.3f, sr);
+        const auto he = adsr(n, 0.001, 3.0f, sr);
+        for (int k = 0; k < n; ++k) out[(size_t) k] += (k < (int) h.size() ? h[(size_t) k] : 0.0f) * he[(size_t) k];
+
+        const auto sl = bp(noise(n, rnd), 1200.0f, 0.8f, sr);
+        const auto se = adsr(n, 0.0004, 4.0f, sr);
+        const int lim = std::min(n, (int) (0.02 * sr));
+        for (int m = 0; m < lim; ++m) out[(size_t) m] += sl[(size_t) m] * se[(size_t) m] * (0.3f + slap + 0.3f * vel);
+
+        return scale(sat(out, 1.6f), 0.72f);
+    }
 }

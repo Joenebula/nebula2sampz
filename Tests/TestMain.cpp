@@ -515,6 +515,28 @@ int main()
         bool differ = false;
         for (size_t i = 0; i < kA.size(); ++i) if (std::abs(kA[i] - kB[i]) > 1.0e-6f) { differ = true; break; }
         check(differ, "drum kick: different seeds -> different voice");
+
+        // Remaining voices: finite, audible, bounded, right length.
+        struct VoiceCase { const char* name; std::vector<float> buf; };
+        VoiceCase cases[] = {
+            { "hat-closed", D::vHat(0.8f, 3, sr, false) },
+            { "hat-open",   D::vHat(0.8f, 3, sr, true) },
+            { "clap",       D::vClap(0.8f, 5, sr) },
+            { "tom",        D::vTom(0.8f, 0, sr) },
+            { "rim",        D::vRim(0.8f, 0, sr) },
+            { "perc",       D::vPerc(0.8f, 9, sr) },
+        };
+        for (const auto& vc : cases)
+        {
+            bool fin = true; for (float x : vc.buf) if (! std::isfinite(x)) { fin = false; break; }
+            check(fin, juce::String("drum ") + vc.name + ": finite");
+            check(vc.buf.size() > 100, juce::String("drum ") + vc.name + ": non-empty");
+            check(D::peak(vc.buf) > 0.02f, juce::String("drum ") + vc.name + ": produces sound");
+            check(D::peak(vc.buf) < 2.0f, juce::String("drum ") + vc.name + ": bounded");
+        }
+
+        // A noise-based voice is deterministic for its seed.
+        check(D::vClap(0.8f, 5, sr) == D::vClap(0.8f, 5, sr), "drum clap: deterministic for a seed");
     }
 
     std::cout << (failures == 0 ? "ALL PASS" : ("FAILURES: " + String(failures)).toStdString())
