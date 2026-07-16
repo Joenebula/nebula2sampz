@@ -180,7 +180,27 @@ Gate legend: **AUTO** = Claude Code runs it. **MANUAL** = print a `MANUAL CHECK`
   by the native audio callback — it is its own porting task, not covered by "port the
   DSP" in Phase 3.
 
-### Phase 3 — Port the DSP (reuse verified math)
+### Phase 3 — Port the DSP (reuse verified math)  ✅ DSP porting complete (2026-07-16)
+- Status: all DSP modules ported to `Source/dsp/` and CI-green on `main`, 92 behaviour
+  assertions in `Tests/TestMain.cpp`: ParametricEq (RBJ magnitude), Saturator (drive
+  curves + oversampling, crush ZOH+recon-LP, width), Colour (compressor GR, tone tilt),
+  Delay (echo timing, ping-pong cross-feed), Reverb (seeded IR + convolution engine),
+  DrumSynth (all 8 modal voices), TempoDetect (the BB140/077 regression), Slicer
+  (zero-snap, grid + transient slicing, tempo ratio).
+- **Deliberate deviations from the prototype** (both documented in code):
+  1. Reverse reverb now genuinely swells — the prototype grew-then-reversed, which
+     cancelled to a plain decay (its "reverse" never reversed).
+  2. Reverb IR RNG is **seeded** — the prototype used `Math.random()`, so its reverb was
+     not reproducible across renders/presets.
+  3. Drive is **oversampled 2x** (the browser WaveShaper aliased).
+- **NOT yet done in Phase 3:** the modules are standalone + tested but **not yet wired
+  into the audio graph**, and their params are not yet in the registry. That assembly is
+  gated on the routing decision below. Also deferred: the drive pre/post gain staging
+  (prototype applies `pre = 1 + d*5`, `post = master*(1 - d*0.45)` around the shaper);
+  the "pump" tempo-synced duck (belongs with the scheduler, not a static block); and the
+  granular OLA time-stretch playback (needs the voice/scheduler layer).
+
+### Phase 3 (original plan text)
 - Order: sample slicer/player (note: prototype uses a real granular/time-stretch
   engine — pitch/reverse/gain/pan/jitter/scatter/detune — not plain buffer playback,
   scope accordingly) → drum engine (modal voices) → EQ (parametric) →
