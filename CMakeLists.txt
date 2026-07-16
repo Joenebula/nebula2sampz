@@ -77,6 +77,13 @@ target_link_libraries(Nebula2
         juce::juce_recommended_warning_flags
 )
 
+# Compile sources as UTF-8 on MSVC. Without this, MSVC reads source in the system
+# codepage and any non-ASCII literal turns to mojibake in the plugin UI (this bit us:
+# an em-dash rendered as "a??" in the editor).
+if (MSVC)
+    add_compile_options(/utf-8)
+endif()
+
 # --- Phase 1 test target: parameter round-trip + automation, run via ctest ---
 enable_testing()
 
