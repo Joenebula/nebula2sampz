@@ -9,7 +9,8 @@
 // This is deliberately plain — the designed UI is Phase 5. It exists so the FX can be
 // judged BY EAR, which is the only test that matters for whether the port sounds right.
 class Nebula2AudioProcessorEditor final : public juce::AudioProcessorEditor,
-                                          public juce::FileDragAndDropTarget
+                                          public juce::FileDragAndDropTarget,
+                                          private juce::Timer
 {
 public:
     explicit Nebula2AudioProcessorEditor(Nebula2AudioProcessor&);
@@ -65,6 +66,13 @@ private:
 
     void loadSampleFile(const juce::File& f);
     void refreshSampleInfo();
+
+    // Law 4 (from the prototype's own hard-won list): a control that cannot act must SAY
+    // so. Count does nothing in Transient mode; Sens does nothing in Grid mode. Leaving
+    // them live-looking but inert is exactly the silent failure that wastes an hour.
+    void timerCallback() override;
+    void updateSliceControlStates();
+    int lastSliceModeSeen = -1;
 
     juce::ToggleButton fxOnButton { "FX On" };
     std::unique_ptr<APVTS::ButtonAttachment> fxOnAttachment;

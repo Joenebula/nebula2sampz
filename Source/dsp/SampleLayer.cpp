@@ -103,6 +103,7 @@ namespace Nebula2
         }
 
         loadBuffer(std::move(buf), reader->sampleRate, file.getFileNameWithoutExtension());
+        sourcePath = file.getFullPathName();   // so the project can restore it
         return true;
     }
 

@@ -1074,6 +1074,51 @@ int main()
             check(tl.getNumSlices() >= atHalf, "slice: raising sensitivity doesn't lose slices");
         }
 
+        // --- state is a contract: the sample must survive a save/load ---
+        {
+            SampleLayer sl;
+            sl.prepare(48000.0, 512);
+            check(sl.getSourcePath().isEmpty(), "state: no source path before anything is loaded");
+
+            // Write a real wav, load it, and check the path is recorded.
+            auto tmp = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                          .getChildFile("nebula2_state_test.wav");
+            tmp.deleteFile();
+            {
+                AudioBuffer<float> src(2, 48000);
+                for (int i = 0; i < 48000; ++i)
+                {
+                    const float v = 0.4f * std::sin(2.0f * juce::MathConstants<float>::pi * 220.0f * (float) i / 48000.0f);
+                    src.setSample(0, i, v); src.setSample(1, i, v);
+                }
+                juce::WavAudioFormat wav;
+                std::unique_ptr<juce::FileOutputStream> os(tmp.createOutputStream());
+                if (os != nullptr)
+                {
+                    std::unique_ptr<juce::AudioFormatWriter> w(
+                        wav.createWriterFor(os.release(), 48000.0, 2, 16, {}, 0));
+                    if (w != nullptr) w->writeFromAudioSampleBuffer(src, 0, src.getNumSamples());
+                }
+            }
+            check(tmp.existsAsFile(), "state: test wav written");
+
+            SampleLayer a;
+            a.prepare(48000.0, 512);
+            check(a.loadFile(tmp), "state: loads a real file");
+            check(a.getSourcePath() == tmp.getFullPathName(), "state: source path recorded on load");
+            const int slicesA = a.getNumSlices();
+
+            // Simulate reopening a saved project: a FRESH layer restoring from that path.
+            // Without this, a reopened project comes back with knobs and no break.
+            SampleLayer b;
+            b.prepare(48000.0, 512);
+            check(b.loadFile(juce::File(a.getSourcePath())), "state: restores from the saved path");
+            check(b.hasSample(), "state: reopened project has its sample back, not silence");
+            check(b.getNumSlices() == slicesA, "state: restored sample slices the same way");
+
+            tmp.deleteFile();
+        }
+
         // --- UI queries the waveform view depends on ---
         {
             std::vector<float> mins, maxs;

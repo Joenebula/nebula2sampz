@@ -68,6 +68,10 @@ namespace Nebula2
 
         bool hasSample() const noexcept { return current.load() != nullptr; }
         juce::String getSampleName() const;
+
+        // The file this was loaded from, so it can be restored with the project/preset.
+        // Empty if the sample came from a buffer rather than disk.
+        juce::String getSourcePath() const { return sourcePath; }
         int getNumSlices() const noexcept;
         double getDetectedBpm() const noexcept;
         int activeVoiceCount() const noexcept;
@@ -136,5 +140,6 @@ namespace Nebula2
         double hostBpm = 0.0;
         bool stretchEnabled = true;
         SliceSettings slicing;
+        juce::String sourcePath;
     };
 }

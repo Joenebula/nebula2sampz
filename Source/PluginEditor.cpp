@@ -75,8 +75,38 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
 
     addAndMakeVisible(waveform);
     refreshSampleInfo();
+    updateSliceControlStates();
+    startTimerHz(8);        // watch for slice-mode changes (incl. from host automation)
 
     setSize(640, 600);
+}
+
+void Nebula2AudioProcessorEditor::timerCallback()
+{
+    updateSliceControlStates();
+}
+
+void Nebula2AudioProcessorEditor::updateSliceControlStates()
+{
+    auto* p = processorRef.getValueTreeState().getRawParameterValue(Nebula2::ParamID::sliceMode);
+    const int mode = p != nullptr ? (int) p->load() : 0;
+    if (mode == lastSliceModeSeen) return;
+    lastSliceModeSeen = mode;
+
+    const bool transient = (mode == 1);
+
+    // In Transient mode the count comes from the detected onsets, so Count can't act.
+    // In Grid mode there's no detection, so Sens can't act. Grey out whichever is inert
+    // rather than letting it sit there looking operational.
+    sliceCountBox.setEnabled(! transient);
+    sliceCountLabel.setEnabled(! transient);
+    sliceCountLabel.setColour(juce::Label::textColourId, transient ? kSub.withAlpha(0.35f) : kSub);
+
+    sensitivity.slider.setEnabled(transient);
+    sensitivity.label.setEnabled(transient);
+    sensitivity.label.setColour(juce::Label::textColourId, transient ? kSub : kSub.withAlpha(0.35f));
+
+    repaint();
 }
 
 void Nebula2AudioProcessorEditor::sampleReSliced()

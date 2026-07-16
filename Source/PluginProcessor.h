@@ -96,6 +96,12 @@ private:
     std::atomic<int> wantedSliceMode { 0 };      // 0 = Grid
     std::atomic<int> wantedSliceCount { 16 };
     std::atomic<float> wantedSensitivity { 0.5f };
+
+    // Sample restore from saved state (decoding allocates; setStateInformation may not be
+    // on the message thread, so the load is deferred to handleAsyncUpdate).
+    juce::CriticalSection pendingPathLock;
+    juce::String pendingSamplePath;
+
     void handleAsyncUpdate() override;
 
     Nebula2::TransportState transport;

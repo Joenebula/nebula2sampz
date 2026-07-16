@@ -35,7 +35,24 @@ int Nebula2AudioProcessor::sliceCountFromChoice(int choiceIndex) noexcept
 
 void Nebula2AudioProcessor::handleAsyncUpdate()
 {
-    // Message thread: both of these allocate, which is exactly why they're here.
+    // Message thread: everything here allocates, which is exactly why it's here.
+
+    // Restore a sample saved with the project.
+    juce::String pathToLoad;
+    {
+        const juce::ScopedLock sl(pendingPathLock);
+        pathToLoad = pendingSamplePath;
+        pendingSamplePath.clear();
+    }
+    if (pathToLoad.isNotEmpty())
+    {
+        const juce::File f(pathToLoad);
+        const bool ok = f.existsAsFile() && sampleLayer.loadFile(f);
+        if (auto* ed = dynamic_cast<Nebula2AudioProcessorEditor*>(getActiveEditor()))
+            ed->sampleReSliced();      // refresh the readout/waveform either way
+        juce::ignoreUnused(ok);        // a missing file just leaves the layer empty
+    }
+
     const auto wanted = (Nebula2::ReverbChar) juce::jlimit(0, 4, wantedRevChar.load());
     if (wanted != space.getCharacter())
         space.setCharacter(wanted);
@@ -205,15 +222,40 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
 
 void Nebula2AudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
-    if (auto xml = apvts.copyState().createXml())
+    auto state = apvts.copyState();
+
+    // State is a contract: the parameters alone aren't the patch. Without the sample, a
+    // saved project reopens with all your knobs and NO BREAK. Store where it came from.
+    // (Path, not the audio itself — so moving/renaming the file breaks the link. That's the
+    // usual sampler trade-off; embedding the audio in every project is the alternative.)
+    auto sampleNode = state.getOrCreateChildWithName("SAMPLE", nullptr);
+    sampleNode.setProperty("path", sampleLayer.getSourcePath(), nullptr);
+
+    if (auto xml = state.createXml())
         copyXmlToBinary(*xml, destData);
 }
 
 void Nebula2AudioProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
-    if (auto xml = getXmlFromBinary(data, sizeInBytes))
-        if (xml->hasTagName(apvts.state.getType()))
-            apvts.replaceState(juce::ValueTree::fromXml(*xml));
+    auto xml = getXmlFromBinary(data, sizeInBytes);
+    if (xml == nullptr || ! xml->hasTagName(apvts.state.getType())) return;
+
+    auto tree = juce::ValueTree::fromXml(*xml);
+
+    // Restore the sample. Decoding allocates and may be called off the message thread by
+    // the host, so record it and let handleAsyncUpdate() do the load.
+    if (auto sampleNode = tree.getChildWithName("SAMPLE"); sampleNode.isValid())
+    {
+        const juce::String path = sampleNode.getProperty("path").toString();
+        if (path.isNotEmpty() && path != sampleLayer.getSourcePath())
+        {
+            const juce::ScopedLock sl(pendingPathLock);
+            pendingSamplePath = path;
+            triggerAsyncUpdate();
+        }
+    }
+
+    apvts.replaceState(tree);
 }
 
 juce::AudioProcessorEditor* Nebula2AudioProcessor::createEditor()
