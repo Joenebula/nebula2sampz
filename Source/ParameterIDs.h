@@ -10,7 +10,16 @@ namespace Nebula2::ParamID
     inline constexpr auto bpm      = "bpm";        // float 40..220     (linear, 0.5 step)
     inline constexpr auto limiter  = "limiterOn";  // bool
 
-    // --- FX grid (Colour) — one representative amount ---
+    // --- Colour block (live: drives the FX chain on the drum bus) ---
+    inline constexpr auto drive     = "drive";     // float 0..100  %
+    inline constexpr auto driveChar = "char";      // choice: tube/fuzz/fold
+    inline constexpr auto crush     = "crush";     // float 0..100  %
+    inline constexpr auto squeeze   = "squeeze";   // float 0..100  %
+    inline constexpr auto tone      = "tone";      // float 0..100  % (100 = open)
+    inline constexpr auto width     = "width";     // float 0..200  % (100 = unchanged)
+    inline constexpr auto fxOn      = "fxOn";      // bool
+
+    // --- Space (not yet wired) ---
     inline constexpr auto revMix   = "revMix";     // float 0..100      (linear, %)
 
     // --- Rack — one representative logarithmic dial ---

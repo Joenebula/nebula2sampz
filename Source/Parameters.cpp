@@ -38,7 +38,22 @@ namespace Nebula2
         layout.add(std::make_unique<APB>(
             PID{ ParamID::limiter, version }, "Limiter", true));
 
-        // --- FX grid amount (representative %) ---
+        // --- Colour block (live) ---
+        const auto pct = [] { return juce::NormalisableRange<float>(0.0f, 100.0f, 1.0f); };
+
+        layout.add(std::make_unique<APF>(PID{ ParamID::drive,   version }, "Drive",   pct(), 0.0f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::crush,   version }, "Crush",   pct(), 0.0f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::squeeze, version }, "Squeeze", pct(), 0.0f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::tone,    version }, "Tone",    pct(), 100.0f));
+        layout.add(std::make_unique<APF>(
+            PID{ ParamID::width, version }, "Width",
+            juce::NormalisableRange<float>(0.0f, 200.0f, 1.0f), 100.0f));
+        layout.add(std::make_unique<APC>(
+            PID{ ParamID::driveChar, version }, "Drive Character",
+            juce::StringArray{ "Tube", "Fuzz", "Fold" }, 0));
+        layout.add(std::make_unique<APB>(PID{ ParamID::fxOn, version }, "FX On", true));
+
+        // --- Space (not yet wired) ---
         layout.add(std::make_unique<APF>(
             PID{ ParamID::revMix, version }, "Reverb Mix",
             juce::NormalisableRange<float>(0.0f, 100.0f, 1.0f), 0.0f));

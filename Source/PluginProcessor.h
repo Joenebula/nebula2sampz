@@ -4,6 +4,7 @@
 #include "MasterProcessor.h"
 #include "Transport.h"
 #include "dsp/DrumKit.h"
+#include "dsp/ColourChain.h"
 
 // Phase 2: audio-engine skeleton. Real-time-safe callback, sample + drum layer buses,
 // host transport read, master chain (gain -> limiter -> clamp). No sources/effects yet,
@@ -49,6 +50,13 @@ private:
     // Cached raw-parameter pointers for lock-free reads in processBlock.
     std::atomic<float>* masterParam { nullptr };
     std::atomic<float>* limiterParam { nullptr };
+    std::atomic<float>* driveParam { nullptr };
+    std::atomic<float>* driveCharParam { nullptr };
+    std::atomic<float>* crushParam { nullptr };
+    std::atomic<float>* squeezeParam { nullptr };
+    std::atomic<float>* toneParam { nullptr };
+    std::atomic<float>* widthParam { nullptr };
+    std::atomic<float>* fxOnParam { nullptr };
 
     Nebula2::MasterProcessor masterProcessor;
 
@@ -57,6 +65,7 @@ private:
     juce::AudioBuffer<float> sampleBus, drumBus;
 
     Nebula2::DrumKit drumKit;
+    Nebula2::ColourChain colourChain;
 
     Nebula2::TransportState transport;
 

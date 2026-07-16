@@ -19,6 +19,7 @@
 #include "../Source/dsp/TempoDetect.h"
 #include "../Source/dsp/Slicer.h"
 #include "../Source/dsp/DrumKit.h"
+#include "../Source/dsp/ColourChain.h"
 
 #include <iostream>
 #include <cmath>
@@ -701,6 +702,79 @@ int main()
             kit.reset(); soft.clear(); kit.noteOn(36, 0.25f); kit.render(soft, 0, 4096);
             kit.reset(); loud.clear(); kit.noteOn(36, 1.0f);  kit.render(loud, 0, 4096);
             check(loud.getMagnitude(0, 4096) > soft.getMagnitude(0, 4096), "kit: harder hits are louder");
+        }
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Phase 4 — Colour chain (drive/crush/squeeze/tone/width on the bus)
+    // ---------------------------------------------------------------------------------
+    {
+        using namespace Nebula2;
+        juce::dsp::ProcessSpec spec;
+        spec.sampleRate = 48000.0; spec.maximumBlockSize = 512; spec.numChannels = 2;
+
+        const auto makeTone = []
+        {
+            AudioBuffer<float> b(2, 512);
+            for (int c = 0; c < 2; ++c)
+                for (int i = 0; i < 512; ++i)
+                    b.setSample(c, i, 0.3f * std::sin(2.0f * juce::MathConstants<float>::pi * 220.0f * (float) i / 48000.0f));
+            return b;
+        };
+
+        // Off = off. With fxOn false the block is essentially transparent.
+        {
+            ColourChain cc; cc.prepare(spec);
+            auto b = makeTone();
+            const float before = b.getMagnitude(0, 512);
+            ColourChain::Params p; p.on = false; p.drive = 100.0f; p.crush = 100.0f; p.squeeze = 100.0f;
+            cc.process(b, p);
+            const float after = b.getMagnitude(0, 512);
+            check(std::abs(after - before) < before * 0.15f, "colour: fxOn=false is neutral even with everything maxed");
+        }
+
+        // Drive changes the signal and stays bounded/finite.
+        {
+            ColourChain cc; cc.prepare(spec);
+            auto dry = makeTone();
+            auto wet = makeTone();
+            ColourChain::Params p; p.on = true; p.drive = 80.0f; p.driveChar = 0;
+            for (int i = 0; i < 8; ++i) { wet = makeTone(); cc.process(wet, p); }   // let the gain smoothing settle
+            bool differs = false;
+            for (int i = 0; i < 512; ++i) if (std::abs(wet.getSample(0, i) - dry.getSample(0, i)) > 1.0e-3f) { differs = true; break; }
+            check(differs, "colour: drive actually changes the signal");
+            check(std::isfinite(wet.getMagnitude(0, 512)), "colour: output finite under drive");
+            check(wet.getMagnitude(0, 512) < 4.0f, "colour: output bounded under drive");
+        }
+
+        // Every drive character is finite and bounded (fold is the wild one).
+        {
+            for (int ch = 0; ch <= 2; ++ch)
+            {
+                ColourChain cc; cc.prepare(spec);
+                auto b = makeTone();
+                ColourChain::Params p; p.on = true; p.drive = 100.0f; p.driveChar = ch;
+                for (int i = 0; i < 4; ++i) { b = makeTone(); cc.process(b, p); }
+                check(std::isfinite(b.getMagnitude(0, 512)), juce::String("colour: drive char ") + juce::String(ch) + " finite");
+                check(b.getMagnitude(0, 512) < 4.0f, juce::String("colour: drive char ") + juce::String(ch) + " bounded");
+            }
+        }
+
+        // Crush at full changes the signal; tone closed darkens it.
+        {
+            ColourChain cc; cc.prepare(spec);
+            auto b = makeTone();
+            ColourChain::Params p; p.on = true; p.crush = 100.0f;
+            cc.process(b, p);
+            check(std::isfinite(b.getMagnitude(0, 512)), "colour: crush finite");
+
+            ColourChain cc2; cc2.prepare(spec);
+            auto open = makeTone(); ColourChain::Params po; po.on = true; po.tone = 100.0f;
+            for (int i = 0; i < 6; ++i) { open = makeTone(); cc2.process(open, po); }
+            ColourChain cc3; cc3.prepare(spec);
+            auto shut = makeTone(); ColourChain::Params ps; ps.on = true; ps.tone = 0.0f;
+            for (int i = 0; i < 6; ++i) { shut = makeTone(); cc3.process(shut, ps); }
+            check(shut.getMagnitude(0, 512) < open.getMagnitude(0, 512), "colour: tone closed cuts more than tone open");
         }
     }
 

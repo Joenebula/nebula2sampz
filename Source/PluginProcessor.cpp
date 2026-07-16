@@ -7,8 +7,15 @@ Nebula2AudioProcessor::Nebula2AudioProcessor()
     : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       apvts(*this, &undoManager, "PARAMS", Nebula2::createParameterLayout())
 {
-    masterParam  = apvts.getRawParameterValue(Nebula2::ParamID::master);
-    limiterParam = apvts.getRawParameterValue(Nebula2::ParamID::limiter);
+    masterParam    = apvts.getRawParameterValue(Nebula2::ParamID::master);
+    limiterParam   = apvts.getRawParameterValue(Nebula2::ParamID::limiter);
+    driveParam     = apvts.getRawParameterValue(Nebula2::ParamID::drive);
+    driveCharParam = apvts.getRawParameterValue(Nebula2::ParamID::driveChar);
+    crushParam     = apvts.getRawParameterValue(Nebula2::ParamID::crush);
+    squeezeParam   = apvts.getRawParameterValue(Nebula2::ParamID::squeeze);
+    toneParam      = apvts.getRawParameterValue(Nebula2::ParamID::tone);
+    widthParam     = apvts.getRawParameterValue(Nebula2::ParamID::width);
+    fxOnParam      = apvts.getRawParameterValue(Nebula2::ParamID::fxOn);
 }
 
 void Nebula2AudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
@@ -20,6 +27,8 @@ void Nebula2AudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
 
     masterProcessor.prepare(spec);
     masterProcessor.reset();
+    colourChain.prepare(spec);
+    colourChain.reset();
 
     // Preallocate the layer buses here (never in the audio callback).
     sampleBus.setSize(2, samplesPerBlock, false, false, true);
@@ -76,6 +85,19 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
     if (auto* ph = getPlayHead())
         if (auto pos = ph->getPosition())
             transport = Nebula2::readTransport(*pos);
+
+    // Colour: drive -> crush/width -> squeeze -> tone, on the summed layers.
+    {
+        Nebula2::ColourChain::Params cp;
+        cp.drive     = driveParam     != nullptr ? driveParam->load()     : 0.0f;
+        cp.crush     = crushParam     != nullptr ? crushParam->load()     : 0.0f;
+        cp.squeeze   = squeezeParam   != nullptr ? squeezeParam->load()   : 0.0f;
+        cp.tone      = toneParam      != nullptr ? toneParam->load()      : 100.0f;
+        cp.width     = widthParam     != nullptr ? widthParam->load()     : 100.0f;
+        cp.driveChar = driveCharParam != nullptr ? (int) driveCharParam->load() : 0;
+        cp.on        = fxOnParam      != nullptr ? fxOnParam->load() > 0.5f : true;
+        colourChain.process(buffer, cp);
+    }
 
     // Master chain: gain -> limiter -> safety clamp.
     const float g   = masterParam  != nullptr ? masterParam->load()          : 0.9f;

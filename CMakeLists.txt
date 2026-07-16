@@ -59,6 +59,8 @@ target_sources(Nebula2 PRIVATE
     Source/dsp/Slicer.h
     Source/dsp/DrumKit.cpp
     Source/dsp/DrumKit.h
+    Source/dsp/ColourChain.cpp
+    Source/dsp/ColourChain.h
 )
 
 target_compile_definitions(Nebula2 PUBLIC
@@ -115,6 +117,8 @@ target_sources(Nebula2Tests PRIVATE
     Source/dsp/Slicer.h
     Source/dsp/DrumKit.cpp
     Source/dsp/DrumKit.h
+    Source/dsp/ColourChain.cpp
+    Source/dsp/ColourChain.h
 )
 
 target_compile_definitions(Nebula2Tests PRIVATE
