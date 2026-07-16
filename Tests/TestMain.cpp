@@ -768,13 +768,32 @@ int main()
             cc.process(b, p);
             check(std::isfinite(b.getMagnitude(0, 512)), "colour: crush finite");
 
-            ColourChain cc2; cc2.prepare(spec);
-            auto open = makeTone(); ColourChain::Params po; po.on = true; po.tone = 100.0f;
-            for (int i = 0; i < 6; ++i) { open = makeTone(); cc2.process(open, po); }
-            ColourChain cc3; cc3.prepare(spec);
-            auto shut = makeTone(); ColourChain::Params ps; ps.on = true; ps.tone = 0.0f;
-            for (int i = 0; i < 6; ++i) { shut = makeTone(); cc3.process(shut, ps); }
-            check(shut.getMagnitude(0, 512) < open.getMagnitude(0, 512), "colour: tone closed cuts more than tone open");
+            // Tone closed is a RESONANT lowpass: 200 Hz with Q 6.9 (the prototype's
+            // Q = 0.9 + (1-tone)*6). So it does two things, and both are intended:
+            const auto makeAt = [](float freq)
+            {
+                AudioBuffer<float> b(2, 512);
+                for (int c = 0; c < 2; ++c)
+                    for (int i = 0; i < 512; ++i)
+                        b.setSample(c, i, 0.3f * std::sin(2.0f * juce::MathConstants<float>::pi * freq * (float) i / 48000.0f));
+                return b;
+            };
+            const auto settled = [&](float toneVal, float freq)
+            {
+                ColourChain cc4; cc4.prepare(spec);
+                ColourChain::Params pp; pp.on = true; pp.tone = toneVal;
+                AudioBuffer<float> b(2, 512);
+                for (int i = 0; i < 6; ++i) { b = makeAt(freq); cc4.process(b, pp); }
+                return b.getMagnitude(0, 512);
+            };
+
+            // 1. well above the cutoff, closed cuts hard
+            check(settled(0.0f, 5000.0f) < settled(100.0f, 5000.0f) * 0.5f,
+                  "colour: tone closed cuts the highs (5 kHz) vs open");
+            // 2. AT the cutoff it resonates — closed boosts 200 Hz. That's the character,
+            //    not a bug (it's why a tone sweep sings).
+            check(settled(0.0f, 200.0f) > settled(100.0f, 200.0f) * 2.0f,
+                  "colour: tone closed resonates at its cutoff (200 Hz peak)");
         }
     }
 
