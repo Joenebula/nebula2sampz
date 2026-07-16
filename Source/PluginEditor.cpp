@@ -64,16 +64,31 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     sampleInfo.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(sampleInfo);
 
+    addCombo(sliceModeBox, sliceModeLabel, Nebula2::ParamID::sliceMode, "Slice",
+             { "Grid", "Transient" }, sliceModeAttachment);
+    addCombo(sliceCountBox, sliceCountLabel, Nebula2::ParamID::sliceCount, "Count",
+             { "4", "8", "16", "32", "64" }, sliceCountAttachment);
+    addKnob(sensitivity, Nebula2::ParamID::sensitivity, "Sens", "");
+    sensitivity.slider.textFromValueFunction = [](double v) { return juce::String(juce::roundToInt(v * 100.0)) + " %"; };
+    sensitivity.slider.valueFromTextFunction = [](const juce::String& t) { return t.getDoubleValue() / 100.0; };
+    sensitivity.slider.updateText();
+
     addAndMakeVisible(waveform);
     refreshSampleInfo();
 
-    setSize(640, 560);
+    setSize(640, 600);
+}
+
+void Nebula2AudioProcessorEditor::sampleReSliced()
+{
+    refreshSampleInfo();
+    waveform.sampleChanged();
 }
 
 void Nebula2AudioProcessorEditor::loadSampleFile(const juce::File& f)
 {
     // Message thread: decoding + slicing allocate, so they must never touch the audio thread.
-    const bool ok = processorRef.getSampleLayer().loadFile(f, 16);
+    const bool ok = processorRef.getSampleLayer().loadFile(f);
     if (! ok)
     {
         sampleInfo.setText("Couldn't read that file", juce::dontSendNotification);
@@ -168,7 +183,7 @@ void Nebula2AudioProcessorEditor::paint(juce::Graphics& g)
 
     auto body = getLocalBounds().reduced(12).withTrimmedTop(38);
 
-    auto sampleArea = body.removeFromTop(148);
+    auto sampleArea = body.removeFromTop(188);
     g.setColour(dragHighlight ? kAccent.withAlpha(0.25f) : kPanel);
     g.fillRoundedRectangle(sampleArea.toFloat(), 8.0f);
     if (dragHighlight)
@@ -198,13 +213,25 @@ void Nebula2AudioProcessorEditor::resized()
     auto body = getLocalBounds().reduced(12).withTrimmedTop(38);
 
     // --- Sample panel ---
-    auto sampleArea = body.removeFromTop(148).reduced(10);
+    auto sampleArea = body.removeFromTop(188).reduced(10);
     sampleArea.removeFromTop(12);
     auto sRow2 = sampleArea.removeFromTop(26);
     loadButton.setBounds(sRow2.removeFromLeft(120));
     sRow2.removeFromLeft(12);
     sampleInfo.setBounds(sRow2);
-    sampleArea.removeFromTop(6);
+
+    sampleArea.removeFromTop(4);
+    auto sliceRow = sampleArea.removeFromTop(34);
+    sliceModeLabel.setBounds(sliceRow.removeFromLeft(38));
+    sliceModeBox.setBounds(sliceRow.removeFromLeft(92).reduced(0, 5));
+    sliceRow.removeFromLeft(10);
+    sliceCountLabel.setBounds(sliceRow.removeFromLeft(42));
+    sliceCountBox.setBounds(sliceRow.removeFromLeft(64).reduced(0, 5));
+    sliceRow.removeFromLeft(14);
+    sensitivity.label.setBounds(sliceRow.removeFromLeft(38));
+    sensitivity.slider.setBounds(sliceRow.removeFromLeft(70));
+
+    sampleArea.removeFromTop(4);
     waveform.setBounds(sampleArea);
     body.removeFromTop(8);
 

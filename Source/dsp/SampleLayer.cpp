@@ -23,24 +23,30 @@ namespace Nebula2
         for (auto& v : voices) { v.active = false; v.outSample = 0.0; v.outDur = 0.0; }
     }
 
-    void SampleLayer::loadBuffer(juce::AudioBuffer<float>&& audio, double sourceSampleRate,
-                                 const juce::String& name, int numSlices)
+    void SampleLayer::publishSliced(std::shared_ptr<const juce::AudioBuffer<float>> audio,
+                                    double sourceSampleRate, const juce::String& name, double bpm)
     {
         auto data = new SampleData();
         data->audio = std::move(audio);
         data->sourceSampleRate = sourceSampleRate > 0.0 ? sourceSampleRate : 44100.0;
         data->name = name;
+        data->detectedBpm = bpm;
 
-        const int n = data->audio.getNumSamples();
+        const int n = data->audio != nullptr ? data->audio->getNumSamples() : 0;
         if (n > 0)
         {
-            const auto* ch0 = data->audio.getReadPointer(0);
+            const auto* ch0 = data->audio->getReadPointer(0);
             const int snapRadius = (int) (0.002 * data->sourceSampleRate);
-            data->sliceStarts = computeGridSlices(ch0, n, juce::jmax(1, numSlices), snapRadius);
 
-            // Metadata is a hint; the duration is the evidence.
-            const auto tempo = detectTempo((double) n / data->sourceSampleRate, name.toStdString());
-            data->detectedBpm = tempo.valid ? (double) tempo.bpm : 0.0;
+            if (slicing.transient)
+            {
+                // Slice where the drums actually hit, not on a metronome.
+                data->sliceStarts = detectTransients(ch0, n, data->sourceSampleRate, slicing.sensitivity);
+            }
+            else
+            {
+                data->sliceStarts = computeGridSlices(ch0, n, juce::jmax(1, slicing.count), snapRadius);
+            }
         }
 
         SampleData::Ptr held(data);
@@ -48,7 +54,35 @@ namespace Nebula2
         current.store(data);               // publish
     }
 
-    bool SampleLayer::loadFile(const juce::File& file, int numSlices)
+    void SampleLayer::loadBuffer(juce::AudioBuffer<float>&& audio, double sourceSampleRate,
+                                 const juce::String& name)
+    {
+        auto shared = std::make_shared<const juce::AudioBuffer<float>>(std::move(audio));
+        const int n = shared->getNumSamples();
+
+        // Metadata is a hint; the duration is the evidence.
+        double bpm = 0.0;
+        if (n > 0)
+        {
+            const auto tempo = detectTempo((double) n / (sourceSampleRate > 0.0 ? sourceSampleRate : 44100.0),
+                                           name.toStdString());
+            bpm = tempo.valid ? (double) tempo.bpm : 0.0;
+        }
+
+        publishSliced(std::move(shared), sourceSampleRate, name, bpm);
+    }
+
+    void SampleLayer::setSliceSettings(const SliceSettings& s)
+    {
+        slicing = s;
+
+        // Re-slice the SAME audio — no re-decode, no copy.
+        auto* cur = current.load();
+        if (cur == nullptr || cur->audio == nullptr) return;
+        publishSliced(cur->audio, cur->sourceSampleRate, cur->name, cur->detectedBpm);
+    }
+
+    bool SampleLayer::loadFile(const juce::File& file)
     {
         std::unique_ptr<juce::AudioFormatReader> reader(formats.createReaderFor(file));
         if (reader == nullptr) return false;
@@ -68,7 +102,7 @@ namespace Nebula2
             buf = std::move(stereo);
         }
 
-        loadBuffer(std::move(buf), reader->sampleRate, file.getFileNameWithoutExtension(), numSlices);
+        loadBuffer(std::move(buf), reader->sampleRate, file.getFileNameWithoutExtension());
         return true;
     }
 
@@ -102,13 +136,13 @@ namespace Nebula2
         auto* s = current.load();
         if (s == nullptr || numBuckets <= 0) return false;
 
-        const int n = s->audio.getNumSamples();
+        const int n = s->audio->getNumSamples();
         if (n <= 0) return false;
 
         mins.assign((size_t) numBuckets, 0.0f);
         maxs.assign((size_t) numBuckets, 0.0f);
 
-        const auto* d = s->audio.getReadPointer(0);
+        const auto* d = s->audio->getReadPointer(0);
         for (int b = 0; b < numBuckets; ++b)
         {
             const int i0 = (int) ((int64_t) b * n / numBuckets);
@@ -127,7 +161,7 @@ namespace Nebula2
         auto* s = current.load();
         if (s == nullptr) return out;
 
-        const int n = s->audio.getNumSamples();
+        const int n = s->audio->getNumSamples();
         if (n <= 0) return out;
 
         out.reserve(s->sliceStarts.size());
@@ -149,7 +183,7 @@ namespace Nebula2
     {
         auto* s = current.load();
         if (s == nullptr) return -1.0f;
-        const int n = s->audio.getNumSamples();
+        const int n = s->audio->getNumSamples();
         if (n <= 0) return -1.0f;
 
         // The newest-sounding voice wins (the chop you just hit).
@@ -188,7 +222,7 @@ namespace Nebula2
         v.note       = note;
         v.sliceIndex = whole ? -1 : slice;
         v.sliceStart = whole ? 0.0 : (double) s->sliceStarts[(size_t) slice];
-        v.sliceEnd   = whole ? (double) s->audio.getNumSamples()
+        v.sliceEnd   = whole ? (double) s->audio->getNumSamples()
                              : (double) s->sliceStarts[(size_t) slice + 1];
         v.gain       = juce::jlimit(0.0f, 1.0f, velocity);
         v.outSample  = 0.0;
@@ -233,8 +267,8 @@ namespace Nebula2
         auto* s = current.load();
         if (s == nullptr || numSamples <= 0) return;
 
-        const int srcLen  = s->audio.getNumSamples();
-        const int srcChs  = s->audio.getNumChannels();
+        const int srcLen  = s->audio->getNumSamples();
+        const int srcChs  = s->audio->getNumChannels();
         const int busChs  = bus.getNumChannels();
         if (srcLen <= 0 || srcChs <= 0) return;
 
@@ -246,7 +280,7 @@ namespace Nebula2
             if (i0 < 0 || i0 >= srcLen) return 0.0f;
             const int i1 = juce::jmin(i0 + 1, srcLen - 1);
             const float frac = (float) (pos - (double) i0);
-            const auto* src = s->audio.getReadPointer(juce::jmin(chan, srcChs - 1));
+            const auto* src = s->audio->getReadPointer(juce::jmin(chan, srcChs - 1));
             return src[i0] + frac * (src[i1] - src[i0]);
         };
 

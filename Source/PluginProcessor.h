@@ -48,6 +48,9 @@ public:
     // The editor drives sample loading (message thread — decoding allocates).
     Nebula2::SampleLayer& getSampleLayer() noexcept { return sampleLayer; }
 
+    // Slice-count choice index -> actual count (4/8/16/32/64).
+    static int sliceCountFromChoice(int choiceIndex) noexcept;
+
     // Most-recent host transport the audio thread saw (for the editor to display later).
     Nebula2::TransportState getTransport() const noexcept { return transport; }
 
@@ -71,6 +74,9 @@ private:
     std::atomic<float>* dlyFbParam { nullptr };
     std::atomic<float>* dlySyncParam { nullptr };
     std::atomic<float>* spaceOnParam { nullptr };
+    std::atomic<float>* sliceModeParam { nullptr };
+    std::atomic<float>* sliceCountParam { nullptr };
+    std::atomic<float>* sensitivityParam { nullptr };
 
     Nebula2::MasterProcessor masterProcessor;
 
@@ -83,9 +89,13 @@ private:
     Nebula2::ColourChain colourChain;
     Nebula2::SpaceProcessor space;
 
-    // Reverb-character reload: the audio thread only sets `wantedRevChar` and pokes the
-    // async updater; handleAsyncUpdate() does the (allocating) IR rebuild off-thread.
-    std::atomic<int> wantedRevChar { 1 };   // 1 = Hall, matches the param default
+    // Off-thread work triggered from processBlock. Both the reverb IR rebuild and
+    // re-slicing ALLOCATE, so the audio thread only records what's wanted and pokes the
+    // async updater; handleAsyncUpdate() does the real work on the message thread.
+    std::atomic<int> wantedRevChar { 1 };        // 1 = Hall, matches the param default
+    std::atomic<int> wantedSliceMode { 0 };      // 0 = Grid
+    std::atomic<int> wantedSliceCount { 16 };
+    std::atomic<float> wantedSensitivity { 0.5f };
     void handleAsyncUpdate() override;
 
     Nebula2::TransportState transport;

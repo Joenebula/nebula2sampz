@@ -18,6 +18,9 @@ public:
     void paint(juce::Graphics&) override;
     void resized() override;
 
+    // Called by the processor after an off-thread re-slice, so the waveform redraws.
+    void sampleReSliced();
+
     // Drop a break straight onto the plugin.
     bool isInterestedInFileDrag(const juce::StringArray& files) override;
     void filesDropped(const juce::StringArray& files, int x, int y) override;
@@ -44,9 +47,11 @@ private:
     Knob drive, crush, squeeze, tone, width, master;
     Knob revMix, dlyMix, dlyFb;
 
-    juce::ComboBox charBox, revCharBox, dlySyncBox;
-    juce::Label charLabel, revCharLabel, dlySyncLabel;
-    std::unique_ptr<APVTS::ComboBoxAttachment> charAttachment, revCharAttachment, dlySyncAttachment;
+    juce::ComboBox charBox, revCharBox, dlySyncBox, sliceModeBox, sliceCountBox;
+    juce::Label charLabel, revCharLabel, dlySyncLabel, sliceModeLabel, sliceCountLabel;
+    std::unique_ptr<APVTS::ComboBoxAttachment> charAttachment, revCharAttachment, dlySyncAttachment,
+                                               sliceModeAttachment, sliceCountAttachment;
+    Knob sensitivity;
 
     juce::ToggleButton spaceOnButton { "Space On" };
     std::unique_ptr<APVTS::ButtonAttachment> spaceOnAttachment;

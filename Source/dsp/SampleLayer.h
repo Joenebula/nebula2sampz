@@ -30,13 +30,26 @@ namespace Nebula2
         void prepare(double hostSampleRate, int maxBlockSize);
         void reset() noexcept;
 
+        // How a loaded break gets divided up.
+        struct SliceSettings
+        {
+            int count = 16;            // grid mode: how many equal chops
+            bool transient = false;    // true = slice on detected onsets instead
+            float sensitivity = 0.5f;  // transient mode only: higher = more slices
+        };
+
         // Message thread. Decodes, slices and tempo-detects, then publishes.
-        bool loadFile(const juce::File& file, int numSlices);
+        bool loadFile(const juce::File& file);
 
         // Message thread. Same, from an in-memory buffer — no file I/O, so the slicing and
         // playback path is unit-testable.
         void loadBuffer(juce::AudioBuffer<float>&& audio, double sourceSampleRate,
-                        const juce::String& name, int numSlices);
+                        const juce::String& name);
+
+        // Message thread: re-slices the SAME audio (no re-decode) and republishes.
+        // Allocates — never call from the audio thread.
+        void setSliceSettings(const SliceSettings& s);
+        SliceSettings getSliceSettings() const noexcept { return slicing; }
 
         void noteOn(int midiNoteNumber, float velocity) noexcept;
 
@@ -78,13 +91,18 @@ namespace Nebula2
     private:
         struct SampleData : public juce::ReferenceCountedObject
         {
-            juce::AudioBuffer<float> audio;
+            // Shared, so re-slicing publishes new boundaries over the SAME audio instead of
+            // copying megabytes per slice-count change.
+            std::shared_ptr<const juce::AudioBuffer<float>> audio;
             double sourceSampleRate = 44100.0;
             std::vector<int> sliceStarts;   // numSlices + 1 boundaries
             double detectedBpm = 0.0;
             juce::String name;
             using Ptr = juce::ReferenceCountedObjectPtr<SampleData>;
         };
+
+        void publishSliced(std::shared_ptr<const juce::AudioBuffer<float>> audio,
+                           double sourceSampleRate, const juce::String& name, double bpm);
 
         // Granular OLA voice (the prototype's playStretched, ported):
         // grains are read at native pitch; the SPACING between grain start points is what
@@ -117,5 +135,6 @@ namespace Nebula2
         double hostRate = 44100.0;
         double hostBpm = 0.0;
         bool stretchEnabled = true;
+        SliceSettings slicing;
     };
 }

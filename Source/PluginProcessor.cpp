@@ -22,14 +22,37 @@ Nebula2AudioProcessor::Nebula2AudioProcessor()
     dlyFbParam     = apvts.getRawParameterValue(Nebula2::ParamID::dlyFb);
     dlySyncParam   = apvts.getRawParameterValue(Nebula2::ParamID::dlySync);
     spaceOnParam   = apvts.getRawParameterValue(Nebula2::ParamID::spaceOn);
+    sliceModeParam   = apvts.getRawParameterValue(Nebula2::ParamID::sliceMode);
+    sliceCountParam  = apvts.getRawParameterValue(Nebula2::ParamID::sliceCount);
+    sensitivityParam = apvts.getRawParameterValue(Nebula2::ParamID::sensitivity);
+}
+
+int Nebula2AudioProcessor::sliceCountFromChoice(int choiceIndex) noexcept
+{
+    static constexpr int counts[] = { 4, 8, 16, 32, 64 };
+    return counts[juce::jlimit(0, 4, choiceIndex)];
 }
 
 void Nebula2AudioProcessor::handleAsyncUpdate()
 {
-    // Message thread: safe to synthesise + load a new impulse response here.
+    // Message thread: both of these allocate, which is exactly why they're here.
     const auto wanted = (Nebula2::ReverbChar) juce::jlimit(0, 4, wantedRevChar.load());
     if (wanted != space.getCharacter())
         space.setCharacter(wanted);
+
+    Nebula2::SampleLayer::SliceSettings s;
+    s.transient   = wantedSliceMode.load() == 1;
+    s.count       = wantedSliceCount.load();
+    s.sensitivity = wantedSensitivity.load();
+
+    const auto cur = sampleLayer.getSliceSettings();
+    if (s.transient != cur.transient || s.count != cur.count
+        || std::abs(s.sensitivity - cur.sensitivity) > 1.0e-4f)
+    {
+        sampleLayer.setSliceSettings(s);      // re-slices the same audio, republishes
+        if (auto* ed = dynamic_cast<Nebula2AudioProcessorEditor*>(getActiveEditor()))
+            ed->sampleReSliced();
+    }
 }
 
 void Nebula2AudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
@@ -135,6 +158,22 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
         cp.driveChar = driveCharParam != nullptr ? (int) driveCharParam->load() : 0;
         cp.on        = fxOnParam      != nullptr ? fxOnParam->load() > 0.5f : true;
         colourChain.process(buffer, cp);
+    }
+
+    // Slicing settings changed? Re-slicing allocates — hand it to the message thread.
+    {
+        const int mode  = sliceModeParam  != nullptr ? (int) sliceModeParam->load() : 0;
+        const int count = sliceCountFromChoice(sliceCountParam != nullptr ? (int) sliceCountParam->load() : 2);
+        const float sens = sensitivityParam != nullptr ? sensitivityParam->load() : 0.5f;
+
+        if (mode != wantedSliceMode.load() || count != wantedSliceCount.load()
+            || std::abs(sens - wantedSensitivity.load()) > 1.0e-4f)
+        {
+            wantedSliceMode.store(mode);
+            wantedSliceCount.store(count);
+            wantedSensitivity.store(sens);
+            triggerAsyncUpdate();
+        }
     }
 
     // Space: parallel reverb + tempo-synced delay send (dry is preserved).

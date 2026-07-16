@@ -10,6 +10,11 @@ namespace Nebula2::ParamID
     inline constexpr auto bpm      = "bpm";        // float 40..220     (linear, 0.5 step)
     inline constexpr auto limiter  = "limiterOn";  // bool
 
+    // --- Sample layer slicing (re-slices on the message thread when changed) ---
+    inline constexpr auto sliceMode  = "sliceMode";   // choice: Grid / Transient
+    inline constexpr auto sliceCount = "sliceCount";  // choice: 4/8/16/32/64
+    inline constexpr auto sensitivity = "sens";       // float 0..1 (transient mode)
+
     // --- Colour block (live: drives the FX chain on the drum bus) ---
     inline constexpr auto drive     = "drive";     // float 0..100  %
     inline constexpr auto driveChar = "char";      // choice: tube/fuzz/fold

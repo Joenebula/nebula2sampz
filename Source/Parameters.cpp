@@ -38,8 +38,20 @@ namespace Nebula2
         layout.add(std::make_unique<APB>(
             PID{ ParamID::limiter, version }, "Limiter", true));
 
-        // --- Colour block (live) ---
         const auto pct = [] { return juce::NormalisableRange<float>(0.0f, 100.0f, 1.0f); };
+
+        // --- Sample slicing ---
+        layout.add(std::make_unique<APC>(
+            PID{ ParamID::sliceMode, version }, "Slice Mode",
+            juce::StringArray{ "Grid", "Transient" }, 0));
+        layout.add(std::make_unique<APC>(
+            PID{ ParamID::sliceCount, version }, "Slices",
+            juce::StringArray{ "4", "8", "16", "32", "64" }, 2));      // default 16
+        layout.add(std::make_unique<APF>(
+            PID{ ParamID::sensitivity, version }, "Sensitivity",
+            juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.5f));
+
+        // --- Colour block (live) ---
 
         layout.add(std::make_unique<APF>(PID{ ParamID::drive,   version }, "Drive",   pct(), 0.0f));
         layout.add(std::make_unique<APF>(PID{ ParamID::crush,   version }, "Crush",   pct(), 0.0f));

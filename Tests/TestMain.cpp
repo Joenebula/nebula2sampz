@@ -933,7 +933,7 @@ int main()
                 audio.setSample(0, i, v);
                 audio.setSample(1, i, v);
             }
-            layer.loadBuffer(std::move(audio), 48000.0, "VEC1 Loops BB140 077.wav", 16);
+            layer.loadBuffer(std::move(audio), 48000.0, "VEC1 Loops BB140 077.wav");
         }
 
         check(layer.hasSample(), "sample: loads");
@@ -1011,6 +1011,67 @@ int main()
             }
             check(layer.activeVoiceCount() == 0, "sample: note-off stops the chop (gated, not full length)");
             check(guard <= 2, "sample: note-off releases quickly (~5ms, no long tail)");
+        }
+
+        // --- slice modes: grid vs transient, count, sensitivity ---
+        {
+            // Grid mode honours the count, and re-slicing reuses the same audio.
+            SampleLayer::SliceSettings s;
+            s.transient = false; s.count = 8;
+            layer.setSliceSettings(s);
+            check(layer.getNumSlices() == 8, "slice: grid count 8 applied by re-slicing");
+            check(layer.hasSample(), "slice: re-slice keeps the sample loaded (no re-decode)");
+            check(std::abs(layer.getDetectedBpm() - 140.0) < 0.5, "slice: re-slice preserves detected tempo");
+
+            s.count = 32;
+            layer.setSliceSettings(s);
+            check(layer.getNumSlices() == 32, "slice: grid count 32 applied");
+
+            s.count = 16;
+            layer.setSliceSettings(s);
+            check(layer.getNumSlices() == 16, "slice: back to 16");
+
+            // Slices still map correctly after a re-slice (boundaries rebuilt, not stale).
+            layer.setHostBpm(140.0);
+            layer.reset();
+            layer.noteOn(SampleLayer::baseNote + 8, 1.0f);
+            AudioBuffer<float> b(2, 512); b.clear();
+            layer.render(b, 0, 512);
+            check(std::abs(b.getSample(0, 100) - 0.45f) < 0.03f, "slice: slices still map correctly after re-slicing");
+        }
+
+        // Transient mode on a signal with clear onsets finds them.
+        {
+            const double sr = 48000.0;
+            const int n = 48000 * 2;
+            AudioBuffer<float> hits(2, n);
+            hits.clear();
+            for (int h = 0; h < 8; ++h)                     // 8 clear bursts in silence
+            {
+                const int at = h * 11000 + 2000;
+                for (int i = 0; i < 700 && at + i < n; ++i)
+                {
+                    const float v = 0.9f * std::sin(0.25f * (float) i) * std::exp(-0.005f * (float) i);
+                    hits.setSample(0, at + i, v); hits.setSample(1, at + i, v);
+                }
+            }
+            SampleLayer tl;
+            tl.prepare(sr, 512);
+            SampleLayer::SliceSettings ts; ts.transient = true; ts.sensitivity = 0.5f;
+            tl.setSliceSettings(ts);
+            tl.loadBuffer(std::move(hits), sr, "hits.wav");
+
+            check(tl.getNumSlices() >= 3, "slice: transient mode finds the hits");
+            const auto tb = tl.getSliceBoundariesNormalised();
+            bool ordered = true;
+            for (size_t i = 1; i < tb.size(); ++i) if (tb[i] < tb[i - 1]) ordered = false;
+            check(ordered, "slice: transient boundaries in order");
+            check(tb.front() <= 0.001f && tb.back() >= 0.999f, "slice: transient spans the whole file");
+
+            const int atHalf = tl.getNumSlices();
+            ts.sensitivity = 0.95f;
+            tl.setSliceSettings(ts);
+            check(tl.getNumSlices() >= atHalf, "slice: raising sensitivity doesn't lose slices");
         }
 
         // --- UI queries the waveform view depends on ---
@@ -1193,7 +1254,8 @@ int main()
             }
             SampleLayer toneLayer;
             toneLayer.prepare(48000.0, 512);
-            toneLayer.loadBuffer(std::move(tone), 48000.0, "tone_120bpm.wav", 2);
+            { Nebula2::SampleLayer::SliceSettings ss; ss.count = 2; toneLayer.setSliceSettings(ss); }
+            toneLayer.loadBuffer(std::move(tone), 48000.0, "tone_120bpm.wav");
 
             const auto crossingsPerSec = [&](double hostBpmValue)
             {
