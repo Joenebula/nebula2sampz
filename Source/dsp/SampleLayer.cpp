@@ -97,6 +97,73 @@ namespace Nebula2
         return n;
     }
 
+    bool SampleLayer::getWaveformPeaks(std::vector<float>& mins, std::vector<float>& maxs, int numBuckets) const
+    {
+        auto* s = current.load();
+        if (s == nullptr || numBuckets <= 0) return false;
+
+        const int n = s->audio.getNumSamples();
+        if (n <= 0) return false;
+
+        mins.assign((size_t) numBuckets, 0.0f);
+        maxs.assign((size_t) numBuckets, 0.0f);
+
+        const auto* d = s->audio.getReadPointer(0);
+        for (int b = 0; b < numBuckets; ++b)
+        {
+            const int i0 = (int) ((int64_t) b * n / numBuckets);
+            const int i1 = juce::jmax(i0 + 1, (int) ((int64_t) (b + 1) * n / numBuckets));
+            float lo = 0.0f, hi = 0.0f;
+            for (int i = i0; i < i1 && i < n; ++i) { lo = juce::jmin(lo, d[i]); hi = juce::jmax(hi, d[i]); }
+            mins[(size_t) b] = lo;
+            maxs[(size_t) b] = hi;
+        }
+        return true;
+    }
+
+    std::vector<float> SampleLayer::getSliceBoundariesNormalised() const
+    {
+        std::vector<float> out;
+        auto* s = current.load();
+        if (s == nullptr) return out;
+
+        const int n = s->audio.getNumSamples();
+        if (n <= 0) return out;
+
+        out.reserve(s->sliceStarts.size());
+        for (const int b : s->sliceStarts)
+            out.push_back(juce::jlimit(0.0f, 1.0f, (float) b / (float) n));
+        return out;
+    }
+
+    uint32_t SampleLayer::getPlayingSliceMask() const noexcept
+    {
+        uint32_t mask = 0;
+        for (const auto& v : voices)
+            if (v.active && v.sliceIndex >= 0 && v.sliceIndex < 32)
+                mask |= (1u << v.sliceIndex);
+        return mask;
+    }
+
+    float SampleLayer::getPlayheadNormalised() const noexcept
+    {
+        auto* s = current.load();
+        if (s == nullptr) return -1.0f;
+        const int n = s->audio.getNumSamples();
+        if (n <= 0) return -1.0f;
+
+        // The newest-sounding voice wins (the chop you just hit).
+        const Voice* best = nullptr;
+        for (const auto& v : voices)
+            if (v.active && (best == nullptr || v.outSample < best->outSample)) best = &v;
+        if (best == nullptr) return -1.0f;
+
+        // How far through the slice are we, in INPUT samples?
+        const double progressed = best->outSample * (best->outDur > 0.0
+                                     ? (best->sliceEnd - best->sliceStart) / best->outDur : 0.0);
+        return juce::jlimit(0.0f, 1.0f, (float) ((best->sliceStart + progressed) / (double) n));
+    }
+
     void SampleLayer::noteOn(int note, float velocity) noexcept
     {
         auto* s = current.load();
@@ -118,6 +185,7 @@ namespace Nebula2
 
         auto& v = voices[(size_t) slot];
         v.note       = note;
+        v.sliceIndex = slice;
         v.sliceStart = (double) s->sliceStarts[(size_t) slice];
         v.sliceEnd   = (double) s->sliceStarts[(size_t) slice + 1];
         v.gain       = juce::jlimit(0.0f, 1.0f, velocity);

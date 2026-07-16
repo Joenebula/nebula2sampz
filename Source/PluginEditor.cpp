@@ -63,9 +63,11 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     sampleInfo.setColour(juce::Label::textColourId, kSub);
     sampleInfo.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(sampleInfo);
+
+    addAndMakeVisible(waveform);
     refreshSampleInfo();
 
-    setSize(600, 470);
+    setSize(640, 560);
 }
 
 void Nebula2AudioProcessorEditor::loadSampleFile(const juce::File& f)
@@ -73,9 +75,12 @@ void Nebula2AudioProcessorEditor::loadSampleFile(const juce::File& f)
     // Message thread: decoding + slicing allocate, so they must never touch the audio thread.
     const bool ok = processorRef.getSampleLayer().loadFile(f, 16);
     if (! ok)
+    {
         sampleInfo.setText("Couldn't read that file", juce::dontSendNotification);
-    else
-        refreshSampleInfo();
+        return;
+    }
+    refreshSampleInfo();
+    waveform.sampleChanged();   // the picture depends on the sample — invalidate the cache
 }
 
 void Nebula2AudioProcessorEditor::refreshSampleInfo()
@@ -106,7 +111,7 @@ bool Nebula2AudioProcessorEditor::isInterestedInFileDrag(const juce::StringArray
 void Nebula2AudioProcessorEditor::filesDropped(const juce::StringArray& files, int, int)
 {
     dragHighlight = false;
-    if (! files.isEmpty()) loadSampleFile(juce::File(files[0]));
+    if (! files.isEmpty()) loadSampleFile(juce::File(files[0]));   // this refreshes the waveform
     repaint();
 }
 
@@ -163,7 +168,7 @@ void Nebula2AudioProcessorEditor::paint(juce::Graphics& g)
 
     auto body = getLocalBounds().reduced(12).withTrimmedTop(38);
 
-    auto sampleArea = body.removeFromTop(56);
+    auto sampleArea = body.removeFromTop(148);
     g.setColour(dragHighlight ? kAccent.withAlpha(0.25f) : kPanel);
     g.fillRoundedRectangle(sampleArea.toFloat(), 8.0f);
     if (dragHighlight)
@@ -193,12 +198,14 @@ void Nebula2AudioProcessorEditor::resized()
     auto body = getLocalBounds().reduced(12).withTrimmedTop(38);
 
     // --- Sample panel ---
-    auto sampleArea = body.removeFromTop(56).reduced(10);
+    auto sampleArea = body.removeFromTop(148).reduced(10);
     sampleArea.removeFromTop(12);
     auto sRow2 = sampleArea.removeFromTop(26);
     loadButton.setBounds(sRow2.removeFromLeft(120));
     sRow2.removeFromLeft(12);
     sampleInfo.setBounds(sRow2);
+    sampleArea.removeFromTop(6);
+    waveform.setBounds(sampleArea);
     body.removeFromTop(8);
 
     // --- Colour panel ---

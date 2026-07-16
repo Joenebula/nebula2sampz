@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "PluginProcessor.h"
+#include "WaveformView.h"
 
 // A functional control surface: every live parameter, attached to the APVTS so the host
 // and the UI can never disagree (law: one source of truth — the visual derives from state).
@@ -51,6 +52,7 @@ private:
     std::unique_ptr<APVTS::ButtonAttachment> spaceOnAttachment;
 
     // Sample layer
+    WaveformView waveform { processorRef.getSampleLayer() };
     juce::TextButton loadButton { "Load Sample..." };
     juce::Label sampleInfo;
     std::unique_ptr<juce::FileChooser> chooser;

@@ -1013,6 +1013,36 @@ int main()
             check(guard <= 2, "sample: note-off releases quickly (~5ms, no long tail)");
         }
 
+        // --- UI queries the waveform view depends on ---
+        {
+            std::vector<float> mins, maxs;
+            check(layer.getWaveformPeaks(mins, maxs, 200), "waveform: peaks available when loaded");
+            check((int) mins.size() == 200 && (int) maxs.size() == 200, "waveform: one min/max per bucket");
+            bool sane = true;
+            for (size_t i = 0; i < maxs.size(); ++i)
+                if (maxs[i] < mins[i] || ! std::isfinite(maxs[i]) || ! std::isfinite(mins[i])) sane = false;
+            check(sane, "waveform: peaks finite and max >= min");
+
+            const auto bounds = layer.getSliceBoundariesNormalised();
+            check((int) bounds.size() == 17, "waveform: 16 slices -> 17 boundaries");
+            check(bounds.front() >= 0.0f && bounds.back() <= 1.0f, "waveform: boundaries normalised 0..1");
+            bool ordered = true;
+            for (size_t i = 1; i < bounds.size(); ++i) if (bounds[i] < bounds[i - 1]) ordered = false;
+            check(ordered, "waveform: boundaries in order");
+
+            // Playhead / highlight reflect what's actually sounding.
+            layer.reset();
+            check(layer.getPlayingSliceMask() == 0, "waveform: nothing lit when idle");
+            check(layer.getPlayheadNormalised() < 0.0f, "waveform: no playhead when idle");
+
+            layer.noteOn(SampleLayer::baseNote + 3, 1.0f);
+            AudioBuffer<float> b(2, 512); b.clear();
+            layer.render(b, 0, 512);
+            check((layer.getPlayingSliceMask() & (1u << 3)) != 0, "waveform: the playing slice is lit");
+            const float head = layer.getPlayheadNormalised();
+            check(head > 0.15f && head < 0.30f, "waveform: playhead sits inside slice 3");
+        }
+
         // A fast pattern must not exhaust the voice pool and steal from itself.
         {
             layer.reset();

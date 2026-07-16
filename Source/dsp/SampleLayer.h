@@ -56,6 +56,22 @@ namespace Nebula2
         double getDetectedBpm() const noexcept;
         int activeVoiceCount() const noexcept;
 
+        // --- UI queries (message thread) ---
+
+        // Min/max peaks per horizontal bucket, for drawing the waveform. Returns false if
+        // nothing is loaded. Cheap enough to call once per sample change — NOT per frame.
+        bool getWaveformPeaks(std::vector<float>& mins, std::vector<float>& maxs, int numBuckets) const;
+
+        // Slice boundaries as 0..1 positions across the sample (numSlices + 1 of them).
+        std::vector<float> getSliceBoundariesNormalised() const;
+
+        // Which slices are sounding right now, as a bitmask over slice index (for lighting
+        // the playing chop). Read per frame — deliberately cheap.
+        uint32_t getPlayingSliceMask() const noexcept;
+
+        // 0..1 progress through the currently-playing slice, or -1 if nothing is playing.
+        float getPlayheadNormalised() const noexcept;
+
     private:
         struct SampleData : public juce::ReferenceCountedObject
         {
@@ -78,6 +94,7 @@ namespace Nebula2
             double sliceStart = 0.0, sliceEnd = 0.0;
             float gain = 1.0f;
 
+            int sliceIndex = -1;
             double outSample = 0.0;     // output samples since note-on
             double outDur = 0.0;        // total output samples for this slice
             double grainOut = 0.0;      // grain length, in OUTPUT samples

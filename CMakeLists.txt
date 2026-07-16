@@ -35,6 +35,8 @@ target_sources(Nebula2 PRIVATE
     Source/PluginProcessor.h
     Source/PluginEditor.cpp
     Source/PluginEditor.h
+    Source/WaveformView.cpp
+    Source/WaveformView.h
     Source/Parameters.cpp
     Source/Parameters.h
     Source/ParameterIDs.h

@@ -193,12 +193,26 @@ Gate legend: **AUTO** = Claude Code runs it. **MANUAL** = print a `MANUAL CHECK`
   2. Reverb IR RNG is **seeded** — the prototype used `Math.random()`, so its reverb was
      not reproducible across renders/presets.
   3. Drive is **oversampled 2x** (the browser WaveShaper aliased).
-- **NOT yet done in Phase 3:** the modules are standalone + tested but **not yet wired
-  into the audio graph**, and their params are not yet in the registry. That assembly is
-  gated on the routing decision below. Also deferred: the drive pre/post gain staging
-  (prototype applies `pre = 1 + d*5`, `post = master*(1 - d*0.45)` around the shaper);
-  the "pump" tempo-synced duck (belongs with the scheduler, not a static block); and the
-  granular OLA time-stretch playback (needs the voice/scheduler layer).
+- **Since assembled (Phase 4):** all of the above is now wired into the audio graph with
+  live params. The drive pre/post gain staging is restored; the granular OLA stretch is in.
+  Still deferred: the "pump" tempo-synced duck (belongs with the scheduler, not a static
+  block).
+
+### Phase 4 — MIDI: input, learn, mapping  ✅ done, with one deliverable retired (2026-07-16)
+- Delivered: MIDI note input → drum voices (GM map from the prototype's own exporter) and
+  → sample slices (note 84 / C5 upward, clear of the drum notes). Sample-accurate: both
+  layers render in sub-blocks split at MIDI event positions. Note-off gates chops (a
+  slicer behaviour); drums stay one-shot.
+- **RETIRED: "MIDI learn (right-click a control → arm → next CC binds)".** That deliverable
+  exists because the *browser prototype had no host*. A VST3 gets this from the DAW —
+  Cubase's Quick Controls / Remote Control Editor map any CC to any exposed parameter, and
+  every parameter here is properly exposed (they already appear in automation lanes).
+  Building our own would duplicate the host, worse, and fight it. Revisit only if a target
+  host turns out to lack CC mapping.
+- **Bugs found by ear that the tests missed** (now regression-covered): chops stopped ~3/4
+  through (grain read wrapped mid-grain back to the slice start); slices ignored note
+  length and stole their own voices. 148 green assertions had said nothing about either —
+  a standing reminder that "finite, bounded, deterministic" is a long way from "correct".
 
 ### Phase 3 (original plan text)
 - Order: sample slicer/player (note: prototype uses a real granular/time-stretch
