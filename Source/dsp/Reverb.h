@@ -29,7 +29,11 @@ namespace Nebula2
         void reset();
 
         // Rebuilds the IR for the character and hands it to the convolution engine.
+        // Allocates — message thread only. Each call queues an async IR load, and a load
+        // landing RESETS the convolution state (killing any ringing tail), so never call
+        // it redundantly.
         void setCharacter(ReverbChar character);
+        ReverbChar getCharacter() const noexcept { return currentChar; }
 
         // wetMix 0..1 dry/wet blend.
         void process(juce::AudioBuffer<float>& buffer, float wetMix) noexcept;

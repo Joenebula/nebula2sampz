@@ -25,10 +25,15 @@ namespace Nebula2
     void SpaceProcessor::prepare(const juce::dsp::ProcessSpec& spec)
     {
         sampleRate = spec.sampleRate;
-        reverb.prepare(spec);
+        reverb.prepare(spec);          // already loads an IR for the reverb's own character
         delay.prepare(spec);
         wetScratch.setSize((int) spec.numChannels, (int) spec.maximumBlockSize, false, false, true);
-        reverb.setCharacter(character);
+
+        // Only load again if we actually want a DIFFERENT character. A redundant load
+        // queues a second async IR swap that resets the convolution mid-flight and cuts
+        // off whatever tail is ringing.
+        if (reverb.getCharacter() != character)
+            reverb.setCharacter(character);
     }
 
     void SpaceProcessor::reset()
@@ -39,6 +44,7 @@ namespace Nebula2
 
     void SpaceProcessor::setCharacter(ReverbChar c)
     {
+        if (c == character && reverb.getCharacter() == c) return;   // no redundant IR swap
         character = c;
         reverb.setCharacter(c);   // allocates — message thread only
     }

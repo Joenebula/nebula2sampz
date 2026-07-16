@@ -885,8 +885,9 @@ int main()
             }
             check(irReady, "space: reverb IR loads");
 
+            // Flush well past the IR length + convolution latency before judging.
             double tail = 0.0;
-            for (int blk = 0; blk < 64; ++blk)
+            for (int blk = 0; blk < 256; ++blk)
             {
                 AudioBuffer<float> b(2, 512); b.clear();
                 if (blk == 0) { b.setSample(0, 0, 1.0f); b.setSample(1, 0, 1.0f); }
