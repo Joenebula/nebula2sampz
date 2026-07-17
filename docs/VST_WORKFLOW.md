@@ -82,6 +82,29 @@ The lesson generalises past this bug: *a green result from a randomised tool is 
 not a pass.* Run it until it's boring. The same shape of mistake as the Phase 3 reverb test
 that passed by racing a background loader.
 
+**2026-07-17 — KNOWN GAP: the rack's EQ is gain-only.** The prototype's EQ lets you *move*
+each band (frequency, Q, type — there's a whole drag-a-band editor). The port's rack EQ
+dials **gain only, on six fixed frequencies** (35/110/420/1600/5200/9000). That's a genuine
+reduction from the prototype, not a design decision. `Source/dsp/ParametricEq.{h,cpp}`
+already models a movable band correctly and is the head start — it is deliberately **not
+wired to anything yet** and is marked as such in its header, so it isn't mistaken for live
+code or deleted as dead. Wiring it needs (a) a band editor UI and (b) moving its
+`makeBandCoefficients` to `IIR::ArrayCoefficients` first, since the Ptr form allocates.
+
+**2026-07-17 — The audio thread was allocating ~8,300 times a second.** `juce::dsp::IIR::
+Coefficients`' factories are `return *new Coefficients(...)` — an allocation dressed as a
+maths helper. Six per 32-sample chunk in the rack's phaser, three in the vowel, six in the
+EQ, and one in `ColourChain` that ran **every block for every user even with the FX off**.
+`RackModules.h` meanwhile claimed *"Real-time safe: every buffer is allocated in prepare(),
+nothing here allocates or locks"* — true about buffers, false about the class. **A comment
+precisely true about the thing you checked is the easiest kind to be wrong.** Fixed via
+`IIR::ArrayCoefficients` (returns by value, assigned in place), coefficient storage primed
+in `prepare()`, and the per-block `std::vector`s replaced with a cached process order keyed
+on a topology hash. The **RT allocation detector** deferred since Phase 3 now exists in
+`Tests/TestMain.cpp` (global `operator new` counting) — deferring it is what let all of this
+live. It self-checks, and a mutation confirms it bites: restoring one line gives 1,920
+allocations across 20 blocks.
+
 Everything below this point is the **original planning document**, written before the
 above decisions, and is being updated in place as phases complete. Part B's recommendation
 of Path B is kept for the record of *why* it was considered, not as current guidance —

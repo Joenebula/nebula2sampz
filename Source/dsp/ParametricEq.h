@@ -9,6 +9,21 @@ namespace Nebula2
     // coefficient + magnitude eval). JUCE's IIR coefficient makers are the same RBJ cookbook,
     // so we reuse those rather than re-porting the math (law: never write the same helper
     // twice). Correctness is asserted the same way the prototype proved it: magnitude response.
+    //
+    // ---------------------------------------------------------------------------------
+    // NOT WIRED TO ANYTHING YET — and that is an honest gap, not dead code to delete.
+    //
+    // The rack's EQ module (RackModules.cpp) currently dials GAIN ONLY, on six fixed
+    // frequencies. The prototype's EQ lets you MOVE each band — frequency, Q and type —
+    // which is a real feature this port hasn't reached. This class is that feature's
+    // head start: it already models a band properly.
+    //
+    // Before wiring it in, note `makeBandCoefficients` returns a Coefficients::Ptr, i.e.
+    // `return *new Coefficients(...)`. That ALLOCATES, so setBand() must never be called
+    // from the audio thread — or it should be moved to IIR::ArrayCoefficients first, the
+    // way RackModules and Colour already were. Tests/TestMain.cpp's RT detector will catch
+    // it either way; don't let it get that far.
+    // ---------------------------------------------------------------------------------
 
     enum class EqBandType
     {
