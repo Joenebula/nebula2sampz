@@ -1,0 +1,64 @@
+name: Crash hunt (macOS)
+
+# A DIAGNOSTIC, not a gate. The main Build workflow caught an intermittent macOS crash in
+# pluginval (std::bad_function_call, ~1 in 10 runs) that reading the source hasn't located.
+# This job runs pluginval MANY times under lldb to force the crash while a debugger is
+# attached, so it yields a backtrace instead of "Abort trap: 6". Triggered by hand
+# (workflow_dispatch) so it doesn't burn minutes on every push.
+#
+# It STOPS at the first crash and uploads the stack — one good backtrace is the whole point;
+# there's no reason to keep hunting once we have it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      iterations:
+        description: "How many pluginval runs under lldb"
+        default: "30"
+
+jobs:
+  hunt:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Hunt
+        run: |
+          curl -L -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip
+          unzip -q pluginval.zip
+          VST3=$(find build -name "Nebula2.vst3" -maxdepth 6 | head -1)
+          if [ -z "$VST3" ]; then echo "no VST3 found"; exit 1; fi
+          PV=./pluginval.app/Contents/MacOS/pluginval
+          N="${{ github.event.inputs.iterations }}"
+          echo "hunting across $N runs"
+          for i in $(seq 1 "$N"); do
+            echo "--- run $i of $N"
+            set +e
+            lldb --batch -o run -k "thread backtrace all" -k "quit" \
+                 -- "$PV" --strictness-level 10 --validate-in-process \
+                          --timeout-ms 600000 --validate "$VST3" > hunt-$i.log 2>&1
+            set -e
+            if grep -qE "stop reason|Abort trap|bad_function_call|\*\*\* FAILED" hunt-$i.log; then
+              echo "================= CRASH/FAIL CAUGHT on run $i ================="
+              cp hunt-$i.log crash-backtrace.log
+              tail -160 hunt-$i.log
+              exit 1
+            fi
+          done
+          echo "no crash across $N runs — it's rarer than 1/$N, widen the net and rerun"
+
+      - name: Upload backtrace
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crash-backtrace
+          path: |
+            crash-backtrace.log
+            hunt-*.log
+          if-no-files-found: ignore
