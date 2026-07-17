@@ -80,10 +80,12 @@ void MorphPadView::paint(juce::Graphics& g)
     g.fillEllipse(p.x - 5.0f, p.y - 5.0f, 10.0f, 10.0f);
 
     // What you're hearing, right now — the blend, not the corners.
+    //
+    // Drawn in a strip along the BOTTOM, not across the middle. The middle is where the dot
+    // lives (it starts dead centre), so the readout rendered as "drv 29[dot]g 19" — the one
+    // number you most want to read, sitting under the thing you're dragging.
     const auto scene = Nebula2::blendMorph(processorRef.getMorphScenes(), lastX < 0 ? 0.5f : lastX,
                                            lastY < 0 ? 0.5f : lastY);
-    g.setColour(kSub);
-    g.setFont(juce::FontOptions(9.0f));
     juce::String txt;
     txt << (scene.cut >= 1000.0f ? juce::String(scene.cut / 1000.0f, 1) + "k" : juce::String((int) scene.cut))
         << "  res " << juce::String(scene.res, 1)
@@ -91,5 +93,11 @@ void MorphPadView::paint(juce::Graphics& g)
         << "  flg " << (int) scene.flg
         << "  phs " << (int) scene.phs
         << "  sht " << (int) scene.sht;
-    g.drawText(txt, 4, getHeight() / 2 - 7, getWidth() - 8, 14, juce::Justification::centred);
+
+    auto strip = getLocalBounds().removeFromBottom(16).reduced(78, 0);   // clear of the corner labels
+    g.setColour(kWell.withAlpha(0.85f));                                 // so a dot behind it can't
+    g.fillRect(strip);                                                   // make it unreadable
+    g.setColour(kSub);
+    g.setFont(juce::FontOptions(9.0f));
+    g.drawText(txt, strip, juce::Justification::centred);
 }

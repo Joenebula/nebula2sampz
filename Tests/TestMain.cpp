@@ -28,6 +28,7 @@
 #include "../Source/dsp/MorphEngine.h"
 #include "../Source/dsp/RackGraph.h"
 #include "../Source/dsp/RackModules.h"
+#include "../Source/Theme.h"
 
 #include <iostream>
 #include <cmath>
@@ -2697,6 +2698,112 @@ int main()
 
             check(std::abs(p->getValue() - saved) < 0.1f,
                   "bool: a bool survives save/restore exactly (the pluginval failure)");
+        }
+    }
+
+    // ---- LAYOUT: controls must be big enough to actually be controls ----
+    //
+    // Every UI fault on this project has been found by the user squinting at a screenshot:
+    // a Sens knob that rendered as literally nothing, "Space On" truncated to "S...", a
+    // Morph readout drawn underneath the dot. I cannot see the UI, so these tests check the
+    // two mechanical properties that catch that whole family:
+    //   1. no control is laid out smaller than its content needs
+    //   2. no two controls overlap
+    //
+    // The specific trap they encode: juce::Rectangle::removeFromLeft does NOT fail when the
+    // rectangle is exhausted — it silently returns whatever's left. So a row that runs out
+    // of width produces a squashed control, not an error. Widening "Space On" from 86 to
+    // 100 px did nothing at all, because only 62 px were ever available.
+    {
+        using namespace Nebula2;
+
+        struct Probe : juce::Component
+        {
+            juce::ToggleButton spaceOn { "Space On" };
+            juce::ToggleButton fxOn    { "FX On" };
+            juce::ToggleButton limiter { "Limiter" };
+            juce::ToggleButton rackOn  { "Rack On" };
+            juce::ToggleButton gridOn  { "Grid On" };
+            juce::ToggleButton morphOn { "Morph On" };
+        };
+        Probe p;
+
+        // WHAT THIS CAN AND CANNOT DO — read this before trusting it.
+        //
+        // This binary's font metrics do NOT match the plugin's. Measured here, "Space On"
+        // is 35px wide, making the toggle "need" 62px — and 62px is precisely the width at
+        // which it truncated to "S..." in the real UI. So the estimate isn't merely
+        // imprecise, it is known to UNDERESTIMATE, and a test asserting
+        // `given >= measured` passes while the control is visibly broken.
+        //
+        // I wrote that test first, and the mutation caught it: shrinking the width back to
+        // the broken 62 still passed. A check that appears to verify but doesn't is the
+        // trap this project keeps hitting, and I nearly added a fresh one.
+        //
+        // So: this does NOT verify rendering — nothing in a headless binary can. It demands
+        // HEADROOM over a ruler known to run short, which catches a grossly over-committed
+        // row while staying honest that only a screenshot proves the pixels.
+        auto estimatedToggleWidth = [](const juce::ToggleButton& b)
+        {
+            return 15 + 8 + juce::GlyphArrangement::getStringWidthInt(Theme::ui(11.0f), b.getButtonText()) + 4;
+        };
+        // 1.5x isn't numerology tuned to make one case pass — it's the cost of measuring
+        // with the wrong ruler. Fonts differ across machines and DPI too: a layout with no
+        // headroom is one font substitution away from truncating on someone else's screen.
+        auto minToggleWidth = [&](const juce::ToggleButton& b)
+        {
+            return (int) std::ceil((float) estimatedToggleWidth(b) * 1.5f);
+        };
+
+        // The widths PluginEditor::layoutContent actually hands each toggle. Keep this in
+        // step with it — that IS the test.
+        struct Case { const juce::ToggleButton* b; int given; const char* where; };
+        const Case cases[] = {
+            { &p.spaceOn, 110, "Space On (rendered as 'S...' at 62)" },
+            { &p.fxOn,     90, "FX On" },
+            { &p.limiter,  90, "Limiter" },
+            { &p.rackOn,   96, "Rack On (was 80 — this test found it)" },
+            { &p.gridOn,   96, "Grid On (was 82 — likewise)" },
+            { &p.morphOn, 110, "Morph On" },
+        };
+
+        bool allFit = true;
+        String tooSmall;
+        for (const auto& c : cases)
+        {
+            const int need = minToggleWidth(*c.b);
+            if (c.given < need)
+            {
+                allFit = false;
+                if (tooSmall.isEmpty())
+                    tooSmall = String(c.where) + " needs " + String(need) + ", has " + String(c.given);
+            }
+        }
+        check(allFit, "layout: every toggle has room for its own label"
+                      + (tooSmall.isEmpty() ? String() : " — " + tooSmall));
+
+        // And the arithmetic that actually bit. Panel 660 wide, body reduced 12 a side,
+        // panel reduced 10 a side -> 616 usable; three knobs at 90 leave 334 on the right.
+        //
+        // This is what proved the row was UNFIXABLE by reordering: the combos alone want
+        // ~272 of those 334, so the toggle could never have its ~93. Hence two rows. The
+        // check is that each row fits on its own.
+        {
+            const int usable = 660 - 24 - 20;
+            const int right  = usable - (3 * 90 + 12);
+
+            const int rowA = 50 + 100 + 12 + 36 + 74;      // revChar + sync labels and boxes
+            check(rowA <= right,
+                  "layout: the Space combos row fits (" + String(rowA) + " in " + String(right) + ")");
+
+            check(110 >= minToggleWidth(p.spaceOn) && 110 <= right,
+                  "layout: Space On gets its own row and fits it");
+
+            // The old single-row total, kept as the evidence: it never fit.
+            const int oldSingleRow = rowA + 12 + minToggleWidth(p.spaceOn);
+            check(oldSingleRow > right,
+                  "layout: the old single row genuinely didn't fit — reordering wouldn't have saved it ("
+                  + String(oldSingleRow) + " wanted, " + String(right) + " available)");
         }
     }
 

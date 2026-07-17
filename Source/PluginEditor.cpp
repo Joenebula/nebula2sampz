@@ -79,9 +79,6 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     sensitivity.slider.textFromValueFunction = [](double v) { return juce::String(juce::roundToInt(v * 100.0)) + " %"; };
     sensitivity.slider.valueFromTextFunction = [](const juce::String& t) { return t.getDoubleValue() / 100.0; };
     sensitivity.slider.updateText();
-    sensitivity.slider.textFromValueFunction = [](double v) { return juce::String(juce::roundToInt(v * 100.0)) + " %"; };
-    sensitivity.slider.valueFromTextFunction = [](const juce::String& t) { return t.getDoubleValue() / 100.0; };
-    sensitivity.slider.updateText();
 
     content.addAndMakeVisible(waveform);
 
@@ -490,7 +487,7 @@ void Nebula2AudioProcessorEditor::layoutContent()
         {
             auto mp = body.removeFromTop(224).reduced(12);
             mp.removeFromTop(14);
-            padOnButton.setBounds(mp.removeFromTop(22).removeFromLeft(96));
+            padOnButton.setBounds(mp.removeFromTop(22).removeFromLeft(110));
             mp.removeFromTop(6);
             morphPad.setBounds(mp);
         }
@@ -500,7 +497,7 @@ void Nebula2AudioProcessorEditor::layoutContent()
             auto gp = body.removeFromTop(194).reduced(12);
             gp.removeFromTop(14);
             auto gRow = gp.removeFromTop(24);
-            gridOnButton.setBounds(gRow.removeFromLeft(82));
+            gridOnButton.setBounds(gRow.removeFromLeft(96));
             gRow.removeFromLeft(10);
             gridStepsLabel.setBounds(gRow.removeFromLeft(40));
             gridStepsBox.setBounds(gRow.removeFromLeft(66));
@@ -515,7 +512,7 @@ void Nebula2AudioProcessorEditor::layoutContent()
             auto rp = body.removeFromTop(454).reduced(12);
             rp.removeFromTop(14);
             auto rRow = rp.removeFromTop(24);
-            rackOnButton.setBounds(rRow.removeFromLeft(80));
+            rackOnButton.setBounds(rRow.removeFromLeft(96));
             rRow.removeFromLeft(8);
             rackClearButton.setBounds(rRow.removeFromLeft(86));
             rRow.removeFromLeft(12);
@@ -576,8 +573,8 @@ void Nebula2AudioProcessorEditor::layoutContent()
     charLabel.setBounds(cRow.removeFromLeft(64));
     charBox.setBounds(cRow.removeFromLeft(100).reduced(0, 1));
     cRow.removeFromLeft(16);
-    fxOnButton.setBounds(cRow.removeFromLeft(80));
-    limiterButton.setBounds(cRow.removeFromLeft(80));
+    fxOnButton.setBounds(cRow.removeFromLeft(90));
+    limiterButton.setBounds(cRow.removeFromLeft(90));
 
     // --- Space panel ---
     body.removeFromTop(8);
@@ -593,13 +590,26 @@ void Nebula2AudioProcessorEditor::layoutContent()
         k->slider.setBounds(cell.reduced(3));
     }
     sRow.removeFromLeft(12);
-    auto right = sRow.removeFromTop(24);
-    revCharLabel.setBounds(right.removeFromLeft(50));
-    revCharBox.setBounds(right.removeFromLeft(96).reduced(0, 1));
-    right.removeFromLeft(10);
-    dlySyncLabel.setBounds(right.removeFromLeft(36));
-    dlySyncBox.setBounds(right.removeFromLeft(70).reduced(0, 1));
-    right.removeFromLeft(10);
-    spaceOnButton.setBounds(right.removeFromLeft(100));   // 86 truncated it to "Space..."
+    auto right = sRow;
+
+    // TWO ROWS, not one. The old single row asked for 100px at the end when 62 were left —
+    // and juce::Rectangle::removeFromLeft does NOT fail on an exhausted rectangle, it
+    // silently returns whatever remains. So "Space On" rendered as "S...", and widening it
+    // 86 -> 100 changed nothing, because the number I was editing was never the constraint.
+    //
+    // Reordering wouldn't have saved it either: three knobs (270) + both combos (~242) +
+    // the toggle (~94) + gaps needs ~620px in a 616px row. The row was over-committed, so
+    // something had to be squashed whichever order I laid it out in. There's plenty of
+    // vertical room here — use it.
+    auto rowA = right.removeFromTop(24);
+    revCharLabel.setBounds(rowA.removeFromLeft(50));
+    revCharBox.setBounds(rowA.removeFromLeft(100).reduced(0, 1));
+    rowA.removeFromLeft(12);
+    dlySyncLabel.setBounds(rowA.removeFromLeft(36));
+    dlySyncBox.setBounds(rowA.removeFromLeft(74).reduced(0, 1));
+
+    right.removeFromTop(8);
+    auto rowB = right.removeFromTop(24);
+    spaceOnButton.setBounds(rowB.removeFromLeft(110));
 
 }
