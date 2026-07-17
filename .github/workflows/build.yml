@@ -28,6 +28,12 @@ jobs:
       # state round-trips, parameter fuzzing, buffer-size and sample-rate changes, editor
       # open/close under load, threading. Strictness 10 is the maximum. It catches the class
       # of bug that only ever shows up in someone else's DAW.
+      #
+      # RUN IT 5 TIMES. pluginval RANDOMISES its parameter values, so a single green run is
+      # one sample, not a pass. This mattered: a real state-restoration bug (bool params
+      # keeping an un-snapped float) failed 1-3 tests PER RUN on a random subset of the
+      # bools, and a single lucky run had it recorded as "passed at strictness 10, first
+      # try" for weeks. One run cannot distinguish "correct" from "correct this time".
       - name: pluginval (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -38,8 +44,12 @@ jobs:
           $vst3 = Get-ChildItem -Recurse -Directory -Filter "Nebula2.vst3" -Path build | Select-Object -First 1
           if (-not $vst3) { throw "no VST3 found to validate" }
           Write-Host "validating $($vst3.FullName)"
-          & $exe.FullName --strictness-level 10 --validate-in-process --timeout-ms 600000 --validate "$($vst3.FullName)"
-          if ($LASTEXITCODE -ne 0) { throw "pluginval failed with $LASTEXITCODE" }
+          for ($i = 1; $i -le 5; $i++) {
+            Write-Host "--- pluginval run $i of 5"
+            & $exe.FullName --strictness-level 10 --validate-in-process --timeout-ms 600000 --validate "$($vst3.FullName)"
+            if ($LASTEXITCODE -ne 0) { throw "pluginval FAILED on run $i of 5 (exit $LASTEXITCODE). A randomised gate failing intermittently is a finding, not noise — do not re-roll it." }
+          }
+          Write-Host "pluginval: 5/5 passed at strictness 10"
 
       - name: pluginval (macOS)
         if: runner.os == 'macOS'
@@ -49,7 +59,14 @@ jobs:
           VST3=$(find build -name "Nebula2.vst3" -maxdepth 6 | head -1)
           if [ -z "$VST3" ]; then echo "no VST3 found to validate"; exit 1; fi
           echo "validating $VST3"
-          ./pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate-in-process --timeout-ms 600000 --validate "$VST3"
+          for i in 1 2 3 4 5; do
+            echo "--- pluginval run $i of 5"
+            if ! ./pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate-in-process --timeout-ms 600000 --validate "$VST3"; then
+              echo "pluginval FAILED on run $i of 5. A randomised gate failing intermittently is a finding, not noise — do not re-roll it."
+              exit 1
+            fi
+          done
+          echo "pluginval: 5/5 passed at strictness 10"
 
       - name: Upload VST3
         uses: actions/upload-artifact@v4
