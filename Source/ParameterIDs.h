@@ -15,6 +15,13 @@ namespace Nebula2::ParamID
     inline constexpr auto sliceCount = "sliceCount";  // choice: 4/8/16/32/64
     inline constexpr auto sensitivity = "sens";       // float 0..1 (transient mode)
 
+    // --- Morph pad ---
+    // The pad POSITION is automatable (it's the performance gesture). The four scenes it
+    // blends are state-chunk data, not params — see MorphPad.h for that decision.
+    inline constexpr auto padOn = "padOn";    // bool
+    inline constexpr auto padX  = "padX";     // float 0..1
+    inline constexpr auto padY  = "padY";     // float 0..1
+
     // --- FX grid sequencer ---
     inline constexpr auto gridOn    = "gridOn";     // bool
     inline constexpr auto gridSteps = "gridSteps";  // choice: 8/16/32 (1/16-note spacing)

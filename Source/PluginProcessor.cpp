@@ -28,6 +28,9 @@ Nebula2AudioProcessor::Nebula2AudioProcessor()
     sensitivityParam = apvts.getRawParameterValue(Nebula2::ParamID::sensitivity);
     gridOnParam      = apvts.getRawParameterValue(Nebula2::ParamID::gridOn);
     gridStepsParam   = apvts.getRawParameterValue(Nebula2::ParamID::gridSteps);
+    padOnParam       = apvts.getRawParameterValue(Nebula2::ParamID::padOn);
+    padXParam        = apvts.getRawParameterValue(Nebula2::ParamID::padX);
+    padYParam        = apvts.getRawParameterValue(Nebula2::ParamID::padY);
 }
 
 int Nebula2AudioProcessor::gridStepsFromChoice(int choiceIndex) noexcept
@@ -112,6 +115,8 @@ void Nebula2AudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
     colourChain.reset();
     space.prepare(spec);
     space.reset();
+    morph.prepare(spec);
+    morph.reset();
 
     // Preallocate the layer buses here (never in the audio callback).
     sampleBus.setSize(2, samplesPerBlock, false, false, true);
@@ -225,6 +230,22 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
         colourChain.process(buffer, cp);
     }
 
+    // Morph: blend the four scenes at the pad's position and run the multi-effect.
+    // Sits after Colour and before Space, so its filter/drive shape the coloured signal
+    // and its `spc` can feed the sends.
+    float morphSpaceSend = 0.0f;
+    {
+        const bool padOn = padOnParam != nullptr && padOnParam->load() > 0.5f;
+        if (padOn)
+        {
+            const float x = padXParam != nullptr ? padXParam->load() : 0.5f;
+            const float y = padYParam != nullptr ? padYParam->load() : 0.5f;
+            const auto scene = Nebula2::blendMorph(morphScenes, x, y);
+            morph.process(buffer, scene, transport.bpm, true);
+            morphSpaceSend = scene.spc;      // the pad's own space amount
+        }
+    }
+
     // Slicing settings changed? Re-slicing allocates — hand it to the message thread.
     {
         const int mode  = sliceModeParam  != nullptr ? (int) sliceModeParam->load() : 0;
@@ -251,7 +272,10 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
         }
 
         Nebula2::SpaceProcessor::Params sp;
-        sp.revMix   = amt(revMixParam, Nebula2::GridRow::Reverb, 0.0f);   // grid can throw sends
+        // The Morph pad's own space amount adds to the reverb send, so moving the dot into
+        // a wet corner genuinely gets wetter (that's what `spc` means in a scene).
+        sp.revMix   = juce::jlimit(0.0f, 100.0f,
+                                   amt(revMixParam, Nebula2::GridRow::Reverb, 0.0f) + morphSpaceSend);
         sp.dlyMix   = amt(dlyMixParam, Nebula2::GridRow::Delay,  0.0f);
         sp.dlyFb    = dlyFbParam   != nullptr ? dlyFbParam->load()   : 40.0f;
         sp.dlySync  = (Nebula2::DelaySync) (dlySyncParam != nullptr ? juce::jlimit(0, 5, (int) dlySyncParam->load()) : 2);
@@ -284,6 +308,10 @@ void Nebula2AudioProcessor::getStateInformation(juce::MemoryBlock& destData)
     auto gridNode = state.getOrCreateChildWithName("GRID", nullptr);
     gridNode.setProperty("cells", grid.toString(), nullptr);
 
+    // Morph scenes are structured data too (see MorphPad.h) — save them explicitly.
+    auto morphNode = state.getOrCreateChildWithName("MORPH", nullptr);
+    morphNode.setProperty("scenes", Nebula2::morphScenesToString(morphScenes), nullptr);
+
     if (auto xml = state.createXml())
         copyXmlToBinary(*xml, destData);
 }
@@ -310,6 +338,9 @@ void Nebula2AudioProcessor::setStateInformation(const void* data, int sizeInByte
 
     if (auto gridNode = tree.getChildWithName("GRID"); gridNode.isValid())
         grid.fromString(gridNode.getProperty("cells").toString());
+
+    if (auto morphNode = tree.getChildWithName("MORPH"); morphNode.isValid())
+        morphScenes = Nebula2::morphScenesFromString(morphNode.getProperty("scenes").toString());
 
     apvts.replaceState(tree);
 }

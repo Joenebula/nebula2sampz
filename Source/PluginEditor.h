@@ -4,6 +4,7 @@
 #include "PluginProcessor.h"
 #include "WaveformView.h"
 #include "GridView.h"
+#include "MorphPadView.h"
 
 // A functional control surface: every live parameter, attached to the APVTS so the host
 // and the UI can never disagree (law: one source of truth — the visual derives from state).
@@ -66,6 +67,11 @@ private:
     juce::Label gridStepsLabel;
     std::unique_ptr<APVTS::ComboBoxAttachment> gridStepsAttachment;
     juce::TextButton gridClearButton { "Clear" };
+
+    // Morph pad
+    MorphPadView morphPad { processorRef };
+    juce::ToggleButton padOnButton { "Morph On" };
+    std::unique_ptr<APVTS::ButtonAttachment> padOnAttachment;
 
     // Sample layer
     WaveformView waveform { processorRef.getSampleLayer() };

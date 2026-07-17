@@ -40,6 +40,15 @@ namespace Nebula2
 
         const auto pct = [] { return juce::NormalisableRange<float>(0.0f, 100.0f, 1.0f); };
 
+        // --- Morph pad (position only; scenes live in the state chunk) ---
+        layout.add(std::make_unique<APB>(PID{ ParamID::padOn, version }, "Morph On", false));
+        layout.add(std::make_unique<APF>(
+            PID{ ParamID::padX, version }, "Morph X",
+            juce::NormalisableRange<float>(0.0f, 1.0f, 0.001f), 0.5f));
+        layout.add(std::make_unique<APF>(
+            PID{ ParamID::padY, version }, "Morph Y",
+            juce::NormalisableRange<float>(0.0f, 1.0f, 0.001f), 0.5f));
+
         // --- FX grid ---
         layout.add(std::make_unique<APB>(PID{ ParamID::gridOn, version }, "Grid On", false));
         layout.add(std::make_unique<APC>(

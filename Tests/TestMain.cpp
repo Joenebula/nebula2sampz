@@ -25,6 +25,7 @@
 #include "../Source/dsp/SampleLayer.h"
 #include "../Source/dsp/FxGrid.h"
 #include "../Source/dsp/MorphPad.h"
+#include "../Source/dsp/MorphEngine.h"
 
 #include <iostream>
 #include <cmath>
@@ -1628,6 +1629,99 @@ int main()
             const auto empty = morphScenesFromString("");
             check(std::abs(empty[2].res - defaultMorphScenes()[2].res) < 0.01f,
                   "morph state: empty input is safe");
+        }
+    }
+
+    // ---- Phase 9b: the Morph ENGINE (the pad's picture is only honest if this is) ----
+    {
+        using namespace Nebula2;
+
+        const double sr = 44100.0;
+        const int block = 512;
+
+        // A sine at `hz`, stereo, identical both sides — so a width change is measurable.
+        auto makeTone = [sr, block](float hz)
+        {
+            AudioBuffer<float> b(2, block);
+            for (int i = 0; i < block; ++i)
+            {
+                const float s = std::sin(MathConstants<float>::twoPi * hz * (float) i / (float) sr);
+                b.setSample(0, i, s);
+                b.setSample(1, i, s);
+            }
+            return b;
+        };
+        auto rms = [](const AudioBuffer<float>& b) { return b.getRMSLevel(0, 0, b.getNumSamples()); };
+
+        juce::dsp::ProcessSpec spec { sr, (juce::uint32) block, 2 };
+
+        // OFF MEANS OFF. Not "off means quiet" — bit-for-bit untouched.
+        {
+            MorphEngine e; e.prepare(spec); e.reset();
+            auto b = makeTone(1000.0f);
+            const auto before = b;
+            MorphScene dark { 200.0f, 6.0f, 90.0f, 80.0f, 80.0f, 90.0f, 30.0f, 80.0f };
+            e.process(b, dark, 120.0, false);
+            bool identical = true;
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < block; ++i)
+                    if (b.getSample(ch, i) != before.getSample(ch, i)) identical = false;
+            check(identical, "morph engine: off is bit-identical bypass, not just quiet");
+        }
+
+        // The filter must actually filter: a dark scene kills a 5k tone, an open one doesn't.
+        {
+            MorphEngine open; open.prepare(spec); open.reset();
+            MorphEngine dark; dark.prepare(spec); dark.reset();
+            // Everything neutral except cutoff, so ONLY the filter can explain the difference.
+            MorphScene sOpen { 18000.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 100.0f, 0.0f };
+            MorphScene sDark = sOpen; sDark.cut = 200.0f;
+
+            // JUCE's LadderFilter ramps cutoff over 50ms (2205 samples @44.1k). Measuring
+            // before that lands is measuring the glide, not the filter — so run past it and
+            // judge the LAST block only.
+            AudioBuffer<float> bo, bd;
+            for (int n = 0; n < 10; ++n)     // 5120 samples > the 2205-sample ramp
+            {
+                bo = makeTone(5000.0f); bd = makeTone(5000.0f);
+                open.process(bo, sOpen, 120.0, true);
+                dark.process(bd, sDark, 120.0, true);
+            }
+            check(rms(bd) < rms(bo) * 0.5f, "morph engine: a dark scene audibly kills a 5k tone");
+            check(rms(bo) > 0.1f, "morph engine: an open scene leaves the tone alone");
+        }
+
+        // Nothing here may produce a NaN/inf — one bad sample poisons the whole master bus.
+        {
+            MorphEngine e; e.prepare(spec); e.reset();
+            MorphScene hot { 300.0f, 10.0f, 100.0f, 100.0f, 100.0f, 100.0f, 200.0f, 100.0f };
+            auto b = makeTone(220.0f);
+            bool finite = true;
+            for (int n = 0; n < 20; ++n)
+            {
+                e.process(b, hot, 174.0, true);
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int i = 0; i < block; ++i)
+                        if (! std::isfinite(b.getSample(ch, i))) finite = false;
+            }
+            check(finite, "morph engine: every setting at maximum stays finite");
+        }
+
+        // Shatter is a GATE: at full depth it must silence part of the block, not all of it.
+        {
+            MorphEngine e; e.prepare(spec); e.reset();
+            MorphScene s { 18000.0f, 0.0f, 0.0f, 0.0f, 0.0f, 100.0f, 100.0f, 0.0f };
+            AudioBuffer<float> b(2, block);
+            float quietest = 1.0f, loudest = 0.0f;
+            for (int n = 0; n < 16; ++n)   // >1 bar at 120bpm, so the gate must open AND shut
+            {
+                b = makeTone(440.0f);
+                e.process(b, s, 120.0, true);
+                quietest = jmin(quietest, rms(b));
+                loudest  = jmax(loudest,  rms(b));
+            }
+            check(quietest < loudest * 0.5f, "morph engine: shatter gates the signal on and off");
+            check(loudest > 0.1f, "morph engine: shatter is a gate, not a mute");
         }
     }
 

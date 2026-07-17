@@ -8,6 +8,7 @@
 #include "dsp/SpaceProcessor.h"
 #include "dsp/SampleLayer.h"
 #include "dsp/FxGrid.h"
+#include "dsp/MorphEngine.h"
 
 // MIDI-triggered drum voices -> Colour FX -> Space send -> master chain.
 //
@@ -62,6 +63,10 @@ public:
     // audio thread.
     Nebula2::FxGrid& getGrid() noexcept { return grid; }
 
+    // Morph scenes: message-thread only (the editor edits them; the audio thread reads a
+    // blend each block). Floats, so a race yields old-or-new for one block — inaudible.
+    std::array<Nebula2::MorphScene, 4>& getMorphScenes() noexcept { return morphScenes; }
+
     // Which step is currently sounding (for the UI playhead). -1 if the grid is off.
     int getCurrentGridStep() const noexcept { return currentGridStep.load(); }
 
@@ -96,6 +101,12 @@ private:
 
     Nebula2::FxGrid grid;
     std::atomic<int> currentGridStep { -1 };
+
+    std::atomic<float>* padOnParam { nullptr };
+    std::atomic<float>* padXParam { nullptr };
+    std::atomic<float>* padYParam { nullptr };
+    Nebula2::MorphEngine morph;
+    std::array<Nebula2::MorphScene, 4> morphScenes = Nebula2::defaultMorphScenes();
 
     Nebula2::MasterProcessor masterProcessor;
 

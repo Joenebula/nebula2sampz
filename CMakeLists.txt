@@ -39,6 +39,8 @@ target_sources(Nebula2 PRIVATE
     Source/WaveformView.h
     Source/GridView.cpp
     Source/GridView.h
+    Source/MorphPadView.cpp
+    Source/MorphPadView.h
     Source/Parameters.cpp
     Source/Parameters.h
     Source/ParameterIDs.h
@@ -75,6 +77,8 @@ target_sources(Nebula2 PRIVATE
     Source/dsp/FxGrid.h
     Source/dsp/MorphPad.cpp
     Source/dsp/MorphPad.h
+    Source/dsp/MorphEngine.cpp
+    Source/dsp/MorphEngine.h
 )
 
 target_compile_definitions(Nebula2 PUBLIC
@@ -143,6 +147,8 @@ target_sources(Nebula2Tests PRIVATE
     Source/dsp/FxGrid.h
     Source/dsp/MorphPad.cpp
     Source/dsp/MorphPad.h
+    Source/dsp/MorphEngine.cpp
+    Source/dsp/MorphEngine.h
 )
 
 target_compile_definitions(Nebula2Tests PRIVATE

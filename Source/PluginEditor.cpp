@@ -86,11 +86,18 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     gridClearButton.onClick = [this] { processorRef.getGrid().clearAll(); gridView.repaint(); };
     addAndMakeVisible(gridClearButton);
 
+    // --- Morph pad ---
+    addAndMakeVisible(morphPad);
+    padOnButton.setColour(juce::ToggleButton::textColourId, kSub);
+    addAndMakeVisible(padOnButton);
+    padOnAttachment = std::make_unique<APVTS::ButtonAttachment>(
+        processorRef.getValueTreeState(), Nebula2::ParamID::padOn, padOnButton);
+
     refreshSampleInfo();
     updateSliceControlStates();
     startTimerHz(8);        // watch for slice-mode changes (incl. from host automation)
 
-    setSize(660, 810);
+    setSize(660, 980);
 }
 
 void Nebula2AudioProcessorEditor::timerCallback()
@@ -247,12 +254,17 @@ void Nebula2AudioProcessorEditor::paint(juce::Graphics& g)
     g.fillRoundedRectangle(space.toFloat(), 8.0f);
 
     body.removeFromTop(8);
+    auto morphArea = body.removeFromTop(170);
+    g.fillRoundedRectangle(morphArea.toFloat(), 8.0f);
+
+    body.removeFromTop(8);
     g.fillRoundedRectangle(body.toFloat(), 8.0f);
 
     g.setColour(kAccent);
     g.setFont(juce::FontOptions(10.0f));
     g.drawFittedText("COLOUR", colour.reduced(12, 6).removeFromTop(12), juce::Justification::topLeft, 1);
     g.drawFittedText("SPACE", space.reduced(12, 6).removeFromTop(12), juce::Justification::topLeft, 1);
+    g.drawFittedText("MORPH", morphArea.reduced(12, 6).removeFromTop(12), juce::Justification::topLeft, 1);
     g.drawFittedText("GRID", body.reduced(12, 6).removeFromTop(12), juce::Justification::topLeft, 1);
 }
 
@@ -325,6 +337,15 @@ void Nebula2AudioProcessorEditor::resized()
     dlySyncBox.setBounds(right.removeFromLeft(70).reduced(0, 1));
     right.removeFromLeft(10);
     spaceOnButton.setBounds(right.removeFromLeft(86));
+
+    // --- Morph panel ---
+    body.removeFromTop(8);
+    auto mp = body.removeFromTop(170).reduced(10);
+    mp.removeFromTop(12);
+    auto mRow = mp.removeFromTop(24);
+    padOnButton.setBounds(mRow.removeFromLeft(90));
+    mp.removeFromTop(4);
+    morphPad.setBounds(mp);
 
     // --- Grid panel ---
     body.removeFromTop(8);
