@@ -2393,6 +2393,74 @@ int main()
         }
     }
 
+    // ---- Superseded samples are reclaimed (they used to leak for the session) ----
+    {
+        using namespace Nebula2;
+        const double sr = 44100.0;
+        const int block = 512;
+
+        auto makeBreak = [](int len)
+        {
+            AudioBuffer<float> b(2, len);
+            for (int c = 0; c < 2; ++c)
+                for (int i = 0; i < len; ++i)
+                    b.setSample(c, i, 0.3f * std::sin((float) i * 0.01f));
+            return b;
+        };
+
+        SampleLayer layer;
+        layer.prepare(sr, block);
+
+        AudioBuffer<float> bus(2, block);
+        auto runAudio = [&](int blocks)
+        {
+            for (int i = 0; i < blocks; ++i) { bus.clear(); layer.render(bus, 0, block); }
+        };
+
+        // Load 20 breaks, running audio between them as a real session would. Each
+        // SampleData holds a shared_ptr to its audio, so before the fix all 20 stayed
+        // alive for the session — roughly 70MB for 10-second stereo breaks.
+        for (int i = 0; i < 20; ++i)
+        {
+            layer.loadBuffer(makeBreak(44100), sr, "break" + String(i));
+            runAudio(4);
+        }
+        check(layer.getRetainedCount() <= 2,
+              "sample: superseded breaks are reclaimed — loading 20 doesn't retain 20 (retained: "
+              + String(layer.getRetainedCount()) + ")");
+
+        // Re-slicing republishes over the SAME audio; those must be reclaimed too.
+        for (int i = 0; i < 20; ++i)
+        {
+            SampleLayer::SliceSettings s;
+            s.count = 4 + i;
+            layer.setSliceSettings(s);
+            runAudio(4);
+        }
+        check(layer.getRetainedCount() <= 2,
+              "sample: re-slicing repeatedly doesn't pile up either (retained: "
+              + String(layer.getRetainedCount()) + ")");
+
+        // The live sample must SURVIVE — a reclaim that frees what's playing is a crash,
+        // which is a far worse bug than the leak it replaces.
+        check(layer.hasSample(), "sample: the current break is never reclaimed");
+        bus.clear();
+        layer.noteOn(84, 1.0f);
+        layer.render(bus, 0, block);
+        check(bus.getMagnitude(0, block) > 0.0f, "sample: and it still plays after all that");
+
+        // With audio STOPPED the count can't advance, so nothing may be freed — we can't
+        // prove a render isn't in flight. Conservative is the correct direction here.
+        {
+            SampleLayer idle;
+            idle.prepare(sr, block);
+            idle.loadBuffer(makeBreak(4410), sr, "a");
+            idle.loadBuffer(makeBreak(4410), sr, "b");   // no render between
+            check(idle.getRetainedCount() >= 2,
+                  "sample: with audio stopped nothing is freed (can't prove no render is in flight)");
+        }
+    }
+
     // ---- REAL-TIME SAFETY: the audio path must not touch the heap ----
     {
         using namespace Nebula2;

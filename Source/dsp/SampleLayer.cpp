@@ -49,9 +49,42 @@ namespace Nebula2
             }
         }
 
+        // Stamp the OUTGOING entry with the render count as of now, BEFORE the swap, so the
+        // stamp can never be newer than the moment it stopped being current.
+        const auto stamp = renderCount.load();
+
         SampleData::Ptr held(data);
-        retained.push_back(held);          // keep alive: the audio thread may still read the old one
+        retained.push_back({ held, 0xffffffffu });   // the incoming one: never reclaimable
+                                                     // while it's current (reclaim skips it)
         current.store(data);               // publish
+
+        // Now the previous entries are all superseded: give any that were still unstamped
+        // this swap's stamp, and reclaim whatever the audio thread has provably finished.
+        for (auto& r : retained)
+            if (r.retiredAt == 0xffffffffu && r.data.get() != data)
+                r.retiredAt = stamp;
+
+        reclaimRetired();
+    }
+
+    void SampleLayer::reclaimRetired()
+    {
+        const auto now = renderCount.load();
+        auto* cur = current.load();
+
+        for (auto it = retained.begin(); it != retained.end();)
+        {
+            const bool isCurrent = it->data.get() == cur;
+            // Free only once a render has STARTED AND FINISHED since this entry was
+            // retired. A render in flight when we swapped had already loaded the old
+            // pointer; by the time the count has moved past the stamp, that render has
+            // returned. If audio is stopped the count is frozen and we free nothing —
+            // conservative, and memory comes back on the next publish once it resumes.
+            const bool settled = ! isCurrent
+                              && it->retiredAt != 0xffffffffu
+                              && now > it->retiredAt + 1;
+            it = settled ? retained.erase(it) : it + 1;
+        }
     }
 
     void SampleLayer::loadBuffer(juce::AudioBuffer<float>&& audio, double sourceSampleRate,
@@ -265,6 +298,11 @@ namespace Nebula2
 
     void SampleLayer::render(juce::AudioBuffer<float>& bus, int startSample, int numSamples) noexcept
     {
+        // Tells the message thread this render has begun, so it knows which retired
+        // SampleData can no longer be in flight. Bumped unconditionally and first — an
+        // early return still counts as "this render is done with the old pointer".
+        renderCount.fetch_add(1, std::memory_order_release);
+
         auto* s = current.load();
         if (s == nullptr || numSamples <= 0) return;
 

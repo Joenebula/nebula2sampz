@@ -66,6 +66,11 @@ namespace Nebula2
         // Time-stretch on/off. Off = classic repitch (slice plays at its own speed).
         void setStretchEnabled(bool shouldStretch) noexcept { stretchEnabled = shouldStretch; }
 
+        // How many superseded SampleData are still held. Exposed for tests: without it,
+        // "the leak is fixed" is a claim rather than an observation. Should stay small
+        // while audio is running, however many breaks you load.
+        int getRetainedCount() const noexcept { return (int) retained.size(); }
+
         bool hasSample() const noexcept { return current.load() != nullptr; }
         juce::String getSampleName() const;
 
@@ -133,7 +138,28 @@ namespace Nebula2
         };
 
         juce::AudioFormatManager formats;
-        std::vector<SampleData::Ptr> retained;      // message thread only
+
+        // Superseded SampleData, kept alive until we can PROVE the audio thread has moved
+        // on. It used to be a plain vector that only ever grew: since each SampleData holds
+        // a shared_ptr to its audio, every break you loaded stayed in memory for the whole
+        // session (~3.5MB per 10-second stereo break — 20 of them is 70MB).
+        //
+        // Reclaiming safely is the whole difficulty: the audio thread reads `current` as a
+        // RAW pointer, so a refcount can't tell us whether a render is mid-flight on one.
+        // Hence renderCount, which the audio thread bumps once per render. A retired entry
+        // is freed only once the count has advanced past the value it had when it was
+        // retired — i.e. the audio thread has completed a render that started after the
+        // swap, so it cannot still be holding the old pointer. If audio is stopped the
+        // count doesn't move and nothing is freed, which is the conservative direction.
+        struct Retired
+        {
+            SampleData::Ptr  data;
+            std::uint32_t    retiredAt;   // renderCount when it stopped being current
+        };
+        std::vector<Retired> retained;              // message thread only
+        std::atomic<std::uint32_t> renderCount { 0 };
+        void reclaimRetired();                      // message thread only
+
         std::atomic<SampleData*> current { nullptr };
         std::array<Voice, maxVoices> voices;
         double hostRate = 44100.0;
