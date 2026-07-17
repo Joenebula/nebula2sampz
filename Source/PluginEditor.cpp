@@ -140,7 +140,9 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     addAndMakeVisible(auditionButton);
 
     // --- tabs ---
-    const char* names[] = { "PLAY", "MORPH", "GRID", "RACK" };
+    // First tab is "SAMPLE", not "PLAY": it selects the sample/colour/space PAGE, and a tab
+    // labelled PLAY read like an audition button (that's now the real ▶ Play in the header).
+    const char* names[] = { "SAMPLE", "MORPH", "GRID", "RACK" };
     for (size_t i = 0; i < tabs.size(); ++i)
     {
         auto& t = tabs[i];
