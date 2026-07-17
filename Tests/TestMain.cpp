@@ -858,6 +858,56 @@ int main()
             check(settled(0.0f, 200.0f) > settled(100.0f, 200.0f) * 2.0f,
                   "colour: tone closed resonates at its cutoff (200 Hz peak)");
         }
+
+        // Chain ORDER — and a genuinely discriminating test, because my first attempt was
+        // NOT. It measured HF with Tone closed and compared to Tone open; but closing Tone
+        // dulls the pre-crush signal in EITHER order, so it passed for both. A mutation
+        // (crush before tone) sailed through it. A check that can't fail for the wrong
+        // answer is worthless — the trap this project keeps re-finding.
+        //
+        // The order is: drive -> squeeze -> tone -> crush -> width (prototype). Tone is
+        // BEFORE crush, so the crush grit is NOT filtered and survives to the output. The
+        // discriminator: feed a LOW sine that passes a closed Tone, crush it hard, and check
+        // the grit SURVIVES. If crush ran before Tone (the old/wrong order), closing Tone
+        // would strip that grit.
+        {
+            ColourChain chain;
+            juce::dsp::ProcessSpec spec { 44100.0, 512, 2 };
+            chain.prepare(spec);
+
+            auto outputHF = [&](float crushVal)
+            {
+                chain.reset();
+                float hf = 0.0f;
+                for (int blk = 0; blk < 12; ++blk)
+                {
+                    AudioBuffer<float> b(2, 512);
+                    // 150 Hz — below the closed-Tone cutoff (~200 Hz), so the fundamental
+                    // passes regardless of order. Any HF at the output is crush grit.
+                    for (int i = 0; i < 512; ++i)
+                    {
+                        const float s = 0.5f * std::sin(MathConstants<float>::twoPi * 150.0f * (float) i / 44100.0f);
+                        b.setSample(0, i, s); b.setSample(1, i, s);
+                    }
+                    ColourChain::Params p;
+                    p.on = true; p.crush = crushVal; p.tone = 0.0f;   // Tone CLOSED throughout
+                    chain.process(b, p);
+                    if (blk >= 8)
+                        for (int i = 1; i < 512; ++i)
+                            hf = juce::jmax(hf, std::abs(b.getSample(0, i) - b.getSample(0, i - 1)));
+                }
+                return hf;
+            };
+
+            const float grit    = outputHF(90.0f);   // heavy crush, Tone closed
+            const float noGrit  = outputHF(0.0f);     // no crush, Tone closed — just the sine
+            // Tone is BEFORE crush, so the grit reaches the output: heavy-crush HF must be
+            // well above the no-crush baseline. If crush ran BEFORE a closed Tone, the grit
+            // would be filtered out and these would be nearly equal — which is what the
+            // mutation produces, and what this now catches.
+            check(grit > noGrit * 3.0f,
+                  "colour: crush grit survives a closed Tone — crush is AFTER Tone (chain order)");
+        }
     }
 
     // ---------------------------------------------------------------------------------

@@ -34,6 +34,13 @@ namespace Nebula2
         const int numSamples  = buffer.getNumSamples();
         const int numChannels = buffer.getNumChannels();
 
+        // The prototype's Colour signal order is:
+        //   pre-gain -> drive(shaper) -> squeeze(comp) -> tone(filter) -> crush -> width -> post
+        // An earlier port ran crush+width right after drive (because the Saturator bundled
+        // all three), which put Tone AFTER crush — so Tone filtered the crush grit the
+        // prototype leaves raw, and the compressor reacted to the crushed signal instead of
+        // the clean one. Matching the order restores both behaviours.
+
         // 1. Drive INTO the shaper (the prototype's staging).
         preGain.setTargetValue(1.0f + d * (ch == DriveChar::Fold ? 2.5f : 5.0f));
         for (int i = 0; i < numSamples; ++i)
@@ -43,14 +50,17 @@ namespace Nebula2
                 buffer.setSample(c, i, buffer.getSample(c, i) * g);
         }
 
-        // 2. Shaper (oversampled) + crush + width.
-        saturator.process(buffer, d, ch, cr, w);
+        // 2. Drive shaper only (oversampled).
+        saturator.processDrive(buffer, d, ch);
 
-        // 3. Squeeze, then tone.
+        // 3. Squeeze, then tone — BEFORE crush/width, as the prototype wires it.
         compressor.process(buffer, sq);
         toneFilter.process(buffer, tn);
 
-        // 4. Compensate for the drive boost (last in the chain, as in the prototype).
+        // 4. Crush + width, after tone.
+        saturator.processCrushWidth(buffer, cr, w);
+
+        // 5. Compensate for the drive boost (last in the chain, as in the prototype).
         postGain.setTargetValue(1.0f - d * 0.45f);
         for (int i = 0; i < numSamples; ++i)
         {

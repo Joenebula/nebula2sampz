@@ -24,6 +24,17 @@ namespace Nebula2
         void reset();
 
         // driveAmt/crushAmt in 0..1, width in 0..2.
+        //
+        // The two halves are separable BY DESIGN. The prototype's Colour order is
+        // drive -> squeeze -> tone -> crush -> width, so ColourChain runs the drive, then
+        // its own compressor and tone filter, THEN comes back for crush+width. The combined
+        // process() does drive-then-crush+width back-to-back, which is the WRONG order for
+        // the Colour chain — it's kept only for callers that genuinely want both at once.
+        void processDrive(juce::AudioBuffer<float>& buffer,
+                          float driveAmt, DriveChar character) noexcept;
+        void processCrushWidth(juce::AudioBuffer<float>& buffer,
+                               float crushAmt, float width) noexcept;
+
         void process(juce::AudioBuffer<float>& buffer,
                      float driveAmt, DriveChar character,
                      float crushAmt, float width) noexcept;

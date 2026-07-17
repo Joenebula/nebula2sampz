@@ -58,14 +58,10 @@ namespace Nebula2
         return oversampling != nullptr ? (int) oversampling->getLatencyInSamples() : 0;
     }
 
-    void Saturator::process(juce::AudioBuffer<float>& buffer,
-                            float driveAmt, DriveChar character,
-                            float crushAmt, float width) noexcept
+    void Saturator::processDrive(juce::AudioBuffer<float>& buffer,
+                                 float driveAmt, DriveChar character) noexcept
     {
-        const int numSamples  = buffer.getNumSamples();
-        const int numChannels = buffer.getNumChannels();
-
-        // --- 1. Oversampled drive (skipped entirely when there's no drive) ---
+        // Oversampled drive (skipped entirely when there's no drive).
         if (driveAmt >= 0.01f && oversampling != nullptr)
         {
             juce::dsp::AudioBlock<float> block(buffer);
@@ -82,8 +78,23 @@ namespace Nebula2
 
             oversampling->processSamplesDown(block);
         }
+    }
 
-        // --- 2. Bit-crush (ZOH + reconstruction LP) and mid/side width, at base rate ---
+    void Saturator::process(juce::AudioBuffer<float>& buffer,
+                            float driveAmt, DriveChar character,
+                            float crushAmt, float width) noexcept
+    {
+        processDrive(buffer, driveAmt, character);
+        processCrushWidth(buffer, crushAmt, width);
+    }
+
+    void Saturator::processCrushWidth(juce::AudioBuffer<float>& buffer,
+                                      float crushAmt, float width) noexcept
+    {
+        const int numSamples  = buffer.getNumSamples();
+        const int numChannels = buffer.getNumChannels();
+
+        // Bit-crush (ZOH + reconstruction LP) and mid/side width, at base rate.
         const bool doCrush = crushAmt > 0.0f;
         const bool doWidth = std::abs(width - 1.0f) > 1.0e-6f;
         if (! doCrush && ! doWidth)

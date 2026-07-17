@@ -11,7 +11,11 @@ namespace Nebula2
         delay.prepare(stereo);
         delay.setMaximumDelayInSamples(juce::jmax(64, (int) (sampleRate * 4.0)));
 
-        const auto damp = juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 4200.0f, 0.707f);
+        // 5200 Hz to match the prototype's ping-pong feedback damping (it was 4200 here —
+        // darker echoes than the reference). NOTE: the prototype filters only the L->R
+        // feedback path and leaves R->L raw; this port damps both, which is the remaining
+        // stereo-topology divergence (D7) left for the user's ear.
+        const auto damp = juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 5200.0f, 0.707f);
         dampL.prepare(spec);
         dampR.prepare(spec);
         dampL.coefficients = damp;

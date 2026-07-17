@@ -78,8 +78,10 @@ namespace Nebula2
             {
                 auto* out = buffer.getWritePointer(c);
                 const auto* wet = wetScratch.getReadPointer(c);
+                // x1.1 on the delay send, matching the prototype's dlyWet gain. Without it
+                // the echoes sat ~0.8 dB under the prototype at the same Mix.
                 for (int i = 0; i < numSamples; ++i)
-                    out[i] += (wet[i] - out[i]) * dlyMix;
+                    out[i] += (wet[i] - out[i]) * dlyMix * 1.1f;
             }
         }
 
@@ -96,8 +98,10 @@ namespace Nebula2
             {
                 auto* out = buffer.getWritePointer(c);
                 const auto* wet = wetScratch.getReadPointer(c);
+                // x1.35 on the reverb send, matching the prototype's revWet gain — it sat
+                // ~2.6 dB under the prototype at the same Mix without it.
                 for (int i = 0; i < numSamples; ++i)
-                    out[i] += wet[i] * revMix;
+                    out[i] += wet[i] * revMix * 1.35f;
             }
         }
     }
