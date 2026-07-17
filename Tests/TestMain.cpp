@@ -27,6 +27,7 @@
 #include "../Source/dsp/MorphPad.h"
 #include "../Source/dsp/MorphEngine.h"
 #include "../Source/dsp/RackGraph.h"
+#include "../Source/dsp/RackModules.h"
 
 #include <iostream>
 #include <cmath>
@@ -1900,6 +1901,283 @@ int main()
             // A saved file that predates the no-loops rule must not be able to smuggle one in.
             const auto loop = RackGraph::fromString("src:out>flt:in;flt:out>cmb:in;cmb:out>flt:in|");
             check(loop.getCables().size() == 2, "rack state: a saved loop is dropped on load, not honoured");
+        }
+    }
+
+    // ---- Phase 10b: the rack's modules actually sound ----
+    {
+        using namespace Nebula2;
+
+        const double sr = 44100.0;
+        const int block = 512;
+        juce::dsp::ProcessSpec spec { sr, (juce::uint32) block, 2 };
+
+        auto P = [](const char* s) { return parsePort(s); };
+        auto makeTone = [sr, block](float hz)
+        {
+            AudioBuffer<float> b(2, block);
+            for (int i = 0; i < block; ++i)
+            {
+                const float s = 0.5f * std::sin(MathConstants<float>::twoPi * hz * (float) i / (float) sr);
+                b.setSample(0, i, s); b.setSample(1, i, s);
+            }
+            return b;
+        };
+        auto rms = [](const AudioBuffer<float>& b) { return b.getRMSLevel(0, 0, b.getNumSamples()); };
+
+        // --- vowel table: the numbers that make it talk ---
+        {
+            float f[3];
+            vowelFormantsAt(0.0f, f);
+            check(std::abs(f[0] - 730.0f) < 0.5f, "rack vowel: A is the real A formant");
+            vowelFormantsAt(4.0f, f);
+            check(std::abs(f[0] - 300.0f) < 0.5f, "rack vowel: U is the real U formant");
+            vowelFormantsAt(0.5f, f);
+            check(std::abs(f[0] - 630.0f) < 0.5f, "rack vowel: it morphs BETWEEN vowels, not snaps");
+            vowelFormantsAt(-3.0f, f);
+            check(std::abs(f[0] - 730.0f) < 0.5f, "rack vowel: out-of-range clamps, never reads off the table");
+            vowelFormantsAt(99.0f, f);
+            check(std::abs(f[0] - 300.0f) < 0.5f, "rack vowel: high out-of-range clamps too");
+        }
+
+        // --- the wavefolder folds rather than clips ---
+        {
+            check(std::abs(foldSample(0.0f, 0.5f, 0.0f)) < 1e-6f, "rack folder: silence in, silence out");
+            // A clipper is monotonic; a folder is NOT — that's the whole point. Pushed hard,
+            // a bigger input must somewhere give a SMALLER output.
+            bool foldedBack = false;
+            float prev = foldSample(0.0f, 1.0f, 0.0f);
+            for (float x = 0.01f; x <= 1.0f; x += 0.01f)
+            {
+                const float y = foldSample(x, 1.0f, 0.0f);
+                if (y < prev - 0.01f) foldedBack = true;
+                prev = y;
+            }
+            check(foldedBack, "rack folder: it FOLDS (non-monotonic), it isn't just a clipper");
+            bool bounded = true;
+            for (float x = -2.0f; x <= 2.0f; x += 0.05f)
+                if (std::abs(foldSample(x, 1.0f, 0.5f)) > 1.0f + 1e-5f) bounded = false;
+            check(bounded, "rack folder: output never escapes -1..1");
+        }
+
+        // --- an unpatched rack does NOT silence the track ---
+        {
+            RackEngine e; e.prepare(spec); e.reset();
+            RackGraph g; RackDials d;
+            auto b = makeTone(440.0f);
+            const auto before = b;
+            e.process(b, g, d);
+            bool identical = true;
+            for (int i = 0; i < block; ++i)
+                if (b.getSample(0, i) != before.getSample(0, i)) identical = false;
+            check(identical, "rack: an unpatched rack leaves the beat bit-identical");
+        }
+
+        // --- a patched rack passes audio ---
+        {
+            RackEngine e; e.prepare(spec); e.reset();
+            RackGraph g; RackDials d;
+            g.addCable(P("src:out"), P("eq:in"));
+            g.addCable(P("eq:out"),  P("out:in"));
+            auto b = makeTone(440.0f);
+            e.process(b, g, d);
+            check(rms(b) > 0.1f, "rack: a patched rack passes the beat through");
+        }
+
+        // --- a rack patched to nowhere leaves the beat alone (not silence) ---
+        {
+            RackEngine e; e.prepare(spec); e.reset();
+            RackGraph g; RackDials d;
+            g.addCable(P("src:out"), P("flt:in"));   // dead-ends
+            auto b = makeTone(440.0f);
+            const auto before = b;
+            e.process(b, g, d);
+            check(std::abs(rms(b) - rms(before)) < 1e-6f,
+                  "rack: a dead-ending patch doesn't silence you — the dry beat survives");
+        }
+
+        // --- the filter filters ---
+        {
+            RackGraph g; RackDials d;
+            g.addCable(P("src:out"), P("flt:in"));
+            g.addCable(P("flt:out"), P("out:in"));
+
+            RackEngine dark; dark.prepare(spec); dark.reset();
+            RackDials dd = d; dd.fltCut = 200.0f; dd.fltType = 0;
+            AudioBuffer<float> bd;
+            for (int i = 0; i < 8; ++i) { bd = makeTone(6000.0f); dark.process(bd, g, dd); }
+
+            RackEngine open; open.prepare(spec); open.reset();
+            RackDials od = d; od.fltCut = 18000.0f; od.fltType = 0;
+            AudioBuffer<float> bo;
+            for (int i = 0; i < 8; ++i) { bo = makeTone(6000.0f); open.process(bo, g, od); }
+
+            check(rms(bd) < rms(bo) * 0.5f, "rack filter: a low cutoff kills a 6k tone");
+            check(rms(bo) > 0.05f, "rack filter: an open cutoff passes it");
+        }
+
+        // --- bypass passes through dry ---
+        {
+            RackGraph g; RackDials d;
+            d.fltCut = 200.0f;
+            g.addCable(P("src:out"), P("flt:in"));
+            g.addCable(P("flt:out"), P("out:in"));
+            g.setBypassed(ModuleId::flt, true);
+
+            RackEngine e; e.prepare(spec); e.reset();
+            AudioBuffer<float> b;
+            for (int i = 0; i < 4; ++i) { b = makeTone(6000.0f); e.process(b, g, d); }
+            check(rms(b) > 0.2f, "rack: a bypassed filter passes dry — off means off, not silent");
+        }
+
+        // --- BRANCHES SUM. This is what the per-module buffers are for. ---
+        {
+            RackDials d;
+            RackGraph one;
+            one.addCable(P("src:out"), P("eq:in"));
+            one.addCable(P("eq:out"),  P("out:in"));
+
+            RackGraph two;
+            two.addCable(P("src:out"), P("eq:in"));
+            two.addCable(P("eq:out"),  P("out:in"));
+            two.addCable(P("src:out"), P("cho:in"));   // a second, parallel branch
+            two.addCable(P("cho:out"), P("out:in"));
+
+            RackEngine e1; e1.prepare(spec); e1.reset();
+            RackEngine e2; e2.prepare(spec); e2.reset();
+            auto b1 = makeTone(440.0f), b2 = makeTone(440.0f);
+            e1.process(b1, one, d);
+            e2.process(b2, two, d);
+            check(rms(b2) > rms(b1) * 1.1f,
+                  "rack: two branches into the out SUM — a branch isn't overwritten");
+        }
+
+        // --- runaway feedback is caught by the brick wall ---
+        {
+            RackGraph g; RackDials d;
+            d.echFb = 100.0f; d.echMix = 100.0f; d.cmbFb = 100.0f; d.cmbMix = 100.0f;
+            d.outLvl = 100.0f;
+            g.addCable(P("src:out"), P("cmb:in"));
+            g.addCable(P("cmb:out"), P("ech:in"));
+            g.addCable(P("ech:out"), P("out:in"));
+
+            RackEngine e; e.prepare(spec); e.reset();
+            bool bounded = true, finite = true;
+            for (int n = 0; n < 200; ++n)      // >2 seconds of maximum feedback
+            {
+                auto b = makeTone(220.0f);
+                e.process(b, g, d);
+                for (int c = 0; c < 2; ++c)
+                    for (int i = 0; i < block; ++i)
+                    {
+                        const float s = b.getSample(c, i);
+                        if (! std::isfinite(s)) finite = false;
+                        if (std::abs(s) > 1.6f) bounded = false;
+                    }
+            }
+            check(finite, "rack: maximum feedback never produces a NaN");
+            check(bounded, "rack: maximum feedback can't run away — the brick wall holds");
+        }
+
+        // --- CV: the LFO must actually change the sound ---
+        {
+            RackDials d;
+            d.fltCut = 500.0f; d.lfoRate = 6.0f; d.lfoDepth = 100.0f; d.lfoShape = 0;
+
+            RackGraph plain;
+            plain.addCable(P("src:out"), P("flt:in"));
+            plain.addCable(P("flt:out"), P("out:in"));
+
+            RackGraph modulated = plain;
+            modulated.addCable(P("lfo:out"), P("flt:cv"));
+
+            RackEngine e1; e1.prepare(spec); e1.reset();
+            RackEngine e2; e2.prepare(spec); e2.reset();
+
+            float spreadPlain = 0.0f, spreadMod = 0.0f;
+            float loP = 1.0f, hiP = 0.0f, loM = 1.0f, hiM = 0.0f;
+            for (int n = 0; n < 20; ++n)
+            {
+                auto b1 = makeTone(2000.0f), b2 = makeTone(2000.0f);
+                e1.process(b1, plain, d);
+                e2.process(b2, modulated, d);
+                loP = jmin(loP, rms(b1)); hiP = jmax(hiP, rms(b1));
+                loM = jmin(loM, rms(b2)); hiM = jmax(hiM, rms(b2));
+            }
+            spreadPlain = hiP - loP; spreadMod = hiM - loM;
+            check(spreadMod > spreadPlain * 2.0f,
+                  "rack CV: patching the LFO to the filter audibly sweeps it");
+        }
+
+        // --- a CV cable to a module that isn't in the audio path changes nothing ---
+        {
+            RackDials d;
+            RackGraph g;
+            g.addCable(P("src:out"), P("eq:in"));
+            g.addCable(P("eq:out"),  P("out:in"));
+            RackGraph gCV = g;
+            gCV.addCable(P("lfo:out"), P("cmb:cv"));   // cmb is not patched into anything
+
+            RackEngine e1; e1.prepare(spec); e1.reset();
+            RackEngine e2; e2.prepare(spec); e2.reset();
+            auto b1 = makeTone(440.0f), b2 = makeTone(440.0f);
+            e1.process(b1, g, d);
+            e2.process(b2, gCV, d);
+            bool same = true;
+            for (int i = 0; i < block; ++i)
+                if (std::abs(b1.getSample(0, i) - b2.getSample(0, i)) > 1e-6f) same = false;
+            check(same, "rack CV: CV into an unheard module costs nothing and changes nothing");
+        }
+
+        // --- every module, at every extreme, stays finite ---
+        {
+            const char* mods[] = { "eq", "flt", "phs", "cho", "cmb", "fld", "vow", "ech" };
+            bool allFinite = true;
+            juce::String firstBad;
+            for (const auto* m : mods)
+            {
+                RackGraph g;
+                g.addCable(P("src:out"), parsePort(juce::String(m) + ":in"));
+                g.addCable(parsePort(juce::String(m) + ":out"), P("out:in"));
+
+                RackDials d;   // everything hot at once
+                d.fltCut = 20.0f; d.fltRes = 18.0f;
+                d.phsDepth = 100.0f; d.phsFb = 100.0f; d.phsMix = 100.0f;
+                d.choDepth = 100.0f; d.choMix = 100.0f;
+                d.cmbTune = 20.0f; d.cmbFb = 100.0f; d.cmbMix = 100.0f;
+                d.fldDrive = 100.0f; d.fldSym = 100.0f; d.fldMix = 100.0f;
+                d.vowMorph = 4.0f; d.vowSharp = 40.0f; d.vowMix = 100.0f;
+                d.echTime = 1.0f; d.echFb = 100.0f; d.echWow = 100.0f; d.echMix = 100.0f;
+                for (auto& g2 : d.eqGain) g2 = 18.0f;
+
+                RackEngine e; e.prepare(spec); e.reset();
+                for (int n = 0; n < 40; ++n)
+                {
+                    auto b = makeTone(220.0f);
+                    e.process(b, g, d);
+                    for (int c = 0; c < 2; ++c)
+                        for (int i = 0; i < block; ++i)
+                            if (! std::isfinite(b.getSample(c, i)))
+                            { allFinite = false; if (firstBad.isEmpty()) firstBad = m; }
+                }
+            }
+            check(allFinite, "rack: every module at every extreme stays finite"
+                             + (firstBad.isEmpty() ? String() : " (first bad: " + firstBad + ")"));
+        }
+
+        // --- a short block must work: hosts do not promise a full one ---
+        {
+            RackGraph g; RackDials d;
+            g.addCable(P("src:out"), P("ech:in"));
+            g.addCable(P("ech:out"), P("out:in"));
+            RackEngine e; e.prepare(spec); e.reset();
+            AudioBuffer<float> b(2, 7);
+            b.clear();
+            for (int i = 0; i < 7; ++i) { b.setSample(0, i, 0.3f); b.setSample(1, i, 0.3f); }
+            e.process(b, g, d);
+            bool finite = true;
+            for (int i = 0; i < 7; ++i) if (! std::isfinite(b.getSample(0, i))) finite = false;
+            check(finite, "rack: a 7-sample block is handled (hosts don't promise a full one)");
         }
     }
 

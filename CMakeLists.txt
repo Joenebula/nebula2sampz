@@ -81,6 +81,8 @@ target_sources(Nebula2 PRIVATE
     Source/dsp/MorphEngine.h
     Source/dsp/RackGraph.cpp
     Source/dsp/RackGraph.h
+    Source/dsp/RackModules.cpp
+    Source/dsp/RackModules.h
 )
 
 target_compile_definitions(Nebula2 PUBLIC
@@ -153,6 +155,8 @@ target_sources(Nebula2Tests PRIVATE
     Source/dsp/MorphEngine.h
     Source/dsp/RackGraph.cpp
     Source/dsp/RackGraph.h
+    Source/dsp/RackModules.cpp
+    Source/dsp/RackModules.h
 )
 
 target_compile_definitions(Nebula2Tests PRIVATE
