@@ -77,9 +77,8 @@ namespace Nebula2
             PID{ ParamID::master, version }, "Master",
             juce::NormalisableRange<float>(0.0f, 1.0f, 0.001f), 0.9f));
 
-        layout.add(std::make_unique<APF>(
-            PID{ ParamID::bpm, version }, "Tempo",
-            juce::NormalisableRange<float>(40.0f, 220.0f, 0.5f), 120.0f));
+        // No "Tempo" parameter — see the retirement note in ParameterIDs.h. The host is the
+        // clock; a parameter claiming to be one and being ignored is a dead control.
 
         layout.add(std::make_unique<APB>(
             PID{ ParamID::limiter, version }, "Limiter", true));

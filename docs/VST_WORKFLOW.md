@@ -54,6 +54,15 @@ taller than a laptop plugin window. Clipped-off is indistinguishable from not-th
 was a real defect, found by the user, not cosmetics. Phase 5's designed UI should replace
 the scroll with real navigation (tabs/pages), not keep stretching.
 
+**2026-07-17 — RETIRED: the `bpm` / "Tempo" parameter.** Same reason as MIDI-learn and
+WAV/MIDI export: it existed because the *browser prototype had no host*. It was created and
+published to the DAW and read by **nothing** — every consumer reads `transport.bpm` from
+the host playhead, so automating a Tempo lane did precisely nothing. A dead control is
+worse than a missing one. If a host ever supplies no tempo, the fix is a fallback in
+`Transport.h`, not a parameter pretending to be the clock. There is now a **dead-control
+gate** in `Tests/TestMain.cpp`: the full published parameter list is asserted, so adding a
+parameter without adding it there fails, which forces the question "what reads this?".
+
 Everything below this point is the **original planning document**, written before the
 above decisions, and is being updated in place as phases complete. Part B's recommendation
 of Path B is kept for the record of *why* it was considered, not as current guidance —

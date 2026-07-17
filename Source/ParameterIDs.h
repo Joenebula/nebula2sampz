@@ -7,8 +7,15 @@ namespace Nebula2::ParamID
 {
     // --- Master / Transport ---
     inline constexpr auto master   = "master";    // float 0..1        (linear)
-    inline constexpr auto bpm      = "bpm";        // float 40..220     (linear, 0.5 step)
     inline constexpr auto limiter  = "limiterOn";  // bool
+
+    // RETIRED: `bpm` ("Tempo"). It existed because the browser prototype had no host — the
+    // same reason MIDI-learn and WAV export were retired. It was created and published to
+    // the DAW, and read by NOTHING: every consumer reads transport.bpm from the host
+    // playhead. A user could automate a Tempo lane 90->180 and the delay sync, shatter gate
+    // and time-stretch would all ignore it. A dead control is worse than a missing one.
+    // If a host ever supplies no tempo, the fix is a fallback in Transport.h, not a
+    // parameter that pretends to be the clock.
 
     // --- Sample layer slicing (re-slices on the message thread when changed) ---
     inline constexpr auto sliceMode  = "sliceMode";   // choice: Grid / Transient

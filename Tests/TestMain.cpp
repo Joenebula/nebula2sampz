@@ -2348,6 +2348,64 @@ int main()
         }
     }
 
+    // ---- The dead-control gate ----
+    // Every parameter the plugin publishes is listed here. Adding a parameter without
+    // adding it here FAILS — which forces the question "what actually reads this?".
+    //
+    // This gate exists because `bpm` ("Tempo") shipped for weeks: created, published to the
+    // DAW, read by NOTHING. Every consumer reads transport.bpm from the host playhead, so
+    // automating Tempo did precisely nothing. 363 assertions said nothing about it, because
+    // they all tested things that exist rather than noticing something that shouldn't.
+    //
+    // ONLY add an id here once DSP genuinely reads it. The list isn't the point; the
+    // question it forces is.
+    {
+        using namespace Nebula2;
+        DummyProcessor proc;
+
+        const StringArray expected {
+            "master", "limiterOn",
+            "sliceMode", "sliceCount", "sens",
+            "padOn", "padX", "padY",
+            "gridOn", "gridSteps",
+            "drive", "char", "crush", "squeeze", "tone", "width", "fxOn",
+            "revMix", "dlyMix", "dlyFb", "dlySync", "spaceOn", "revChar",
+            "rackOn",
+            "flt.cut", "flt.res", "flt.type",
+            "lfo.rate", "lfo.depth", "lfo.shape",
+            "phs.rate", "phs.depth", "phs.fb", "phs.mix",
+            "cho.rate", "cho.depth", "cho.mix",
+            "cmb.tune", "cmb.fb", "cmb.mix",
+            "fld.drive", "fld.sym", "fld.mix",
+            "vow.morph", "vow.sharp", "vow.mix",
+            "ech.time", "ech.fb", "ech.wow", "ech.mix",
+            "out.lvl",
+            "eq.0", "eq.1", "eq.2", "eq.3", "eq.4", "eq.5",
+        };
+
+        StringArray actual;
+        for (auto* p : proc.getParameters())
+            if (auto* rp = dynamic_cast<RangedAudioParameter*>(p))
+                actual.add(rp->getParameterID());
+
+        StringArray unexpected, missing;
+        for (const auto& a : actual)
+            if (! expected.contains(a)) unexpected.add(a);
+        for (const auto& e : expected)
+            if (! actual.contains(e)) missing.add(e);
+
+        check(unexpected.isEmpty(),
+              "params: nothing is published that this list doesn't know about"
+              + (unexpected.isEmpty() ? String() : " (found: " + unexpected.joinIntoString(", ") + ")"));
+        check(missing.isEmpty(),
+              "params: every expected parameter is published"
+              + (missing.isEmpty() ? String() : " (missing: " + missing.joinIntoString(", ") + ")"));
+
+        // The specific corpse, named so it can't quietly return.
+        check(proc.apvts.getParameter("bpm") == nullptr,
+              "params: there is no Tempo parameter — the host is the clock, not a dead knob");
+    }
+
     std::cout << (failures == 0 ? "ALL PASS" : ("FAILURES: " + String(failures)).toStdString())
               << std::endl;
     return failures == 0 ? 0 : 1;
