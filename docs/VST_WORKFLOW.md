@@ -160,6 +160,30 @@ all"`), and uploads `pv-*.log` on failure, so the next occurrence yields a stack
 stack, then fix the thing the stack names. A crash "fixed" without a stack is a crash that
 comes back.
 
+**2026-07-17 — Prototype-divergence audit of the rack DSP.** Compared all 9 modules to the
+reference. Comb, echo, vowel, the phaser core, the mix law and the feedback clamps are
+faithful. **Fixed:** 11 wrong dial defaults (a "fresh rack" didn't match the prototype), and
+the wavefolder CV (folded into drive-amount → barely moved; now a multiplicative pre-gain
+like the prototype, ~12× at drive 35 / half LFO). **Left for the user's EAR — changing these
+is a judgement I can't make headless:**
+
+- **Chorus wet level.** The port multiplies the summed voices by an extra `*0.5` the
+  prototype lacks (~2.6 dB quieter, slightly different pan law). The `*0.5` may be
+  deliberate headroom against clipping three summed voices — matching the prototype exactly
+  could clip. Try both by ear.
+- **Filter resonance.** The port uses a JUCE SVF (`resonance = fltRes * 0.4`, clamped 4.0)
+  where the prototype uses a Web Audio biquad lowpass (`Q` up to 24, in dB). The `0.4` is a
+  unit reconciliation, not an equivalence, and the prototype's most extreme
+  self-oscillation range isn't reachable. Default now matches (4); the *scale* is a guess.
+- **Wavefolder oversampling.** Prototype shaper is `4x` oversampled (anti-aliased); the port
+  folds per-sample (more aliasing on hard folds). Same curve/fold-count/formula.
+- **Minor:** comb/echo damping Q (0.707 vs the prototype's 1.0), LFO triangle phase (free-run
+  offset, inaudible), and range differences (`cmb.tune` 20-2000 vs 40-900; `ech.time` has no
+  grid-snap). None change default behaviour.
+- **Verify yourself:** the phaser's dry tap — in the prototype the dry path may include the
+  fed-back signal (`pIn` is the summing node); the port's dry is the clean input. Subtle at
+  high feedback.
+
 Everything below this point is the **original planning document**, written before the
 above decisions, and is being updated in place as phases complete. Part B's recommendation
 of Path B is kept for the record of *why* it was considered, not as current guidance —
