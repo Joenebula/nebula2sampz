@@ -133,6 +133,33 @@ The rules that fall out, in order of how much they'd have saved:
    chops cutting off, a dead Count control, an invisible Sens slider, a stale install, an
    unreadable UI — came from them looking, not from assertions.
 
+**2026-07-17 — OPEN, UNDIAGNOSED: an intermittent macOS CRASH in pluginval.**
+This is the top open issue — it outranks every remaining feature.
+
+```
+libc++abi: terminating due to uncaught exception of type std::bad_function_call
+pluginval received Abort trap: 6, exiting immediately
+```
+
+What's known:
+- **Intermittent.** Runs 1–4 of 5 passed; run 5 aborted. A different CI run on *identical
+  code* went 5/5. The 5x loop is the only reason it was seen at all.
+- **macOS only so far.** 12/12 clean locally on Windows at strictness 10.
+- It appears after *"Restoring default layout"* (a bus-layout change), i.e. around
+  `prepareToPlay` / the editor tests — not during audio processing.
+- `std::bad_function_call` means an EMPTY `std::function` was invoked. Inspection has not
+  found one: the only `std::function`s we own are `ScrollingContent::onPaint`/`onResized`
+  (both null-checked), and the JUCE paths involved are either guarded
+  (`NullCheckedInvocation::invoke` in `ParameterAttachment`) or default-filled
+  (`AudioParameterFloat`/`Bool` fill their text lambdas when the attributes omit them).
+- So it may well be in pluginval/JUCE on macOS rather than in our code — **unproven either
+  way, and it must not be assumed.**
+
+**Do not guess-fix this.** CI now runs macOS pluginval under `lldb` (`-k "thread backtrace
+all"`), and uploads `pv-*.log` on failure, so the next occurrence yields a stack. Get the
+stack, then fix the thing the stack names. A crash "fixed" without a stack is a crash that
+comes back.
+
 Everything below this point is the **original planning document**, written before the
 above decisions, and is being updated in place as phases complete. Part B's recommendation
 of Path B is kept for the record of *why* it was considered, not as current guidance —

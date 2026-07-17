@@ -51,6 +51,16 @@ jobs:
           }
           Write-Host "pluginval: 5/5 passed at strictness 10"
 
+      # Run under lldb so a CRASH yields a BACKTRACE, not just "Abort trap: 6".
+      #
+      # This exists because run 5 of 5 died with `std::bad_function_call` — an intermittent,
+      # macOS-only crash that 12/12 clean runs on Windows cannot reproduce and that reading
+      # the source has not located (every std::function in our code and in the JUCE paths
+      # involved is either guarded or defaulted). A crash outranks a failed assertion: it's
+      # lost work in someone's session. Guessing without a stack is how you "fix" a crash
+      # three times and never touch it.
+      #
+      # `-k` commands run ONLY if the target crashes, so a passing run costs nothing.
       - name: pluginval (macOS)
         if: runner.os == 'macOS'
         run: |
@@ -59,14 +69,32 @@ jobs:
           VST3=$(find build -name "Nebula2.vst3" -maxdepth 6 | head -1)
           if [ -z "$VST3" ]; then echo "no VST3 found to validate"; exit 1; fi
           echo "validating $VST3"
+          PV=./pluginval.app/Contents/MacOS/pluginval
           for i in 1 2 3 4 5; do
             echo "--- pluginval run $i of 5"
-            if ! ./pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate-in-process --timeout-ms 600000 --validate "$VST3"; then
-              echo "pluginval FAILED on run $i of 5. A randomised gate failing intermittently is a finding, not noise — do not re-roll it."
+            set +e
+            lldb --batch -o run -k "thread backtrace all" -k "quit" \
+                 -- "$PV" --strictness-level 10 --validate-in-process \
+                          --timeout-ms 600000 --validate "$VST3" > pv-$i.log 2>&1
+            set -e
+            if grep -qE "\*\*\* FAILED|stop reason|Abort trap|bad_function_call" pv-$i.log; then
+              echo "=============== pluginval FAILED on run $i of 5 ==============="
+              echo "A randomised gate failing intermittently is a finding, not noise — do not re-roll it."
+              echo "--- tail of the log (includes the backtrace if it crashed):"
+              tail -140 pv-$i.log
               exit 1
             fi
+            tail -2 pv-$i.log
           done
           echo "pluginval: 5/5 passed at strictness 10"
+
+      - name: Upload pluginval logs on failure
+        if: failure() && runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pluginval-macos-logs
+          path: pv-*.log
+          if-no-files-found: ignore
 
       - name: Upload VST3
         uses: actions/upload-artifact@v4
