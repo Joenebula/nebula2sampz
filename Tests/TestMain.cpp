@@ -53,6 +53,12 @@ namespace rtcheck
     std::atomic<int>  allocations { 0 };
     std::atomic<bool> watching { false };
 
+    // Somewhere for the self-check's pointer to escape to, so the compiler can't prove the
+    // allocation is unobservable and delete it. C++14 explicitly allows eliding new/delete
+    // pairs; clang takes the offer, MSVC didn't, and the difference silently disabled this
+    // whole file's RT checking on macOS.
+    std::atomic<void*> escape { nullptr };
+
     struct Scope
     {
         Scope()  { allocations.store(0); watching.store(true); }
@@ -2646,12 +2652,25 @@ int main()
         }
 
         // Sanity: the detector must actually detect. A test that can only pass is worthless.
+        //
+        // This failed on macOS while passing on Windows — meaning every "allocates nothing"
+        // check above was passing VACUOUSLY there, from a detector counting nothing. The
+        // self-check is the only reason that was visible at all.
+        //
+        // The cause isn't the detector: C++14 permits the compiler to ELIDE a new/delete
+        // pair whose result doesn't escape, and clang does what MSVC didn't. `volatile` on
+        // the POINTER doesn't help — it constrains the pointer's storage, not the
+        // allocation. So make the size opaque and let the pointer escape to an atomic.
         {
+            volatile int elems = 4;                 // opaque size: can't be folded away
             rtcheck::Scope watch;
-            volatile auto* leak = new int[4];
+            auto* leak = new int[(size_t) elems];
+            rtcheck::escape.store(leak, std::memory_order_relaxed);   // and it must escape
             const int n = watch.count();
             delete[] leak;
-            check(n > 0, "rt: (self-check) the allocation detector actually detects");
+            rtcheck::escape.store(nullptr, std::memory_order_relaxed);
+            check(n > 0, "rt: (self-check) the allocation detector actually detects — "
+                         "without this, every rt check above passes by counting nothing");
         }
     }
 
@@ -2730,29 +2749,26 @@ int main()
 
         // WHAT THIS CAN AND CANNOT DO — read this before trusting it.
         //
-        // This binary's font metrics do NOT match the plugin's. Measured here, "Space On"
-        // is 35px wide, making the toggle "need" 62px — and 62px is precisely the width at
-        // which it truncated to "S..." in the real UI. So the estimate isn't merely
-        // imprecise, it is known to UNDERESTIMATE, and a test asserting
-        // `given >= measured` passes while the control is visibly broken.
+        // It does NOT verify rendering. Nothing headless can. It checks that a row isn't
+        // over-committed, which is the mechanical half of the bug and the half that keeps
+        // biting.
         //
-        // I wrote that test first, and the mutation caught it: shrinking the width back to
-        // the broken 62 still passed. A check that appears to verify but doesn't is the
-        // trap this project keeps hitting, and I nearly added a fresh one.
+        // Deliberately NOT the font engine. Three tries got here:
+        //   1. `given >= getStringWidthInt(...)` — PASSED with the broken 62px. This
+        //      binary measures "Space On" at 35px; it truncates at 39px of real space, so
+        //      the ruler underestimates and the check was satisfied while the control was
+        //      visibly broken. A fresh "appears to verify but doesn't".
+        //   2. the same, times 1.5 for headroom — caught 62px on Windows, then FAILED ON
+        //      macOS ("needs 114, has 110"), because macOS measures the same string wider.
+        //      A font-derived bound fails on whichever platform you didn't develop on.
+        //   3. this: a character count. Crude, errs wide, and identical on every platform
+        //      and DPI — which is the only property that makes it a usable gate.
         //
-        // So: this does NOT verify rendering — nothing in a headless binary can. It demands
-        // HEADROOM over a ruler known to run short, which catches a grossly over-committed
-        // row while staying honest that only a screenshot proves the pixels.
-        auto estimatedToggleWidth = [](const juce::ToggleButton& b)
+        // 7px/char at 11px type is conservative for any sane UI face. If a real string ever
+        // needs more, the fix is a wider control, not a cleverer ruler.
+        auto minToggleWidth = [](const juce::ToggleButton& b)
         {
-            return 15 + 8 + juce::GlyphArrangement::getStringWidthInt(Theme::ui(11.0f), b.getButtonText()) + 4;
-        };
-        // 1.5x isn't numerology tuned to make one case pass — it's the cost of measuring
-        // with the wrong ruler. Fonts differ across machines and DPI too: a layout with no
-        // headroom is one font substitution away from truncating on someone else's screen.
-        auto minToggleWidth = [&](const juce::ToggleButton& b)
-        {
-            return (int) std::ceil((float) estimatedToggleWidth(b) * 1.5f);
+            return 15 + 8 + b.getButtonText().length() * 7 + 4;   // box + gap + text + pad
         };
 
         // The widths PluginEditor::layoutContent actually hands each toggle. Keep this in
