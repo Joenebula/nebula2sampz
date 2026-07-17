@@ -63,6 +63,25 @@ worse than a missing one. If a host ever supplies no tempo, the fix is a fallbac
 gate** in `Tests/TestMain.cpp`: the full published parameter list is asserted, so adding a
 parameter without adding it there fails, which forces the question "what reads this?".
 
+**2026-07-17 — CORRECTION: pluginval never actually passed at strictness 10.** The earlier
+claim that it "passed at strictness 10 on both platforms, first try" was **luck, not a
+pass**. Re-running it five times found 1–3 failures *per run*, on a random subset of the
+bool parameters:
+
+> `Limiter not restored on setStateInformation -- Expected 1, Actual 0.577136`
+
+A bool cannot *be* 0.577. `juce::AudioParameterBool::setValue` stores whatever float it's
+handed and `getValue()` hands it straight back; the APVTS tree holds the snapped 0/1, so a
+save/restore round-trips 1.0 → 1.0, no change is detected, no listener fires, and the
+parameter keeps the stale float. Nothing audible — the DSP reads the tree's atomic, which
+is always 0/1 — but a real failure of a real release gate. Fixed with `SnappedBool`
+(`Source/Parameters.h`): `getValue()` snaps, two lines, no re-entrancy hack. **Now 5/5 at
+strictness 10.**
+
+The lesson generalises past this bug: *a green result from a randomised tool is one sample,
+not a pass.* Run it until it's boring. The same shape of mistake as the Phase 3 reverb test
+that passed by racing a background loader.
+
 Everything below this point is the **original planning document**, written before the
 above decisions, and is being updated in place as phases complete. Part B's recommendation
 of Path B is kept for the record of *why* it was considered, not as current guidance —

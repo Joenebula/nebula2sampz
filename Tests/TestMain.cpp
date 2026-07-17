@@ -2348,6 +2348,52 @@ int main()
         }
     }
 
+    // ---- Bool params report a bool ----
+    // pluginval strictness 10 fails at RANDOM on a random subset of the bools:
+    //   "Limiter not restored on setStateInformation -- Expected 1, Actual 0.577136"
+    // A bool cannot BE 0.577 — but juce::AudioParameterBool::setValue stores whatever float
+    // it's handed and getValue() hands it straight back. The APVTS tree holds the snapped
+    // 0/1, so save/restore round-trips 1.0 -> 1.0, no change is detected, no listener fires,
+    // and the parameter keeps the stale 0.577. Nothing audible: the DSP reads the tree's
+    // atomic, which is always 0/1. But it's a real failure of a real release gate.
+    //
+    // This test pins the fix (SnappedBool in Parameters.h) at the level pluginval checks.
+    {
+        using namespace Nebula2;
+        DummyProcessor proc;
+
+        for (const char* id : { ParamID::limiter, ParamID::fxOn, ParamID::spaceOn,
+                                ParamID::padOn, ParamID::gridOn, ParamID::rackOn })
+        {
+            auto* p = proc.apvts.getParameter(id);
+            if (p == nullptr) { check(false, String("bool: ") + id + " exists"); continue; }
+
+            // The exact abuse pluginval performs: a mid-range float into a bool.
+            p->setValueNotifyingHost(0.577136f);
+            const float v = p->getValue();
+            check(v == 0.0f || v == 1.0f,
+                  String("bool: ") + id + " reports a bool, not the raw float it was handed");
+        }
+
+        // And the round-trip pluginval actually tests: save, disturb, restore, compare —
+        // where both the saved and disturbed values land on the SAME side of 0.5, so the
+        // tree value never changes and only the raw float can betray you.
+        {
+            auto* p = proc.apvts.getParameter(ParamID::limiter);
+            p->setValueNotifyingHost(0.9f);
+            const float saved = p->getValue();
+
+            MemoryBlock mb;
+            proc.getStateInformation(mb);
+
+            p->setValueNotifyingHost(0.577136f);   // still "true", different float
+            proc.setStateInformation(mb.getData(), (int) mb.getSize());
+
+            check(std::abs(p->getValue() - saved) < 0.1f,
+                  "bool: a bool survives save/restore exactly (the pluginval failure)");
+        }
+    }
+
     // ---- The dead-control gate ----
     // Every parameter the plugin publishes is listed here. Adding a parameter without
     // adding it here FAILS — which forces the question "what actually reads this?".

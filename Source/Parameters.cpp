@@ -63,7 +63,7 @@ namespace Nebula2
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     {
         using APF = juce::AudioParameterFloat;
-        using APB = juce::AudioParameterBool;
+        using APB = SnappedBool;   // see Parameters.h: a bool whose value is actually a bool
         using APC = juce::AudioParameterChoice;
         using PID = juce::ParameterID;
 
