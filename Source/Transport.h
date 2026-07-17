@@ -1,9 +1,19 @@
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <cmath>
 
 namespace Nebula2
 {
+    // Is the host genuinely rolling? Judged by its timeline POSITION advancing, NOT by
+    // getIsPlaying() — some hosts report isPlaying=true while stopped, and gating the in-app
+    // audition on that flag made it clear itself every block and never sound. A static ppq
+    // means stopped; an advancing ppq means playing. lastPpq < 0 means "no prior block yet".
+    inline bool hostIsRolling(double ppq, double lastPpq) noexcept
+    {
+        return lastPpq >= 0.0 && std::abs(ppq - lastPpq) > 1.0e-9;
+    }
+
     // Host transport snapshot the engine cares about. Musical time, not milliseconds.
     struct TransportState
     {

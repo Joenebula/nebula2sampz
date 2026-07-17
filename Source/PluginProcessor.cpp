@@ -222,40 +222,48 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
         if (auto pos = ph->getPosition())
             transport = Nebula2::readTransport(*pos);
 
-    // In-app audition. When the DAW is rolling, it is the authority: the host drives the
-    // notes and the audition button clears itself (it "takes over", the user's words).
-    // Only when the host is stopped does the app Play button run its own loop.
-    const bool hostPlaying = transport.playing;
-    if (hostPlaying)
-    {
-        if (auditionActive.load()) auditionActive.store(false);   // DAW took over
-        auditionPpq = 0.0;
-    }
-    else if (auditionActive.load())
-    {
-        // Synthesize a playing transport so the grid, morph shatter and delay-sync all run
-        // while auditioning — the app should sound like the DAW will. Tempo = the host's set
-        // BPM if we have one, else the break's own detected tempo, else 120.
-        double bpm = transport.bpm;
-        if (bpm <= 0.0) bpm = sampleLayer.getDetectedBpm() > 0.0 ? sampleLayer.getDetectedBpm() : 120.0;
-        transport.bpm     = bpm;
-        transport.playing = true;
-        transport.ppq     = auditionPpq;
-        auditionPpq += (bpm / 60.0) * ((double) numSamples / juce::jmax(1.0, getSampleRate()));
+    // In-app audition (the app's own Play button). "The DAW takes over when it starts" —
+    // detected by the transport POSITION advancing, NOT by getIsPlaying(). Some hosts
+    // report isPlaying=true while stopped, and gating on it made the app loop clear itself
+    // every block: the button showed Play forever and nothing sounded. Position advancing
+    // is unambiguous — stopped means static ppq, rolling means it moves.
+    const double hostPpq = transport.ppq;
+    const bool hostRolling = Nebula2::hostIsRolling(hostPpq, lastHostPpq);
+    lastHostPpq = hostPpq;
 
-        // Loop the whole break: re-trigger it the instant nothing is sounding. B4 = 83.
-        if (! sampleLayer.isSounding())
-            sampleLayer.noteOn(wholeBreakNote, 0.9f);
+    if (hostRolling)
+    {
+        // Host is the authority: silence the app loop on the block it starts, and let host
+        // MIDI drive everything. The user's Play toggle stays as-is (it resumes if they stop
+        // the DAW again) — we don't fight the button, we just suppress its loop.
+        if (! auditionWasRolling) sampleLayer.noteOff(wholeBreakNote);
+        auditionWasRolling = true;
+        auditionPpq = 0.0;
     }
     else
     {
-        auditionPpq = 0.0;
+        auditionWasRolling = false;
+        if (auditionActive.load())
+        {
+            // Synthesize a playing transport so the grid, morph shatter and delay-sync all
+            // run while auditioning — the app should sound like the DAW will. Tempo = the
+            // host's set BPM if we have one, else the break's detected tempo, else 120.
+            double bpm = transport.bpm;
+            if (bpm <= 0.0) bpm = sampleLayer.getDetectedBpm() > 0.0 ? sampleLayer.getDetectedBpm() : 120.0;
+            transport.bpm     = bpm;
+            transport.playing = true;
+            transport.ppq     = auditionPpq;
+            auditionPpq += (bpm / 60.0) * ((double) numSamples / juce::jmax(1.0, getSampleRate()));
+
+            // Loop the whole break: re-trigger the instant nothing is sounding. B4 = 83.
+            if (! sampleLayer.isSounding())
+                sampleLayer.noteOn(wholeBreakNote, 0.9f);
+        }
+        else
+        {
+            auditionPpq = 0.0;
+        }
     }
-    // A clean hand-off: when the host STARTS this block, silence any audition voice so the
-    // app loop and the host's notes don't briefly double up.
-    if (hostPlaying && ! auditionWasHostPlaying)
-        sampleLayer.noteOff(wholeBreakNote);
-    auditionWasHostPlaying = hostPlaying;
 
     sampleLayer.setHostBpm(transport.bpm);
 

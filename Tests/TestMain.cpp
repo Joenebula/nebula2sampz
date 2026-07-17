@@ -2581,6 +2581,18 @@ int main()
             check(! layer.isSounding(),
                   "audition: isSounding() clears when the break finishes — so the loop can re-trigger");
         }
+
+        // The bug the user hit: gating the app loop on getIsPlaying() failed in hosts that
+        // report isPlaying=true while stopped — the loop cleared every block and never
+        // sounded. The fix judges "host rolling" by the POSITION advancing. Pin it.
+        {
+            check(! hostIsRolling(4.0, -1.0),  "audition: no prior block -> not rolling (safe default)");
+            check(! hostIsRolling(4.0, 4.0),   "audition: static ppq -> host stopped -> app loop CAN run");
+            check(  hostIsRolling(4.25, 4.0),  "audition: advancing ppq -> host rolling -> it takes over");
+            check(  hostIsRolling(0.0, 4.0),   "audition: ppq jump (loop wrap) still counts as rolling");
+            check(! hostIsRolling(4.0000000001, 4.0),
+                  "audition: a sub-epsilon wobble is NOT rolling (won't false-trigger takeover)");
+        }
     }
 
     // ---- The de-allocation refactor must not have changed the SOUND ----

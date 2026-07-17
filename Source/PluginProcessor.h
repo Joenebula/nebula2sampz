@@ -174,7 +174,8 @@ private:
     // audio-thread only. B4 (83) is the whole-break note.
     std::atomic<bool> auditionActive { false };
     double auditionPpq = 0.0;          // audio thread: the synthesized transport position
-    bool   auditionWasHostPlaying = false;
+    double lastHostPpq = -1.0;         // audio thread: to detect the host actually rolling
+    bool   auditionWasRolling = false;
     static constexpr int wholeBreakNote = 83;
 
     void handleAsyncUpdate() override;
