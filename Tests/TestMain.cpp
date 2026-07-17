@@ -2651,6 +2651,110 @@ int main()
                           + (n == 0 ? String() : " — got " + String(n)));
         }
 
+        // The rest of the real audio path — the modules I had NOT put under the detector
+        // when I first wrote it. Finishing the sweep: if any of these allocate per block,
+        // it's the same dropout bug the rack had, just in a module I hadn't looked at.
+
+        // Space: parallel reverb (convolution) + tempo-synced ping-pong delay. The delay's
+        // time changes with sync/bpm; the reverb IR is fixed until setCharacter (message
+        // thread), so processing must not touch the heap.
+        {
+            SpaceProcessor space;
+            space.prepare(spec);
+            space.reset();
+            SpaceProcessor::Params sp;
+            sp.on = true; sp.revMix = 40.0f; sp.dlyMix = 45.0f; sp.dlyFb = 60.0f; sp.bpm = 174.0;
+            { auto b = tone(); space.process(b, sp); }
+
+            auto b = tone();
+            rtcheck::Scope watch;
+            for (int i = 0; i < 20; ++i)
+            {
+                sp.dlyMix = 20.0f + (float) i;      // move the send while it runs
+                space.process(b, sp);
+            }
+            const int n = watch.count();
+            check(n == 0, "rt: SpaceProcessor (reverb + delay) allocates nothing"
+                          + (n == 0 ? String() : " — got " + String(n)));
+        }
+
+        // The delay alone, feedback high, time changing — the path most likely to resize a
+        // buffer if any does.
+        {
+            PingPongDelay delay;
+            delay.prepare(spec);
+            delay.reset();
+            { auto b = tone(); delay.process(b, 0.25f, 0.8f, 0.5f, true); }
+
+            auto b = tone();
+            rtcheck::Scope watch;
+            for (int i = 0; i < 20; ++i)
+                delay.process(b, 0.1f + (float) i * 0.02f, 0.85f, 0.5f, true);   // sweep the time
+            const int n = watch.count();
+            check(n == 0, "rt: PingPongDelay allocates nothing even as the time sweeps"
+                          + (n == 0 ? String() : " — got " + String(n)));
+        }
+
+        // The master chain: gain -> limiter -> clamp, on every block unconditionally.
+        {
+            MasterProcessor master;
+            master.prepare(spec);
+            master.reset();
+            { auto b = tone(); master.process(b, 0.9f, true); }
+
+            auto b = tone();
+            rtcheck::Scope watch;
+            for (int i = 0; i < 20; ++i) master.process(b, 0.5f + (float) i * 0.02f, true);
+            const int n = watch.count();
+            check(n == 0, "rt: MasterProcessor allocates nothing"
+                          + (n == 0 ? String() : " — got " + String(n)));
+        }
+
+        // The drum kit: MIDI-triggered voices mixed into the bus. noteOn/render claim to be
+        // allocation-free (voices are pre-rendered in prepare) — verify the claim.
+        {
+            DrumKit kit;
+            kit.prepare(sr);
+            kit.reset();
+            AudioBuffer<float> bus(2, block);
+            { bus.clear(); kit.noteOn(36, 1.0f); kit.render(bus, 0, block); }
+
+            rtcheck::Scope watch;
+            for (int i = 0; i < 20; ++i)
+            {
+                bus.clear();
+                kit.noteOn(36 + (i % 8), 0.5f + (float) (i % 2) * 0.4f);   // different voices/velocities
+                kit.render(bus, 0, block);
+            }
+            const int n = watch.count();
+            check(n == 0, "rt: DrumKit noteOn/render allocates nothing (pre-rendered voices)"
+                          + (n == 0 ? String() : " — got " + String(n)));
+        }
+
+        // The sample layer's render, note trigger included — the granular stretch path.
+        {
+            SampleLayer layer;
+            layer.prepare(sr, block);
+            AudioBuffer<float> src(2, 44100);
+            for (int c = 0; c < 2; ++c)
+                for (int i = 0; i < 44100; ++i) src.setSample(c, i, 0.3f * std::sin((float) i * 0.02f));
+            layer.loadBuffer(std::move(src), sr, "rt");
+
+            AudioBuffer<float> bus(2, block);
+            { bus.clear(); layer.noteOn(84, 1.0f); layer.render(bus, 0, block); }
+
+            rtcheck::Scope watch;
+            for (int i = 0; i < 20; ++i)
+            {
+                bus.clear();
+                if (i % 5 == 0) layer.noteOn(84 + (i % 4), 0.8f);
+                layer.render(bus, 0, block);
+            }
+            const int n = watch.count();
+            check(n == 0, "rt: SampleLayer render + noteOn allocates nothing"
+                          + (n == 0 ? String() : " — got " + String(n)));
+        }
+
         // Sanity: the detector must actually detect. A test that can only pass is worthless.
         //
         // This failed on macOS while passing on Windows — meaning every "allocates nothing"
