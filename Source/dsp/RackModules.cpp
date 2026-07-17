@@ -86,6 +86,18 @@ namespace Nebula2
         for (int i = 0; i < 6; ++i) { apL[i].prepare (mono); apR[i].prepare (mono); }
         for (int i = 0; i < 3; ++i) { vowL[i].prepare (mono); vowR[i].prepare (mono); }
 
+        // Prime every filter's coefficient storage HERE, on the message thread. A default
+        // Coefficients holds an empty Array, so the first in-place assign would call
+        // ensureStorageAllocated and allocate — once, on the audio thread, which is exactly
+        // the thing we're removing. Assigning now means the capacity already exists and
+        // every later assign is a pure overwrite.
+        {
+            const auto seed = juce::dsp::IIR::ArrayCoefficients<float>::makeAllPass (sampleRate, 1000.0f, 0.7f);
+            for (int i = 0; i < 6; ++i) { *eqL[i].coefficients = seed;  *eqR[i].coefficients = seed; }
+            for (int i = 0; i < 6; ++i) { *apL[i].coefficients = seed;  *apR[i].coefficients = seed; }
+            for (int i = 0; i < 3; ++i) { *vowL[i].coefficients = seed; *vowR[i].coefficients = seed; }
+        }
+
         ladder.prepare (spec);
         ladder.setType (juce::dsp::StateVariableTPTFilterType::lowpass);
 
@@ -149,14 +161,14 @@ namespace Nebula2
                     if (std::abs (g) < 0.01f) continue;
 
                     const float gain = juce::Decibels::decibelsToGain (g);
-                    auto coeffs = b.type == 1
-                        ? juce::dsp::IIR::Coefficients<float>::makeLowShelf  (sampleRate, b.f, b.q, gain)
+                    const auto coeffs = b.type == 1
+                        ? juce::dsp::IIR::ArrayCoefficients<float>::makeLowShelf  (sampleRate, b.f, b.q, gain)
                         : b.type == 2
-                        ? juce::dsp::IIR::Coefficients<float>::makeHighShelf (sampleRate, b.f, b.q, gain)
-                        : juce::dsp::IIR::Coefficients<float>::makePeakFilter (sampleRate, b.f, b.q, gain);
+                        ? juce::dsp::IIR::ArrayCoefficients<float>::makeHighShelf (sampleRate, b.f, b.q, gain)
+                        : juce::dsp::IIR::ArrayCoefficients<float>::makePeakFilter (sampleRate, b.f, b.q, gain);
 
-                    *eqL[(size_t) i].coefficients = *coeffs;
-                    *eqR[(size_t) i].coefficients = *coeffs;
+                    *eqL[(size_t) i].coefficients = coeffs;
+                    *eqR[(size_t) i].coefficients = coeffs;
                     for (int s = 0; s < n; ++s)
                     {
                         L[s] = eqL[(size_t) i].processSample (L[s]);
@@ -206,9 +218,14 @@ namespace Nebula2
                     {
                         const float f = juce::jlimit (40.0f, (float) (sampleRate * 0.45),
                                                       400.0f * std::pow (1.7f, (float) i) + mod);
-                        auto co = juce::dsp::IIR::Coefficients<float>::makeAllPass (sampleRate, f, 0.7f);
-                        *apL[(size_t) i].coefficients = *co;
-                        *apR[(size_t) i].coefficients = *co;
+                        // ArrayCoefficients, NOT IIR::Coefficients. The latter's factories are
+                        // literally `return *new Coefficients(...)` — a heap allocation, and
+                        // this one is 6 per 32-sample chunk: ~8,300 allocations/second on the
+                        // AUDIO THREAD. ArrayCoefficients returns a std::array by value and
+                        // assigns in place. Identical maths, no heap.
+                        const auto co = juce::dsp::IIR::ArrayCoefficients<float>::makeAllPass (sampleRate, f, 0.7f);
+                        *apL[(size_t) i].coefficients = co;
+                        *apR[(size_t) i].coefficients = co;
                     }
                     for (int i = s; i < s + len; ++i)
                     {
@@ -327,9 +344,9 @@ namespace Nebula2
                         // CV scale 1200Hz sweeps the formants — that's what makes it talk.
                         const float ff = juce::jlimit (60.0f, (float) (sampleRate * 0.45),
                                                        f[k] + (hasCV ? cv * 1200.0f : 0.0f));
-                        auto co = juce::dsp::IIR::Coefficients<float>::makeBandPass (sampleRate, ff, q);
-                        *vowL[(size_t) k].coefficients = *co;
-                        *vowR[(size_t) k].coefficients = *co;
+                        const auto co = juce::dsp::IIR::ArrayCoefficients<float>::makeBandPass (sampleRate, ff, q);
+                        *vowL[(size_t) k].coefficients = co;
+                        *vowR[(size_t) k].coefficients = co;
                     }
                     for (int i = s; i < s + len; ++i)
                     {
@@ -399,7 +416,15 @@ namespace Nebula2
         // An unpatched rack must not silence the track: leave the dry beat exactly as it is.
         if (! graph.isLive()) return;
 
-        const auto order = graph.processOrder();
+        // processOrder() returns a std::vector — a heap allocation on every block. The
+        // patch only changes when you drag a cable, so compute the order into a
+        // preallocated array and only when the topology hash says it's stale.
+        const auto hash = graph.topologyHash();
+        if (hash != cachedTopologyHash)
+        {
+            cachedOrderLen = graph.processOrderInto (cachedOrder.data(), numRackModules);
+            cachedTopologyHash = hash;
+        }
 
         // src's output IS the incoming beat.
         outBuf[(int) ModuleId::src].clear();
@@ -421,8 +446,9 @@ namespace Nebula2
             }
         };
 
-        for (const auto m : order)
+        for (int oi = 0; oi < cachedOrderLen; ++oi)
         {
+            const auto m = cachedOrder[(size_t) oi];
             auto& mine = outBuf[(int) m];
             gatherInto (m, scratch);
             for (int c = 0; c < 2; ++c) mine.copyFrom (c, 0, scratch, c, 0, n);
@@ -430,11 +456,13 @@ namespace Nebula2
             // A bypassed module passes through dry — off means off, not silent.
             if (graph.isBypassed (m)) continue;
 
-            const auto cvSrc = graph.cvSourcesFor (m);
-            bool hasCV = false;
-            for (const auto s : cvSrc)
-                if (s == ModuleId::lfo && ! graph.isBypassed (ModuleId::lfo)) hasCV = true;
+            // hasLiveCV, not cvSourcesFor: the latter returns a vector (one allocation per
+            // module per block) to answer a question we only ever reduce to a bool.
+            const bool hasCV = graph.hasLiveCV (m);
 
+            // Wrapping existing pointers: AudioBuffer uses its 32-slot stack array for
+            // channel lists under 32 channels, so this does NOT allocate. (Verified in
+            // juce_AudioSampleBuffer.h — "try to avoid doing a malloc here".)
             juce::AudioBuffer<float> view (mine.getArrayOfWritePointers(), 2, n);
             renderModule (m, view, d, cvAtBlock, hasCV);
         }

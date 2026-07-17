@@ -116,11 +116,27 @@ namespace Nebula2
 
         // Audio modules in the order they must be processed. Empty if the rack isn't live.
         // Guaranteed acyclic (addCable refuses loops), so a plain topological order exists.
+        //
+        // Returns a std::vector, so it ALLOCATES — do not call it from the audio thread.
+        // RackEngine keeps a preallocated copy and refreshes it only when the patch
+        // changes. Kept for the UI and for tests, where allocating is free.
         std::vector<ModuleId> processOrder() const;
+
+        // The audio-thread version: fills a caller-owned buffer, allocates nothing.
+        // Returns how many entries were written.
+        int processOrderInto(ModuleId* dest, int maxLen) const noexcept;
 
         // Which module's CV drives `m`, if any. (Only the LFO emits CV today, but the
         // graph doesn't hard-code that — it reads the cables.)
         std::vector<ModuleId> cvSourcesFor(ModuleId m) const;
+
+        // Audio-thread version: is `m` driven by a NON-bypassed CV source? That's the only
+        // question the engine actually asks, and asking it directly allocates nothing.
+        bool hasLiveCV(ModuleId m) const noexcept;
+
+        // A cheap value that changes whenever the patch changes, so the engine can tell
+        // when its cached process order is stale without comparing whole graphs.
+        std::size_t topologyHash() const noexcept;
 
         // --- state (a patch is part of the song, so it must survive save/load) ---
         juce::String toString() const;

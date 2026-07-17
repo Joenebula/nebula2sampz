@@ -31,6 +31,51 @@
 
 #include <iostream>
 #include <cmath>
+#include <cstdlib>
+#include <atomic>
+
+//==============================================================================
+// A REAL-TIME ALLOCATION DETECTOR.
+//
+// Replacing global operator new/delete lets us count heap traffic while a specific piece of
+// code runs. Anything that allocates on the audio thread can block on the allocator's lock
+// and cause a dropout — a defect that is completely invisible to every other test here,
+// because the audio is perfectly correct right up until the moment it stutters.
+//
+// This was on the deferred list since Phase 3, and deferring it cost real bugs: the rack was
+// allocating ~8,300 times a SECOND on the audio thread (six juce::dsp::IIR::Coefficients
+// factory calls per 32-sample chunk, each one `return *new Coefficients(...)`), and the
+// Colour block allocated on every block for every user whether the FX were on or not.
+// 385 green assertions had nothing to say about any of it.
+namespace rtcheck
+{
+    std::atomic<int>  allocations { 0 };
+    std::atomic<bool> watching { false };
+
+    struct Scope
+    {
+        Scope()  { allocations.store(0); watching.store(true); }
+        ~Scope() { watching.store(false); }
+        int count() const { return allocations.load(); }
+    };
+}
+
+void* operator new(std::size_t size)
+{
+    if (rtcheck::watching.load()) rtcheck::allocations.fetch_add(1);
+    if (auto* p = std::malloc(size ? size : 1)) return p;
+    throw std::bad_alloc();
+}
+void* operator new[](std::size_t size)
+{
+    if (rtcheck::watching.load()) rtcheck::allocations.fetch_add(1);
+    if (auto* p = std::malloc(size ? size : 1)) return p;
+    throw std::bad_alloc();
+}
+void operator delete(void* p) noexcept                { std::free(p); }
+void operator delete[](void* p) noexcept              { std::free(p); }
+void operator delete(void* p, std::size_t) noexcept   { std::free(p); }
+void operator delete[](void* p, std::size_t) noexcept { std::free(p); }
 
 using namespace juce;
 
@@ -2345,6 +2390,139 @@ int main()
             rack.addCable(parsePort("eq:out"), parsePort("out:in"));
             applyPreset(proc.apvts, 9999, rack, rackLock, scenes);
             check(rack.isLive(), "presets: a bad index changes nothing (no half-apply)");
+        }
+    }
+
+    // ---- REAL-TIME SAFETY: the audio path must not touch the heap ----
+    {
+        using namespace Nebula2;
+        const double sr = 44100.0;
+        const int block = 512;
+        juce::dsp::ProcessSpec spec { sr, (juce::uint32) block, 2 };
+
+        auto P = [](const char* s) { return parsePort(s); };
+        auto tone = [sr, block]
+        {
+            AudioBuffer<float> b(2, block);
+            for (int i = 0; i < block; ++i)
+            {
+                const float s = 0.4f * std::sin(MathConstants<float>::twoPi * 440.0f * (float) i / (float) sr);
+                b.setSample(0, i, s); b.setSample(1, i, s);
+            }
+            return b;
+        };
+
+        // The heaviest patch: every module live, CV attached, so every coefficient path and
+        // the graph walk all run. If anything on the audio path allocates, it's here.
+        RackGraph g;
+        g.addCable(P("src:out"), P("eq:in"));
+        g.addCable(P("eq:out"),  P("flt:in"));
+        g.addCable(P("flt:out"), P("phs:in"));
+        g.addCable(P("phs:out"), P("cho:in"));
+        g.addCable(P("cho:out"), P("cmb:in"));
+        g.addCable(P("cmb:out"), P("fld:in"));
+        g.addCable(P("fld:out"), P("vow:in"));
+        g.addCable(P("vow:out"), P("ech:in"));
+        g.addCable(P("ech:out"), P("out:in"));
+        g.addCable(P("lfo:out"), P("flt:cv"));
+        g.addCable(P("lfo:out"), P("vow:cv"));
+        check(g.isLive(), "rt: (setup) the everything-patch is live");
+
+        RackDials d;
+        for (auto& e : d.eqGain) e = 6.0f;    // force the EQ coefficient path to run
+
+        RackEngine engine;
+        engine.prepare(spec);
+        engine.reset();
+
+        // Run once OUTSIDE the watch: first-call lazy setup is allowed to allocate, it's
+        // the steady state that must not.
+        { auto b = tone(); engine.process(b, g, d); }
+
+        int allocs = 0;
+        {
+            auto b = tone();
+            rtcheck::Scope watch;
+            for (int i = 0; i < 20; ++i) engine.process(b, g, d);
+            allocs = watch.count();
+        }
+        check(allocs == 0,
+              "rt: RackEngine::process allocates NOTHING across 20 blocks (was ~8,300/sec)"
+              + (allocs == 0 ? String() : " — got " + String(allocs)));
+
+        // Moving a DIAL must not allocate either — that's the common case while playing.
+        {
+            auto b = tone();
+            rtcheck::Scope watch;
+            for (int i = 0; i < 20; ++i)
+            {
+                d.vowMorph = (float) i * 0.2f;      // sweeps the formant coefficients
+                d.fltCut = 400.0f + (float) i * 50.0f;
+                engine.process(b, g, d);
+            }
+            const int n = watch.count();
+            check(n == 0, "rt: sweeping dials allocates nothing"
+                          + (n == 0 ? String() : " — got " + String(n)));
+        }
+
+        // The Colour block: the most-executed path in the plugin, and it ran the allocating
+        // coefficient factory every block for every user even with FX OFF.
+        {
+            ColourChain colour;
+            colour.prepare(spec);
+            colour.reset();
+            ColourChain::Params cp;
+            cp.on = false;                       // the "off" case allocated too
+            { auto b = tone(); colour.process(b, cp); }
+
+            auto b = tone();
+            rtcheck::Scope watch;
+            for (int i = 0; i < 20; ++i) colour.process(b, cp);
+            const int n = watch.count();
+            check(n == 0, "rt: ColourChain allocates nothing even with FX off"
+                          + (n == 0 ? String() : " — got " + String(n)));
+        }
+
+        // And with the FX actually on and the tone knob moving.
+        {
+            ColourChain colour;
+            colour.prepare(spec);
+            colour.reset();
+            ColourChain::Params cp;
+            cp.on = true; cp.drive = 40.0f; cp.squeeze = 30.0f; cp.width = 120.0f;
+            { auto b = tone(); colour.process(b, cp); }
+
+            auto b = tone();
+            rtcheck::Scope watch;
+            for (int i = 0; i < 20; ++i) { cp.tone = 20.0f + (float) i * 3.0f; colour.process(b, cp); }
+            const int n = watch.count();
+            check(n == 0, "rt: ColourChain allocates nothing with FX on and Tone sweeping"
+                          + (n == 0 ? String() : " — got " + String(n)));
+        }
+
+        // The Morph engine, at its busiest.
+        {
+            MorphEngine morph;
+            morph.prepare(spec);
+            morph.reset();
+            MorphScene sc { 800.0f, 4.0f, 60.0f, 50.0f, 40.0f, 70.0f, 130.0f, 30.0f };
+            { auto b = tone(); morph.process(b, sc, 120.0, true); }
+
+            auto b = tone();
+            rtcheck::Scope watch;
+            for (int i = 0; i < 20; ++i) { sc.cut = 400.0f + (float) i * 100.0f; morph.process(b, sc, 120.0, true); }
+            const int n = watch.count();
+            check(n == 0, "rt: MorphEngine allocates nothing"
+                          + (n == 0 ? String() : " — got " + String(n)));
+        }
+
+        // Sanity: the detector must actually detect. A test that can only pass is worthless.
+        {
+            rtcheck::Scope watch;
+            volatile auto* leak = new int[4];
+            const int n = watch.count();
+            delete[] leak;
+            check(n > 0, "rt: (self-check) the allocation detector actually detects");
         }
     }
 

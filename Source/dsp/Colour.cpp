@@ -33,13 +33,20 @@ namespace Nebula2
     }
 
     // ---- Tone (lowpass tilt) ---------------------------------------------------------
-    juce::dsp::IIR::Coefficients<float>::Ptr ToneFilter::coefficientsFor(float tone, double sampleRate)
+    std::array<float, 6> ToneFilter::arrayCoefficientsFor(float tone, double sampleRate) noexcept
     {
         const float tn   = juce::jlimit(0.0f, 1.0f, tone);
         const float freq = juce::jlimit(20.0f, (float) (sampleRate * 0.49),
                                         200.0f * std::pow(100.0f, tn));
         const float q    = 0.9f + (1.0f - tn) * 6.0f;
-        return juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, freq, q);
+        return juce::dsp::IIR::ArrayCoefficients<float>::makeLowPass(sampleRate, freq, q);
+    }
+
+    juce::dsp::IIR::Coefficients<float>::Ptr ToneFilter::coefficientsFor(float tone, double sampleRate)
+    {
+        // One writer for the maths: this is the allocating wrapper, kept only so tests and
+        // prepare() can hold a Ptr. It must never drift from the array version above.
+        return new juce::dsp::IIR::Coefficients<float>(arrayCoefficientsFor(tone, sampleRate));
     }
 
     void ToneFilter::prepare(const juce::dsp::ProcessSpec& spec)
@@ -56,7 +63,9 @@ namespace Nebula2
 
     void ToneFilter::process(juce::AudioBuffer<float>& buffer, float tone) noexcept
     {
-        *filter.state = *coefficientsFor(tone, sampleRate);
+        // Assign the raw array in place — no allocation. prepare() has already given
+        // filter.state its storage, so this is a pure overwrite.
+        *filter.state = arrayCoefficientsFor(tone, sampleRate);
 
         juce::dsp::AudioBlock<float> block(buffer);
         juce::dsp::ProcessContextReplacing<float> ctx(block);

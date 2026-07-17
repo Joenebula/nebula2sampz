@@ -62,9 +62,19 @@ namespace Nebula2
     // Renders the rack: walks the graph's process order, feeds each module the sum of what
     // reaches its input, and sums whatever reaches the main out.
     //
-    // Real-time safe: every buffer is allocated in prepare(), nothing here allocates or
-    // locks. Branch topologies work because each module owns an output buffer — the
-    // prototype could rely on Web Audio's own graph for that; here it has to be explicit.
+    // Real-time safe: nothing here allocates or locks. Branch topologies work because each
+    // module owns an output buffer — the prototype could rely on Web Audio's own graph for
+    // that; here it has to be explicit.
+    //
+    // That claim used to say "every buffer is allocated in prepare()", which was true about
+    // BUFFERS and quietly false about everything else — this class was allocating ~8,300
+    // times a second on the audio thread via juce::dsp::IIR::Coefficients factories (each
+    // one is `return *new Coefficients(...)`), plus a std::vector per block from
+    // processOrder(). A comment that's precisely true about the thing you checked is the
+    // easiest kind to be wrong. The rules now:
+    //   - filter coefficients come from ArrayCoefficients (by value) and assign in place
+    //   - the process order is cached and only rebuilt when the topology hash changes
+    //   - ask the graph for the bool you need (hasLiveCV), not a vector you reduce to one
     class RackEngine
     {
     public:
@@ -94,6 +104,12 @@ namespace Nebula2
         // One output buffer per module, so a branch can be summed rather than overwritten.
         std::array<juce::AudioBuffer<float>, numRackModules> outBuf;
         juce::AudioBuffer<float> scratch, dryScratch;
+
+        // The process order, cached. Rebuilt only when the patch changes, so dragging a
+        // cable costs one recompute rather than every block paying for a std::vector.
+        std::array<ModuleId, numRackModules> cachedOrder {};
+        int         cachedOrderLen = 0;
+        std::size_t cachedTopologyHash = 0;
 
         // --- per-module state ---
         std::array<juce::dsp::IIR::Filter<float>, 6> eqL, eqR;

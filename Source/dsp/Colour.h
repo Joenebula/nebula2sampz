@@ -29,7 +29,17 @@ namespace Nebula2
         void reset();
         void process(juce::AudioBuffer<float>& buffer, float tone) noexcept;
 
-        // Exposed for testing the response.
+        // The audio-thread version: returns a std::array BY VALUE, no heap.
+        //
+        // This matters more than it looks. juce::dsp::IIR::Coefficients' factories are
+        // `return *new Coefficients(...)` — so the old code allocated on EVERY BLOCK, for
+        // every user, at ~86 allocations/second, whether or not the FX were even on
+        // (ColourChain calls this unconditionally and just passes tone=1 when off). No
+        // knob had to move. It was the single most-executed allocation in the plugin.
+        static std::array<float, 6> arrayCoefficientsFor(float tone, double sampleRate) noexcept;
+
+        // Exposed for testing the response. ALLOCATES — tests and prepare() only, never
+        // the audio thread.
         static juce::dsp::IIR::Coefficients<float>::Ptr coefficientsFor(float tone, double sampleRate);
 
     private:

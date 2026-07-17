@@ -301,6 +301,78 @@ namespace Nebula2
         return v;
     }
 
+    // --- the audio-thread versions: same answers, no heap ---
+
+    bool RackGraph::hasLiveCV(ModuleId m) const noexcept
+    {
+        for (const auto& c : cables)
+            if (c.isCV() && c.to.module == m && ! bypassed[idx (c.from.module)])
+                return true;
+        return false;
+    }
+
+    int RackGraph::processOrderInto(ModuleId* dest, int maxLen) const noexcept
+    {
+        if (dest == nullptr || maxLen <= 0 || ! isLive()) return 0;
+
+        const auto fwd  = reach (true);
+        const auto back = reach (false);
+
+        std::array<int, numRackModules> indegree {};
+        indegree.fill (0);
+        auto inPlay = [&] (ModuleId m)
+        {
+            const int i = idx (m);
+            return fwd[i] && back[i] && m != ModuleId::src && m != ModuleId::out;
+        };
+
+        for (const auto& c : cables)
+        {
+            if (c.isCV()) continue;
+            if (inPlay (c.from.module) && inPlay (c.to.module)) ++indegree[idx (c.to.module)];
+        }
+
+        // Fixed-size ready queue instead of a vector: there can never be more entries than
+        // there are modules, so the bound is known at compile time.
+        std::array<ModuleId, numRackModules> ready {};
+        int readyHead = 0, readyTail = 0, count = 0;
+
+        for (int i = 0; i < numRackModules; ++i)
+            if (inPlay ((ModuleId) i) && indegree[i] == 0) ready[readyTail++] = (ModuleId) i;
+
+        while (readyHead < readyTail && count < maxLen)
+        {
+            const auto m = ready[readyHead++];
+            dest[count++] = m;
+
+            for (const auto& c : cables)
+            {
+                if (c.isCV() || c.from.module != m) continue;
+                if (! inPlay (c.to.module)) continue;
+                if (--indegree[idx (c.to.module)] == 0 && readyTail < numRackModules)
+                    ready[readyTail++] = c.to.module;
+            }
+        }
+        return count;
+    }
+
+    std::size_t RackGraph::topologyHash() const noexcept
+    {
+        // Cheap and order-sensitive. It only has to CHANGE when the patch does; it does not
+        // have to be collision-proof, because a collision costs one block of a stale
+        // process order, not a wrong answer forever.
+        std::size_t h = 1469598103934665603ull;
+        auto mix = [&h] (std::size_t v) { h ^= v; h *= 1099511628211ull; };
+        for (const auto& c : cables)
+        {
+            mix ((std::size_t) idx (c.from.module) * 8 + (std::size_t) c.from.jack);
+            mix ((std::size_t) idx (c.to.module)   * 8 + (std::size_t) c.to.jack);
+        }
+        for (int i = 0; i < numRackModules; ++i)
+            if (bypassed[i]) mix ((std::size_t) (i + 1) * 7919);
+        return h;
+    }
+
     juce::String RackGraph::toString() const
     {
         // "flt:out>out:in;src:out>flt:in|flt,cmb"   cables | bypassed
