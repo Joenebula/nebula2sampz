@@ -115,16 +115,65 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
 
     // Only the dials you'd reach for while patching are on the panel; the rest are still
     // full host parameters, so nothing here is a control the DAW can't see.
-    addKnob(fltCut,   Nebula2::ParamID::fltCut,   "Cut",   " Hz");
+    // No suffixes on the ones that get a custom readout below — the suffix would be
+    // appended to the formatted text and give you "5.99 kHz Hz".
+    addKnob(fltCut,   Nebula2::ParamID::fltCut,   "Cut",   "");
     addKnob(fltRes,   Nebula2::ParamID::fltRes,   "Res",   "");
-    addKnob(lfoRate,  Nebula2::ParamID::lfoRate,  "Rate",  " Hz");
+    addKnob(lfoRate,  Nebula2::ParamID::lfoRate,  "Rate",  "");
     addKnob(lfoDepth, Nebula2::ParamID::lfoDepth, "Depth", " %");
-    addKnob(cmbTune,  Nebula2::ParamID::cmbTune,  "Tune",  " Hz");
+    addKnob(cmbTune,  Nebula2::ParamID::cmbTune,  "Tune",  "");
     addKnob(cmbFb,    Nebula2::ParamID::cmbFb,    "Comb FB", " %");
     addKnob(vowMorph, Nebula2::ParamID::vowMorph, "Vowel", "");
-    addKnob(echTime,  Nebula2::ParamID::echTime,  "Echo",  " ms");
+    addKnob(echTime,  Nebula2::ParamID::echTime,  "Echo",  "");
     addKnob(echFb,    Nebula2::ParamID::echFb,    "Echo FB", " %");
     addKnob(outLvl,   Nebula2::ParamID::outLvl,   "Rack Out", " %");
+
+    // Readouts. Without these a Hz dial shows "5999.99951..." — the raw float, precision
+    // leak and all. A number you can't read reads as a broken plugin, and these are all
+    // log-skewed ranges so the trailing garbage is the norm, not the exception.
+    const auto asHz = [](double v)
+    {
+        return v >= 1000.0 ? juce::String(v / 1000.0, 2) + " kHz"
+                           : juce::String(juce::roundToInt(v)) + " Hz";
+    };
+    const auto fromHz = [](const juce::String& t)
+    {
+        const double v = t.getDoubleValue();
+        return t.containsIgnoreCase("k") ? v * 1000.0 : v;
+    };
+    for (auto* k : { &fltCut, &cmbTune })
+    {
+        k->slider.textFromValueFunction = asHz;
+        k->slider.valueFromTextFunction = fromHz;
+        k->slider.updateText();
+    }
+
+    lfoRate.slider.textFromValueFunction = [](double v) { return juce::String(v, 2) + " Hz"; };
+    lfoRate.slider.valueFromTextFunction = [](const juce::String& t) { return t.getDoubleValue(); };
+    lfoRate.slider.updateText();
+
+    echTime.slider.textFromValueFunction = [](double v) { return juce::String(juce::roundToInt(v)) + " ms"; };
+    echTime.slider.valueFromTextFunction = [](const juce::String& t) { return t.getDoubleValue(); };
+    echTime.slider.updateText();
+
+    fltRes.slider.textFromValueFunction = [](double v) { return juce::String(v, 1); };
+    fltRes.slider.valueFromTextFunction = [](const juce::String& t) { return t.getDoubleValue(); };
+    fltRes.slider.updateText();
+
+    // The Vowel dial reads 0..4. "2.31" tells you nothing; "I>O 31%" tells you what you're
+    // about to hear, which is the entire point of the control.
+    vowMorph.slider.textFromValueFunction = [](double v)
+    {
+        static const char* names[] = { "A", "E", "I", "O", "U" };
+        const double p = juce::jlimit(0.0, 4.0, v);
+        const int i = juce::jlimit(0, 4, (int) p);
+        const double fr = p - (double) i;
+        if (fr < 0.02 || i >= 4) return juce::String(names[i]);
+        return juce::String(names[i]) + ">" + juce::String(names[i + 1])
+             + " " + juce::String(juce::roundToInt(fr * 100.0)) + "%";
+    };
+    vowMorph.slider.valueFromTextFunction = [](const juce::String& t) { return t.getDoubleValue(); };
+    vowMorph.slider.updateText();
 
     addCombo(fltTypeBox, fltTypeLabel, Nebula2::ParamID::fltType, "Filter",
              { "Low Pass", "Band Pass", "High Pass" }, fltTypeAttachment);

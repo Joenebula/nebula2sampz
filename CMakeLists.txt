@@ -106,11 +106,19 @@ target_link_libraries(Nebula2
         juce::juce_recommended_warning_flags
 )
 
-# Compile sources as UTF-8 on MSVC. Without this, MSVC reads source in the system
-# codepage and any non-ASCII literal turns to mojibake in the plugin UI (this bit us:
-# an em-dash rendered as "a??" in the editor).
+# Compile sources as UTF-8 on MSVC. Without this, MSVC reads source in the system codepage
+# and any non-ASCII literal turns to mojibake in the plugin UI.
+#
+# This MUST be target_compile_options, not add_compile_options. add_compile_options only
+# affects targets created AFTER the call — and juce_add_plugin(Nebula2) is at the top of
+# this file, so the flag landed on the TEST BINARY ONLY. The plugin shipped mojibake the
+# whole time this comment claimed the bug was fixed; the user found it in the rack's status
+# strip ("Main Out â□□ the dry beat").
+#
+# The lesson: a fix isn't verified until you've observed the thing it fixes, on the
+# artefact that actually ships.
 if (MSVC)
-    add_compile_options(/utf-8)
+    target_compile_options(Nebula2 PRIVATE /utf-8)
 endif()
 
 # --- Phase 1 test target: parameter round-trip + automation, run via ctest ---
@@ -180,3 +188,7 @@ target_link_libraries(Nebula2Tests PRIVATE
 )
 
 add_test(NAME Nebula2Tests COMMAND Nebula2Tests)
+
+if (MSVC)
+    target_compile_options(Nebula2Tests PRIVATE /utf-8)
+endif()
