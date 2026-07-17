@@ -79,6 +79,12 @@ public:
     // The LFO's current value (-1..1) so the rack UI can draw a moving picture.
     float getRackLfoValue() const noexcept { return rackEngine.lfoValue(); }
 
+    // UI zoom. Lives here (not in the editor) so it survives the editor being closed and
+    // reopened, and travels in the session. NOT a parameter: it's a property of the screen
+    // you're looking at, not of the song — automating it would be nonsense.
+    float getUiScale() const noexcept { return uiScale; }
+    void  setUiScale(float s) noexcept { uiScale = s; }
+
     // Which step is currently sounding (for the UI playhead). -1 if the grid is off.
     int getCurrentGridStep() const noexcept { return currentGridStep.load(); }
 
@@ -154,6 +160,7 @@ private:
     juce::String pendingSamplePath;
 
     int currentProgram = 0;
+    float uiScale = 0.0f;      // 0 = never chosen; the editor then follows the screen
 
     void handleAsyncUpdate() override;
 

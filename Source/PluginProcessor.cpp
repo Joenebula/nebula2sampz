@@ -407,6 +407,9 @@ void Nebula2AudioProcessor::getStateInformation(juce::MemoryBlock& destData)
         rackNode.setProperty("patch", rackGraph.toString(), nullptr);
     }
 
+    auto uiNode = state.getOrCreateChildWithName("UI", nullptr);
+    uiNode.setProperty("scale", uiScale, nullptr);
+
     if (auto xml = state.createXml())
         copyXmlToBinary(*xml, destData);
 }
@@ -443,6 +446,9 @@ void Nebula2AudioProcessor::setStateInformation(const void* data, int sizeInByte
         const juce::SpinLock::ScopedLockType sl(rackLock);
         rackGraph = restored;
     }
+
+    if (auto uiNode = tree.getChildWithName("UI"); uiNode.isValid())
+        uiScale = (float) uiNode.getProperty("scale", 0.0);
 
     apvts.replaceState(tree);
 }

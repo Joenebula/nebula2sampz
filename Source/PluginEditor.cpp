@@ -152,10 +152,57 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     updateSliceControlStates();
     startTimerHz(8);        // watch for slice-mode changes (incl. from host automation)
 
+    // --- zoom ---
+    // The OS scale is a good guess, not a fact: a plugin can end up on a second monitor
+    // with different scaling, and eyes differ. So it's a guess you can overrule.
+    zoomBox.addItemList({ "100%", "125%", "150%", "175%", "200%" }, 1);
+    zoomBox.onChange = [this]
+    {
+        static const float scales[] = { 1.0f, 1.25f, 1.5f, 1.75f, 2.0f };
+        const int i = juce::jlimit(0, 4, zoomBox.getSelectedItemIndex());
+        uiScale = scales[i];
+        processorRef.setUiScale(uiScale);      // remembered with the song
+        applyScale();
+    };
+    addAndMakeVisible(zoomBox);
+
+    // A scale saved with the session wins; otherwise follow the screen.
+    uiScale = processorRef.getUiScale() > 0.0f ? processorRef.getUiScale() : defaultUiScale();
+    {
+        static const float scales[] = { 1.0f, 1.25f, 1.5f, 1.75f, 2.0f };
+        int best = 0;
+        for (int i = 0; i < 5; ++i)
+            if (std::abs(scales[i] - uiScale) < std::abs(scales[best] - uiScale)) best = i;
+        uiScale = scales[best];
+        zoomBox.setSelectedItemIndex(best, juce::dontSendNotification);
+    }
+
     setResizable(true, true);
     setResizeLimits(620, 300, 1100, 1000);
     setSize(680, 700);
     showPage(Page::play);        // sizes the window to the page
+    applyScale();
+}
+
+float Nebula2AudioProcessorEditor::defaultUiScale()
+{
+    // Whatever the OS is scaling everything else by is what the browser was scaling the
+    // prototype by. Start there — it reproduces what the prototype actually looked like on
+    // this screen, rather than what its stylesheet says in the abstract.
+    if (auto* d = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
+        return juce::jlimit(1.0f, 2.0f, (float) d->scale);
+    return 1.25f;
+}
+
+void Nebula2AudioProcessorEditor::applyScale()
+{
+    // The layout keeps working in the prototype's units; the whole surface is scaled on
+    // the way to the screen. One transform beats touching 40 font sizes and every bound
+    // that depends on them.
+    setTransform(juce::AffineTransform::scale(uiScale));
+    setSize(getWidth(), getHeight());     // re-reports the scaled size to the host
+    resized();
+    repaint();
 }
 
 Nebula2AudioProcessorEditor::~Nebula2AudioProcessorEditor()
@@ -430,6 +477,9 @@ void Nebula2AudioProcessorEditor::resized()
 
     // Tabs sit under the title, in the header.
     auto tabRow = r.removeFromTop(headerH).withTrimmedTop(38).reduced(14, 4);
+    zoomBox.setBounds(tabRow.removeFromRight(66).reduced(0, 2));
+    tabRow.removeFromRight(10);
+
     const int tw = juce::jmin(84, tabRow.getWidth() / (int) tabs.size());
     for (auto& t : tabs)
     {

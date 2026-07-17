@@ -53,6 +53,21 @@ private:
 
     Nebula2LookAndFeel lnf;
 
+    // --- UI scale ---
+    // The prototype's type sizes (9.5-11px) are CSS pixels, which a browser MULTIPLIES by
+    // the OS display scaling before drawing. A JUCE editor gets no such multiplier — it
+    // draws at raw pixels. So porting the numbers faithfully produced a UI that was
+    // 1.25-1.5x smaller than the thing being copied, and genuinely unreadable.
+    //
+    // The fix is to restore the multiplier, not to inflate every font: the layout stays in
+    // the prototype's own units and the whole surface scales, exactly as the browser did.
+    // Defaults to the OS display scale for that reason. Not a parameter — it's a property
+    // of this screen, not of the song, so it must never be automated or travel in a preset.
+    float uiScale = 1.0f;
+    juce::ComboBox zoomBox;
+    void applyScale();
+    static float defaultUiScale();
+
     juce::Viewport viewport;
     ScrollingContent content;
 
