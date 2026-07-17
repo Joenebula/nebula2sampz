@@ -9,6 +9,8 @@
 #include "dsp/SampleLayer.h"
 #include "dsp/FxGrid.h"
 #include "dsp/MorphEngine.h"
+#include "dsp/RackGraph.h"
+#include "dsp/RackModules.h"
 
 // MIDI-triggered drum voices -> Colour FX -> Space send -> master chain.
 //
@@ -67,6 +69,16 @@ public:
     // blend each block). Floats, so a race yields old-or-new for one block — inaudible.
     std::array<Nebula2::MorphScene, 4>& getMorphScenes() noexcept { return morphScenes; }
 
+    // The rack's patch. The editor edits it on the message thread; the audio thread reads
+    // it each block. Guarded by a lock the AUDIO thread never waits on: it tries, and if
+    // the editor happens to be mid-edit it reuses last block's patch. One block of a stale
+    // cable is inaudible; a locked audio thread is a dropout.
+    Nebula2::RackGraph& getRackGraph() noexcept { return rackGraph; }
+    juce::SpinLock& getRackLock() noexcept { return rackLock; }
+
+    // The LFO's current value (-1..1) so the rack UI can draw a moving picture.
+    float getRackLfoValue() const noexcept { return rackEngine.lfoValue(); }
+
     // Which step is currently sounding (for the UI playhead). -1 if the grid is off.
     int getCurrentGridStep() const noexcept { return currentGridStep.load(); }
 
@@ -107,6 +119,15 @@ private:
     std::atomic<float>* padYParam { nullptr };
     Nebula2::MorphEngine morph;
     std::array<Nebula2::MorphScene, 4> morphScenes = Nebula2::defaultMorphScenes();
+
+    // --- Modular rack ---
+    Nebula2::RackGraph  rackGraph;
+    Nebula2::RackEngine rackEngine;
+    juce::SpinLock      rackLock;
+    Nebula2::RackDials  rackDials;            // audio thread only; refilled from params each block
+    std::atomic<float>* rackOnParam { nullptr };
+    std::array<std::atomic<float>*, 33> rackDialParams {};   // cached, in readRackDials() order
+    void readRackDials() noexcept;
 
     Nebula2::MasterProcessor masterProcessor;
 

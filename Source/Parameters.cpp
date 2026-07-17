@@ -91,10 +91,73 @@ namespace Nebula2
             juce::StringArray{ "1/16", "1/8T", "1/8", "1/8.", "1/4", "1/4." }, 2));   // default 1/8
         layout.add(std::make_unique<APB>(PID{ ParamID::spaceOn, version }, "Space On", true));
 
-        // --- Rack log dial (representative) ---
+        // --- Modular rack ---
+        // Defaults are the prototype's own, so a fresh rack sounds like a fresh rack did.
+        layout.add(std::make_unique<APB>(PID{ ParamID::rackOn, version }, "Rack On", true));
+
         layout.add(std::make_unique<APF>(
             PID{ ParamID::fltCut, version }, "Ladder Cutoff",
-            logRange(40.0f, 14000.0f), 6000.0f));
+            logRange(40.0f, 14000.0f), 1200.0f));
+        layout.add(std::make_unique<APF>(
+            PID{ ParamID::fltRes, version }, "Ladder Res",
+            juce::NormalisableRange<float>(0.1f, 18.0f, 0.1f), 1.0f));
+        layout.add(std::make_unique<APC>(
+            PID{ ParamID::fltType, version }, "Ladder Type",
+            juce::StringArray{ "Low Pass", "Band Pass", "High Pass" }, 0));
+
+        layout.add(std::make_unique<APF>(
+            PID{ ParamID::lfoRate, version }, "LFO Rate", logRange(0.05f, 20.0f), 1.5f));
+        layout.add(std::make_unique<APF>(
+            PID{ ParamID::lfoDepth, version }, "LFO Depth", pct(), 50.0f));
+        layout.add(std::make_unique<APC>(
+            PID{ ParamID::lfoShape, version }, "LFO Shape",
+            juce::StringArray{ "Sine", "Triangle", "Saw", "Square" }, 0));
+
+        layout.add(std::make_unique<APF>(
+            PID{ ParamID::phsRate, version }, "Phaser Rate", logRange(0.05f, 8.0f), 0.5f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::phsDepth, version }, "Phaser Depth", pct(), 75.0f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::phsFb,    version }, "Phaser Feedback", pct(), 40.0f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::phsMix,   version }, "Phaser Mix", pct(), 50.0f));
+
+        layout.add(std::make_unique<APF>(
+            PID{ ParamID::choRate, version }, "Chorus Rate", logRange(0.05f, 8.0f), 0.8f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::choDepth, version }, "Chorus Depth", pct(), 50.0f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::choMix,   version }, "Chorus Mix", pct(), 50.0f));
+
+        layout.add(std::make_unique<APF>(
+            PID{ ParamID::cmbTune, version }, "Comb Tune", logRange(20.0f, 2000.0f), 180.0f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::cmbFb,  version }, "Comb Feedback", pct(), 80.0f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::cmbMix, version }, "Comb Mix", pct(), 50.0f));
+
+        layout.add(std::make_unique<APF>(PID{ ParamID::fldDrive, version }, "Folder Drive", pct(), 35.0f));
+        layout.add(std::make_unique<APF>(
+            PID{ ParamID::fldSym, version }, "Folder Symmetry",
+            juce::NormalisableRange<float>(-100.0f, 100.0f, 1.0f), 0.0f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::fldMix, version }, "Folder Mix", pct(), 50.0f));
+
+        layout.add(std::make_unique<APF>(
+            PID{ ParamID::vowMorph, version }, "Vowel",
+            juce::NormalisableRange<float>(0.0f, 4.0f, 0.01f), 0.0f));
+        layout.add(std::make_unique<APF>(
+            PID{ ParamID::vowSharp, version }, "Vowel Sharpness",
+            juce::NormalisableRange<float>(2.0f, 40.0f, 0.1f), 9.0f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::vowMix, version }, "Vowel Mix", pct(), 50.0f));
+
+        layout.add(std::make_unique<APF>(
+            PID{ ParamID::echTime, version }, "Echo Time",
+            logRange(20.0f, 2000.0f), 320.0f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::echFb,  version }, "Echo Feedback", pct(), 55.0f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::echWow, version }, "Echo Wow", pct(), 37.0f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::echMix, version }, "Echo Mix", pct(), 50.0f));
+
+        layout.add(std::make_unique<APF>(PID{ ParamID::outLvl, version }, "Rack Out", pct(), 100.0f));
+
+        const auto dB = [] { return juce::NormalisableRange<float>(-18.0f, 18.0f, 0.1f); };
+        const char* eqIDs[6]   = { ParamID::eqGain0, ParamID::eqGain1, ParamID::eqGain2,
+                                   ParamID::eqGain3, ParamID::eqGain4, ParamID::eqGain5 };
+        const char* eqNames[6] = { "EQ 35Hz", "EQ 110Hz", "EQ 420Hz", "EQ 1.6k", "EQ 5.2k", "EQ 9k" };
+        for (int i = 0; i < 6; ++i)
+            layout.add(std::make_unique<APF>(PID{ eqIDs[i], version }, eqNames[i], dB(), 0.0f));
 
         // --- Discrete/enum (representative) ---
         layout.add(std::make_unique<APC>(

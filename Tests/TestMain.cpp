@@ -2181,6 +2181,61 @@ int main()
         }
     }
 
+    // ---- Phase 10c: the rack is actually WIRED to the host ----
+    {
+        using namespace Nebula2;
+        DummyProcessor proc;
+
+        // Every dial the engine reads must exist as a host parameter. A dial the DAW can't
+        // see is a dial that half-works — and this list is exactly the one the processor
+        // caches, so a typo in either place fails here rather than silently reading 0.
+        const char* dialIDs[] = {
+            ParamID::rackOn,
+            ParamID::fltCut, ParamID::fltRes, ParamID::fltType,
+            ParamID::lfoRate, ParamID::lfoDepth, ParamID::lfoShape,
+            ParamID::phsRate, ParamID::phsDepth, ParamID::phsFb, ParamID::phsMix,
+            ParamID::choRate, ParamID::choDepth, ParamID::choMix,
+            ParamID::cmbTune, ParamID::cmbFb, ParamID::cmbMix,
+            ParamID::fldDrive, ParamID::fldSym, ParamID::fldMix,
+            ParamID::vowMorph, ParamID::vowSharp, ParamID::vowMix,
+            ParamID::echTime, ParamID::echFb, ParamID::echWow, ParamID::echMix,
+            ParamID::outLvl,
+            ParamID::eqGain0, ParamID::eqGain1, ParamID::eqGain2,
+            ParamID::eqGain3, ParamID::eqGain4, ParamID::eqGain5,
+        };
+        bool allPresent = true;
+        String missing;
+        for (const auto* id : dialIDs)
+            if (proc.apvts.getParameter(id) == nullptr) { allPresent = false; missing = id; }
+        check(allPresent, "rack wiring: every rack dial is a real host parameter"
+                          + (missing.isEmpty() ? String() : " (missing: " + missing + ")"));
+
+        // The engine reads 33 dial params; the processor caches 33. If those ever disagree
+        // the tail of the list silently reads its fallback instead of your knob.
+        check((sizeof(dialIDs) / sizeof(dialIDs[0])) == 34,   // 33 dials + rackOn
+              "rack wiring: the dial list is the size the processor expects");
+
+        // Defaults must match the engine's, or a fresh rack sounds different from a
+        // freshly-reset one.
+        RackDials fresh;
+        auto pv = [&](const char* id) { return proc.apvts.getRawParameterValue(id)->load(); };
+        check(std::abs(pv(ParamID::fltCut) - fresh.fltCut) < 0.5f, "rack wiring: cutoff default matches the engine");
+        check(std::abs(pv(ParamID::cmbFb)  - fresh.cmbFb)  < 0.5f, "rack wiring: comb feedback default matches");
+        check(std::abs(pv(ParamID::echTime) - fresh.echTime) < 0.5f, "rack wiring: echo time default matches");
+        check(std::abs(pv(ParamID::outLvl) - fresh.outLvl) < 0.5f, "rack wiring: rack out default matches");
+
+        // A rack dial must round-trip through the host's own automation path.
+        if (auto* p = proc.apvts.getParameter(ParamID::vowMorph))
+        {
+            p->setValueNotifyingHost(1.0f);
+            check(std::abs(pv(ParamID::vowMorph) - 4.0f) < 0.01f,
+                  "rack wiring: automating Vowel to the top reaches U");
+            p->setValueNotifyingHost(0.0f);
+            check(std::abs(pv(ParamID::vowMorph) - 0.0f) < 0.01f,
+                  "rack wiring: and back to A");
+        }
+    }
+
     std::cout << (failures == 0 ? "ALL PASS" : ("FAILURES: " + String(failures)).toStdString())
               << std::endl;
     return failures == 0 ? 0 : 1;

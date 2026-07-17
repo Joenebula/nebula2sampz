@@ -31,6 +31,69 @@ Nebula2AudioProcessor::Nebula2AudioProcessor()
     padOnParam       = apvts.getRawParameterValue(Nebula2::ParamID::padOn);
     padXParam        = apvts.getRawParameterValue(Nebula2::ParamID::padX);
     padYParam        = apvts.getRawParameterValue(Nebula2::ParamID::padY);
+
+    rackOnParam = apvts.getRawParameterValue(Nebula2::ParamID::rackOn);
+    {
+        // Cached in the same order readRackDials() unpacks them. One list, one order — the
+        // alternative is 31 named pointers and 31 chances to wire the wrong one.
+        const char* ids[] = {
+            Nebula2::ParamID::fltCut,  Nebula2::ParamID::fltRes,  Nebula2::ParamID::fltType,
+            Nebula2::ParamID::lfoRate, Nebula2::ParamID::lfoDepth, Nebula2::ParamID::lfoShape,
+            Nebula2::ParamID::phsRate, Nebula2::ParamID::phsDepth, Nebula2::ParamID::phsFb,
+            Nebula2::ParamID::phsMix,
+            Nebula2::ParamID::choRate, Nebula2::ParamID::choDepth, Nebula2::ParamID::choMix,
+            Nebula2::ParamID::cmbTune, Nebula2::ParamID::cmbFb,   Nebula2::ParamID::cmbMix,
+            Nebula2::ParamID::fldDrive, Nebula2::ParamID::fldSym, Nebula2::ParamID::fldMix,
+            Nebula2::ParamID::vowMorph, Nebula2::ParamID::vowSharp, Nebula2::ParamID::vowMix,
+            Nebula2::ParamID::echTime, Nebula2::ParamID::echFb,   Nebula2::ParamID::echWow,
+            Nebula2::ParamID::echMix,
+            Nebula2::ParamID::outLvl,
+            Nebula2::ParamID::eqGain0, Nebula2::ParamID::eqGain1, Nebula2::ParamID::eqGain2,
+            Nebula2::ParamID::eqGain3, Nebula2::ParamID::eqGain4, Nebula2::ParamID::eqGain5,
+        };
+        static_assert(sizeof(ids) / sizeof(ids[0]) == 33, "rackDialParams size must match this list");
+        for (size_t i = 0; i < rackDialParams.size(); ++i)
+            rackDialParams[i] = apvts.getRawParameterValue(ids[i]);
+    }
+}
+
+// Unpacks the cached params into the dial struct. Audio-thread safe: atomic loads only.
+void Nebula2AudioProcessor::readRackDials() noexcept
+{
+    auto v = [this](int i, float fallback) noexcept
+    {
+        return rackDialParams[(size_t) i] != nullptr ? rackDialParams[(size_t) i]->load() : fallback;
+    };
+
+    rackDials.fltCut  = v(0, 1200.0f);
+    rackDials.fltRes  = v(1, 1.0f);
+    rackDials.fltType = (int) v(2, 0.0f);
+    rackDials.lfoRate  = v(3, 1.5f);
+    rackDials.lfoDepth = v(4, 50.0f);
+    rackDials.lfoShape = (int) v(5, 0.0f);
+    rackDials.phsRate  = v(6, 0.5f);
+    rackDials.phsDepth = v(7, 75.0f);
+    rackDials.phsFb    = v(8, 40.0f);
+    rackDials.phsMix   = v(9, 50.0f);
+    rackDials.choRate  = v(10, 0.8f);
+    rackDials.choDepth = v(11, 50.0f);
+    rackDials.choMix   = v(12, 50.0f);
+    rackDials.cmbTune  = v(13, 180.0f);
+    rackDials.cmbFb    = v(14, 80.0f);
+    rackDials.cmbMix   = v(15, 50.0f);
+    rackDials.fldDrive = v(16, 35.0f);
+    rackDials.fldSym   = v(17, 0.0f);
+    rackDials.fldMix   = v(18, 50.0f);
+    rackDials.vowMorph = v(19, 0.0f);
+    rackDials.vowSharp = v(20, 9.0f);
+    rackDials.vowMix   = v(21, 50.0f);
+    rackDials.echTime  = v(22, 320.0f);
+    rackDials.echFb    = v(23, 55.0f);
+    rackDials.echWow   = v(24, 37.0f);
+    rackDials.echMix   = v(25, 50.0f);
+    rackDials.outLvl   = v(26, 100.0f);
+    for (int i = 0; i < 6; ++i)
+        rackDials.eqGain[(size_t) i] = v(27 + i, 0.0f);
 }
 
 int Nebula2AudioProcessor::gridStepsFromChoice(int choiceIndex) noexcept
@@ -117,6 +180,8 @@ void Nebula2AudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
     space.reset();
     morph.prepare(spec);
     morph.reset();
+    rackEngine.prepare(spec);
+    rackEngine.reset();
 
     // Preallocate the layer buses here (never in the audio callback).
     sampleBus.setSize(2, samplesPerBlock, false, false, true);
@@ -284,6 +349,28 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
         space.process(buffer, sp);
     }
 
+    // Modular rack: the whole mix goes in, whatever the patch does comes out. Sits last
+    // before the master, exactly where the prototype tapped it (postGain -> rack -> master).
+    //
+    // The rack is skipped entirely when it's off OR when nothing is patched to the main
+    // out — in both cases the dry beat passes untouched. A rack you haven't wired yet must
+    // never silence your track.
+    {
+        const bool rackOn = rackOnParam == nullptr || rackOnParam->load() > 0.5f;
+        if (rackOn)
+        {
+            // TRY the lock; never wait on it. If the editor is mid-patch, this block uses
+            // last block's graph — one block of a stale cable is inaudible, whereas an
+            // audio thread blocked on the message thread is a dropout.
+            const juce::SpinLock::ScopedTryLockType sl(rackLock);
+            if (sl.isLocked())
+            {
+                readRackDials();
+                rackEngine.process(buffer, rackGraph, rackDials);
+            }
+        }
+    }
+
     // Master chain: gain -> limiter -> safety clamp.
     const float g   = masterParam  != nullptr ? masterParam->load()          : 0.9f;
     const bool  lim = limiterParam != nullptr ? limiterParam->load() > 0.5f   : true;
@@ -311,6 +398,14 @@ void Nebula2AudioProcessor::getStateInformation(juce::MemoryBlock& destData)
     // Morph scenes are structured data too (see MorphPad.h) — save them explicitly.
     auto morphNode = state.getOrCreateChildWithName("MORPH", nullptr);
     morphNode.setProperty("scenes", Nebula2::morphScenesToString(morphScenes), nullptr);
+
+    // The patch IS the song. Save it, or a reopened project comes back with every rack dial
+    // restored and not one cable — which would look right and sound like nothing.
+    {
+        const juce::SpinLock::ScopedLockType sl(rackLock);
+        auto rackNode = state.getOrCreateChildWithName("RACK", nullptr);
+        rackNode.setProperty("patch", rackGraph.toString(), nullptr);
+    }
 
     if (auto xml = state.createXml())
         copyXmlToBinary(*xml, destData);
@@ -341,6 +436,13 @@ void Nebula2AudioProcessor::setStateInformation(const void* data, int sizeInByte
 
     if (auto morphNode = tree.getChildWithName("MORPH"); morphNode.isValid())
         morphScenes = Nebula2::morphScenesFromString(morphNode.getProperty("scenes").toString());
+
+    if (auto rackNode = tree.getChildWithName("RACK"); rackNode.isValid())
+    {
+        auto restored = Nebula2::RackGraph::fromString(rackNode.getProperty("patch").toString());
+        const juce::SpinLock::ScopedLockType sl(rackLock);
+        rackGraph = restored;
+    }
 
     apvts.replaceState(tree);
 }

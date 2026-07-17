@@ -93,11 +93,39 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     padOnAttachment = std::make_unique<APVTS::ButtonAttachment>(
         processorRef.getValueTreeState(), Nebula2::ParamID::padOn, padOnButton);
 
+    // --- Modular rack ---
+    addAndMakeVisible(rackView);
+    rackOnButton.setColour(juce::ToggleButton::textColourId, kSub);
+    addAndMakeVisible(rackOnButton);
+    rackOnAttachment = std::make_unique<APVTS::ButtonAttachment>(
+        processorRef.getValueTreeState(), Nebula2::ParamID::rackOn, rackOnButton);
+
+    rackClearButton.onClick = [this] { rackView.clearPatch(); };
+    addAndMakeVisible(rackClearButton);
+
+    // Only the dials you'd reach for while patching are on the panel; the rest are still
+    // full host parameters, so nothing here is a control the DAW can't see.
+    addKnob(fltCut,   Nebula2::ParamID::fltCut,   "Cut",   " Hz");
+    addKnob(fltRes,   Nebula2::ParamID::fltRes,   "Res",   "");
+    addKnob(lfoRate,  Nebula2::ParamID::lfoRate,  "Rate",  " Hz");
+    addKnob(lfoDepth, Nebula2::ParamID::lfoDepth, "Depth", " %");
+    addKnob(cmbTune,  Nebula2::ParamID::cmbTune,  "Tune",  " Hz");
+    addKnob(cmbFb,    Nebula2::ParamID::cmbFb,    "Comb FB", " %");
+    addKnob(vowMorph, Nebula2::ParamID::vowMorph, "Vowel", "");
+    addKnob(echTime,  Nebula2::ParamID::echTime,  "Echo",  " ms");
+    addKnob(echFb,    Nebula2::ParamID::echFb,    "Echo FB", " %");
+    addKnob(outLvl,   Nebula2::ParamID::outLvl,   "Rack Out", " %");
+
+    addCombo(fltTypeBox, fltTypeLabel, Nebula2::ParamID::fltType, "Filter",
+             { "Low Pass", "Band Pass", "High Pass" }, fltTypeAttachment);
+    addCombo(lfoShapeBox, lfoShapeLabel, Nebula2::ParamID::lfoShape, "LFO",
+             { "Sine", "Triangle", "Saw", "Square" }, lfoShapeAttachment);
+
     refreshSampleInfo();
     updateSliceControlStates();
     startTimerHz(8);        // watch for slice-mode changes (incl. from host automation)
 
-    setSize(660, 980);
+    setSize(660, 1320);
 }
 
 void Nebula2AudioProcessorEditor::timerCallback()
@@ -258,6 +286,10 @@ void Nebula2AudioProcessorEditor::paint(juce::Graphics& g)
     g.fillRoundedRectangle(morphArea.toFloat(), 8.0f);
 
     body.removeFromTop(8);
+    auto gridArea = body.removeFromTop(150);
+    g.fillRoundedRectangle(gridArea.toFloat(), 8.0f);
+
+    body.removeFromTop(8);
     g.fillRoundedRectangle(body.toFloat(), 8.0f);
 
     g.setColour(kAccent);
@@ -265,7 +297,8 @@ void Nebula2AudioProcessorEditor::paint(juce::Graphics& g)
     g.drawFittedText("COLOUR", colour.reduced(12, 6).removeFromTop(12), juce::Justification::topLeft, 1);
     g.drawFittedText("SPACE", space.reduced(12, 6).removeFromTop(12), juce::Justification::topLeft, 1);
     g.drawFittedText("MORPH", morphArea.reduced(12, 6).removeFromTop(12), juce::Justification::topLeft, 1);
-    g.drawFittedText("GRID", body.reduced(12, 6).removeFromTop(12), juce::Justification::topLeft, 1);
+    g.drawFittedText("GRID", gridArea.reduced(12, 6).removeFromTop(12), juce::Justification::topLeft, 1);
+    g.drawFittedText("RACK", body.reduced(12, 6).removeFromTop(12), juce::Justification::topLeft, 1);
 }
 
 void Nebula2AudioProcessorEditor::resized()
@@ -349,7 +382,7 @@ void Nebula2AudioProcessorEditor::resized()
 
     // --- Grid panel ---
     body.removeFromTop(8);
-    auto gp = body.reduced(10);
+    auto gp = body.removeFromTop(150).reduced(10);
     gp.removeFromTop(12);
     auto gRow = gp.removeFromTop(26);
     gridOnButton.setBounds(gRow.removeFromLeft(78));
@@ -360,4 +393,34 @@ void Nebula2AudioProcessorEditor::resized()
     gridClearButton.setBounds(gRow.removeFromLeft(60).reduced(0, 2));
     gp.removeFromTop(6);
     gridView.setBounds(gp);
+
+    // --- Rack panel ---
+    body.removeFromTop(8);
+    auto rp = body.reduced(10);
+    rp.removeFromTop(12);
+    auto rRow = rp.removeFromTop(26);
+    rackOnButton.setBounds(rRow.removeFromLeft(78));
+    rRow.removeFromLeft(8);
+    rackClearButton.setBounds(rRow.removeFromLeft(84).reduced(0, 2));
+    rRow.removeFromLeft(12);
+    fltTypeLabel.setBounds(rRow.removeFromLeft(38));
+    fltTypeBox.setBounds(rRow.removeFromLeft(84).reduced(0, 2));
+    rRow.removeFromLeft(8);
+    lfoShapeLabel.setBounds(rRow.removeFromLeft(28));
+    lfoShapeBox.setBounds(rRow.removeFromLeft(80).reduced(0, 2));
+
+    rp.removeFromTop(4);
+    rackView.setBounds(rp.removeFromTop(rp.getHeight() - 78));
+
+    rp.removeFromTop(4);
+    auto kRow = rp.removeFromTop(72);
+    const int kw = kRow.getWidth() / 10;
+    Knob* rackKnobs[] = { &fltCut, &fltRes, &lfoRate, &lfoDepth, &cmbTune,
+                          &cmbFb, &vowMorph, &echTime, &echFb, &outLvl };
+    for (auto* k : rackKnobs)
+    {
+        auto cell = kRow.removeFromLeft(kw);
+        k->label.setBounds(cell.removeFromTop(12));
+        k->slider.setBounds(cell);
+    }
 }

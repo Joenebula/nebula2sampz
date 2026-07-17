@@ -5,6 +5,7 @@
 #include "WaveformView.h"
 #include "GridView.h"
 #include "MorphPadView.h"
+#include "RackView.h"
 
 // A functional control surface: every live parameter, attached to the APVTS so the host
 // and the UI can never disagree (law: one source of truth — the visual derives from state).
@@ -72,6 +73,17 @@ private:
     MorphPadView morphPad { processorRef };
     juce::ToggleButton padOnButton { "Morph On" };
     std::unique_ptr<APVTS::ButtonAttachment> padOnAttachment;
+
+    // Modular rack
+    RackView rackView { processorRef };
+    juce::ToggleButton rackOnButton { "Rack On" };
+    std::unique_ptr<APVTS::ButtonAttachment> rackOnAttachment;
+    juce::TextButton rackClearButton { "Clear Patch" };
+    Knob fltCut, fltRes, cmbTune, cmbFb, vowMorph, echTime, echFb, outLvl;
+    juce::ComboBox fltTypeBox, lfoShapeBox;
+    juce::Label fltTypeLabel, lfoShapeLabel;
+    std::unique_ptr<APVTS::ComboBoxAttachment> fltTypeAttachment, lfoShapeAttachment;
+    Knob lfoRate, lfoDepth;
 
     // Sample layer
     WaveformView waveform { processorRef.getSampleLayer() };

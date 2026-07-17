@@ -42,8 +42,57 @@ namespace Nebula2::ParamID
     inline constexpr auto dlySync  = "dlySync";    // choice: 1/16, 1/8T, 1/8, 1/8., 1/4, 1/4.
     inline constexpr auto spaceOn  = "spaceOn";    // bool
 
-    // --- Rack — one representative logarithmic dial ---
+    // --- Modular rack ---
+    // Every DIAL is a parameter: a DAW user will want to automate the rack's filter, and a
+    // dial you can't reach from the host is a dial that half-works. The PATCH (which cables
+    // run where) is state-chunk data, not a parameter — same split as the Morph pad's
+    // position-vs-scenes, and for the same reason: continuous controls automate, topology
+    // doesn't. See RackGraph.h.
+    inline constexpr auto rackOn   = "rackOn";     // bool — mutes the rack, dry beat survives
+
     inline constexpr auto fltCut   = "flt.cut";    // float 40..14000   (log skew, Hz)
+    inline constexpr auto fltRes   = "flt.res";    // float 0.1..18     (Q)
+    inline constexpr auto fltType  = "flt.type";   // choice: LP / BP / HP
+
+    inline constexpr auto lfoRate  = "lfo.rate";   // float 0.05..20    (log skew, Hz)
+    inline constexpr auto lfoDepth = "lfo.depth";  // float 0..100  %
+    inline constexpr auto lfoShape = "lfo.shape";  // choice: Sine / Tri / Saw / Square
+
+    inline constexpr auto phsRate  = "phs.rate";   // float 0.05..8     (Hz)
+    inline constexpr auto phsDepth = "phs.depth";  // float 0..100  %
+    inline constexpr auto phsFb    = "phs.fb";     // float 0..100  %
+    inline constexpr auto phsMix   = "phs.mix";    // float 0..100  %
+
+    inline constexpr auto choRate  = "cho.rate";   // float 0.05..8     (Hz)
+    inline constexpr auto choDepth = "cho.depth";  // float 0..100  %
+    inline constexpr auto choMix   = "cho.mix";    // float 0..100  %
+
+    inline constexpr auto cmbTune  = "cmb.tune";   // float 20..2000    (log skew, Hz)
+    inline constexpr auto cmbFb    = "cmb.fb";     // float 0..100  %
+    inline constexpr auto cmbMix   = "cmb.mix";    // float 0..100  %
+
+    inline constexpr auto fldDrive = "fld.drive";  // float 0..100  %
+    inline constexpr auto fldSym   = "fld.sym";    // float -100..100 % (asymmetry)
+    inline constexpr auto fldMix   = "fld.mix";    // float 0..100  %
+
+    inline constexpr auto vowMorph = "vow.morph";  // float 0..4        (A E I O U, continuous)
+    inline constexpr auto vowSharp = "vow.sharp";  // float 2..40       (Q)
+    inline constexpr auto vowMix   = "vow.mix";    // float 0..100  %
+
+    inline constexpr auto echTime  = "ech.time";   // float 20..2000    (ms)
+    inline constexpr auto echFb    = "ech.fb";     // float 0..100  %
+    inline constexpr auto echWow   = "ech.wow";    // float 0..100  %
+    inline constexpr auto echMix   = "ech.mix";    // float 0..100  %
+
+    inline constexpr auto outLvl   = "out.lvl";    // float 0..100  %
+
+    // EQ band gains, dB. Bands are at fixed frequencies (35/110/420/1600/5200/9000).
+    inline constexpr auto eqGain0  = "eq.0";
+    inline constexpr auto eqGain1  = "eq.1";
+    inline constexpr auto eqGain2  = "eq.2";
+    inline constexpr auto eqGain3  = "eq.3";
+    inline constexpr auto eqGain4  = "eq.4";
+    inline constexpr auto eqGain5  = "eq.5";
 
     // --- One representative discrete/enum ---
     inline constexpr auto revChar  = "revChar";    // choice: room/hall/plate/cathedral/reverse
