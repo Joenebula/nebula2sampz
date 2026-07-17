@@ -15,6 +15,10 @@ namespace Nebula2::ParamID
     inline constexpr auto sliceCount = "sliceCount";  // choice: 4/8/16/32/64
     inline constexpr auto sensitivity = "sens";       // float 0..1 (transient mode)
 
+    // --- FX grid sequencer ---
+    inline constexpr auto gridOn    = "gridOn";     // bool
+    inline constexpr auto gridSteps = "gridSteps";  // choice: 8/16/32 (1/16-note spacing)
+
     // --- Colour block (live: drives the FX chain on the drum bus) ---
     inline constexpr auto drive     = "drive";     // float 0..100  %
     inline constexpr auto driveChar = "char";      // choice: tube/fuzz/fold

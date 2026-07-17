@@ -74,11 +74,23 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     sensitivity.slider.updateText();
 
     addAndMakeVisible(waveform);
+
+    // --- FX grid ---
+    addAndMakeVisible(gridView);
+    gridOnButton.setColour(juce::ToggleButton::textColourId, kSub);
+    addAndMakeVisible(gridOnButton);
+    gridOnAttachment = std::make_unique<APVTS::ButtonAttachment>(
+        processorRef.getValueTreeState(), Nebula2::ParamID::gridOn, gridOnButton);
+    addCombo(gridStepsBox, gridStepsLabel, Nebula2::ParamID::gridSteps, "Steps",
+             { "8", "16", "32" }, gridStepsAttachment);
+    gridClearButton.onClick = [this] { processorRef.getGrid().clearAll(); gridView.repaint(); };
+    addAndMakeVisible(gridClearButton);
+
     refreshSampleInfo();
     updateSliceControlStates();
     startTimerHz(8);        // watch for slice-mode changes (incl. from host automation)
 
-    setSize(640, 600);
+    setSize(660, 810);
 }
 
 void Nebula2AudioProcessorEditor::timerCallback()
@@ -229,13 +241,19 @@ void Nebula2AudioProcessorEditor::paint(juce::Graphics& g)
     auto colour = body.removeFromTop(200);
     g.setColour(kPanel);
     g.fillRoundedRectangle(colour.toFloat(), 8.0f);
+
+    body.removeFromTop(8);
+    auto space = body.removeFromTop(120);
+    g.fillRoundedRectangle(space.toFloat(), 8.0f);
+
     body.removeFromTop(8);
     g.fillRoundedRectangle(body.toFloat(), 8.0f);
 
     g.setColour(kAccent);
     g.setFont(juce::FontOptions(10.0f));
     g.drawFittedText("COLOUR", colour.reduced(12, 6).removeFromTop(12), juce::Justification::topLeft, 1);
-    g.drawFittedText("SPACE", body.reduced(12, 6).removeFromTop(12), juce::Justification::topLeft, 1);
+    g.drawFittedText("SPACE", space.reduced(12, 6).removeFromTop(12), juce::Justification::topLeft, 1);
+    g.drawFittedText("GRID", body.reduced(12, 6).removeFromTop(12), juce::Justification::topLeft, 1);
 }
 
 void Nebula2AudioProcessorEditor::resized()
@@ -287,7 +305,7 @@ void Nebula2AudioProcessorEditor::resized()
 
     // --- Space panel ---
     body.removeFromTop(8);
-    auto sp = body.reduced(10);
+    auto sp = body.removeFromTop(120).reduced(10);
     sp.removeFromTop(12);
     auto sRow = sp.removeFromTop(90);
     Knob* sKnobs[] = { &revMix, &dlyMix, &dlyFb };
@@ -307,4 +325,18 @@ void Nebula2AudioProcessorEditor::resized()
     dlySyncBox.setBounds(right.removeFromLeft(70).reduced(0, 1));
     right.removeFromLeft(10);
     spaceOnButton.setBounds(right.removeFromLeft(86));
+
+    // --- Grid panel ---
+    body.removeFromTop(8);
+    auto gp = body.reduced(10);
+    gp.removeFromTop(12);
+    auto gRow = gp.removeFromTop(26);
+    gridOnButton.setBounds(gRow.removeFromLeft(78));
+    gRow.removeFromLeft(8);
+    gridStepsLabel.setBounds(gRow.removeFromLeft(40));
+    gridStepsBox.setBounds(gRow.removeFromLeft(64).reduced(0, 2));
+    gRow.removeFromLeft(12);
+    gridClearButton.setBounds(gRow.removeFromLeft(60).reduced(0, 2));
+    gp.removeFromTop(6);
+    gridView.setBounds(gp);
 }

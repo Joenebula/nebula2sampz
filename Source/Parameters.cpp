@@ -40,6 +40,12 @@ namespace Nebula2
 
         const auto pct = [] { return juce::NormalisableRange<float>(0.0f, 100.0f, 1.0f); };
 
+        // --- FX grid ---
+        layout.add(std::make_unique<APB>(PID{ ParamID::gridOn, version }, "Grid On", false));
+        layout.add(std::make_unique<APC>(
+            PID{ ParamID::gridSteps, version }, "Grid Steps",
+            juce::StringArray{ "8", "16", "32" }, 1));   // default 16 = one bar of 1/16s
+
         // --- Sample slicing ---
         layout.add(std::make_unique<APC>(
             PID{ ParamID::sliceMode, version }, "Slice Mode",

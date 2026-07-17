@@ -26,6 +26,14 @@ Nebula2AudioProcessor::Nebula2AudioProcessor()
     sliceModeParam   = apvts.getRawParameterValue(Nebula2::ParamID::sliceMode);
     sliceCountParam  = apvts.getRawParameterValue(Nebula2::ParamID::sliceCount);
     sensitivityParam = apvts.getRawParameterValue(Nebula2::ParamID::sensitivity);
+    gridOnParam      = apvts.getRawParameterValue(Nebula2::ParamID::gridOn);
+    gridStepsParam   = apvts.getRawParameterValue(Nebula2::ParamID::gridSteps);
+}
+
+int Nebula2AudioProcessor::gridStepsFromChoice(int choiceIndex) noexcept
+{
+    static constexpr int counts[] = { 8, 16, 32 };
+    return counts[juce::jlimit(0, 2, choiceIndex)];
 }
 
 int Nebula2AudioProcessor::getNumPrograms()
@@ -183,14 +191,35 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
         buffer.addFrom(c, 0, drumBus,   c, 0, numSamples);
     }
 
+    // --- FX grid ---
+    // The grid does NOT write parameters (that was the prototype's slider-killing bug).
+    // It reads the knobs and produces the amount for THIS step; the knob stays the single
+    // source of truth and always sets the ceiling.
+    const bool gridOn = gridOnParam != nullptr && gridOnParam->load() > 0.5f;
+    int step = -1;
+    if (gridOn)
+    {
+        const int steps = gridStepsFromChoice(gridStepsParam != nullptr ? (int) gridStepsParam->load() : 1);
+        grid.setNumSteps(steps);
+        step = Nebula2::FxGrid::stepAtPpq(transport.ppq, steps, 0.25);   // 1/16-note steps
+    }
+    currentGridStep.store(step);
+
+    // Reads a knob, then lets the grid gate it for this step (pass-through when off).
+    const auto amt = [this, gridOn, step](std::atomic<float>* p, Nebula2::GridRow row, float fallback)
+    {
+        const float panel = p != nullptr ? p->load() : fallback;
+        return gridOn ? grid.amountFor(row, panel, step) : panel;
+    };
+
     // Colour: drive -> crush/width -> squeeze -> tone, on the summed layers.
     {
         Nebula2::ColourChain::Params cp;
-        cp.drive     = driveParam     != nullptr ? driveParam->load()     : 0.0f;
-        cp.crush     = crushParam     != nullptr ? crushParam->load()     : 0.0f;
-        cp.squeeze   = squeezeParam   != nullptr ? squeezeParam->load()   : 0.0f;
-        cp.tone      = toneParam      != nullptr ? toneParam->load()      : 100.0f;
-        cp.width     = widthParam     != nullptr ? widthParam->load()     : 100.0f;
+        cp.drive     = amt(driveParam,   Nebula2::GridRow::Drive,   0.0f);
+        cp.crush     = amt(crushParam,   Nebula2::GridRow::Crush,   0.0f);
+        cp.squeeze   = amt(squeezeParam, Nebula2::GridRow::Squeeze, 0.0f);
+        cp.tone      = amt(toneParam,    Nebula2::GridRow::Tone,    100.0f);
+        cp.width     = amt(widthParam,   Nebula2::GridRow::Width,   100.0f);
         cp.driveChar = driveCharParam != nullptr ? (int) driveCharParam->load() : 0;
         cp.on        = fxOnParam      != nullptr ? fxOnParam->load() > 0.5f : true;
         colourChain.process(buffer, cp);
@@ -222,8 +251,8 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
         }
 
         Nebula2::SpaceProcessor::Params sp;
-        sp.revMix   = revMixParam  != nullptr ? revMixParam->load()  : 0.0f;
-        sp.dlyMix   = dlyMixParam  != nullptr ? dlyMixParam->load()  : 0.0f;
+        sp.revMix   = amt(revMixParam, Nebula2::GridRow::Reverb, 0.0f);   // grid can throw sends
+        sp.dlyMix   = amt(dlyMixParam, Nebula2::GridRow::Delay,  0.0f);
         sp.dlyFb    = dlyFbParam   != nullptr ? dlyFbParam->load()   : 40.0f;
         sp.dlySync  = (Nebula2::DelaySync) (dlySyncParam != nullptr ? juce::jlimit(0, 5, (int) dlySyncParam->load()) : 2);
         sp.on       = spaceOnParam != nullptr ? spaceOnParam->load() > 0.5f : true;
@@ -250,6 +279,11 @@ void Nebula2AudioProcessor::getStateInformation(juce::MemoryBlock& destData)
     auto sampleNode = state.getOrCreateChildWithName("SAMPLE", nullptr);
     sampleNode.setProperty("path", sampleLayer.getSourcePath(), nullptr);
 
+    // The grid is structured data, not a flat parameter — it needs saving explicitly too,
+    // or a reopened project comes back with an empty pattern.
+    auto gridNode = state.getOrCreateChildWithName("GRID", nullptr);
+    gridNode.setProperty("cells", grid.toString(), nullptr);
+
     if (auto xml = state.createXml())
         copyXmlToBinary(*xml, destData);
 }
@@ -273,6 +307,9 @@ void Nebula2AudioProcessor::setStateInformation(const void* data, int sizeInByte
             triggerAsyncUpdate();
         }
     }
+
+    if (auto gridNode = tree.getChildWithName("GRID"); gridNode.isValid())
+        grid.fromString(gridNode.getProperty("cells").toString());
 
     apvts.replaceState(tree);
 }

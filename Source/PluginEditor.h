@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "PluginProcessor.h"
 #include "WaveformView.h"
+#include "GridView.h"
 
 // A functional control surface: every live parameter, attached to the APVTS so the host
 // and the UI can never disagree (law: one source of truth — the visual derives from state).
@@ -56,6 +57,15 @@ private:
 
     juce::ToggleButton spaceOnButton { "Space On" };
     std::unique_ptr<APVTS::ButtonAttachment> spaceOnAttachment;
+
+    // FX grid
+    GridView gridView { processorRef };
+    juce::ToggleButton gridOnButton { "Grid On" };
+    std::unique_ptr<APVTS::ButtonAttachment> gridOnAttachment;
+    juce::ComboBox gridStepsBox;
+    juce::Label gridStepsLabel;
+    std::unique_ptr<APVTS::ComboBoxAttachment> gridStepsAttachment;
+    juce::TextButton gridClearButton { "Clear" };
 
     // Sample layer
     WaveformView waveform { processorRef.getSampleLayer() };

@@ -7,6 +7,7 @@
 #include "dsp/ColourChain.h"
 #include "dsp/SpaceProcessor.h"
 #include "dsp/SampleLayer.h"
+#include "dsp/FxGrid.h"
 
 // MIDI-triggered drum voices -> Colour FX -> Space send -> master chain.
 //
@@ -52,6 +53,18 @@ public:
     // Slice-count choice index -> actual count (4/8/16/32/64).
     static int sliceCountFromChoice(int choiceIndex) noexcept;
 
+    // Grid-steps choice index -> actual step count (8/16/32).
+    static int gridStepsFromChoice(int choiceIndex) noexcept;
+
+    // The FX grid. The editor paints cells on the message thread; the audio thread only
+    // READS them. Cells are single bytes, so a read racing a paint yields either the old
+    // or the new level for one block — inaudible, and far cheaper than locking the
+    // audio thread.
+    Nebula2::FxGrid& getGrid() noexcept { return grid; }
+
+    // Which step is currently sounding (for the UI playhead). -1 if the grid is off.
+    int getCurrentGridStep() const noexcept { return currentGridStep.load(); }
+
     // Most-recent host transport the audio thread saw (for the editor to display later).
     Nebula2::TransportState getTransport() const noexcept { return transport; }
 
@@ -78,6 +91,11 @@ private:
     std::atomic<float>* sliceModeParam { nullptr };
     std::atomic<float>* sliceCountParam { nullptr };
     std::atomic<float>* sensitivityParam { nullptr };
+    std::atomic<float>* gridOnParam { nullptr };
+    std::atomic<float>* gridStepsParam { nullptr };
+
+    Nebula2::FxGrid grid;
+    std::atomic<int> currentGridStep { -1 };
 
     Nebula2::MasterProcessor masterProcessor;
 
