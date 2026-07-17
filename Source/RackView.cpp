@@ -1,4 +1,6 @@
 #include "RackView.h"
+#include "ParameterIDs.h"
+#include "Theme.h"
 
 using namespace Nebula2;
 
@@ -39,6 +41,66 @@ namespace
 RackView::RackView(Nebula2AudioProcessor& p) : processorRef(p)
 {
     startTimerHz(24);
+    buildModuleDials(p.getValueTreeState());
+}
+
+void RackView::addDial(juce::AudioProcessorValueTreeState& apvts, ModuleId owner,
+                       const juce::String& paramID, const juce::String& label)
+{
+    Dial d;
+    d.slider = std::make_unique<juce::Slider>();
+    d.slider->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+    d.slider->setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);   // the module is small;
+                                                                      // the tooltip carries the value
+    d.slider->setPopupDisplayEnabled(true, true, this);
+    d.slider->setTooltip(label);
+    d.label = label;
+    d.owner = owner;
+    addAndMakeVisible(*d.slider);
+    d.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+        apvts, paramID, *d.slider);
+    dials.push_back(std::move(d));
+}
+
+void RackView::buildModuleDials(juce::AudioProcessorValueTreeState& apvts)
+{
+    // Two or three dials per module: the ones you actually reach for while patching. The
+    // rest remain full host parameters — nothing here is a control the DAW can't see.
+    addDial(apvts, ModuleId::flt, ParamID::fltCut,   "Cut");
+    addDial(apvts, ModuleId::flt, ParamID::fltRes,   "Res");
+
+    addDial(apvts, ModuleId::lfo, ParamID::lfoRate,  "Rate");
+    addDial(apvts, ModuleId::lfo, ParamID::lfoDepth, "Depth");
+
+    addDial(apvts, ModuleId::phs, ParamID::phsRate,  "Rate");
+    addDial(apvts, ModuleId::phs, ParamID::phsFb,    "Fb");
+    addDial(apvts, ModuleId::phs, ParamID::phsMix,   "Mix");
+
+    addDial(apvts, ModuleId::cho, ParamID::choRate,  "Rate");
+    addDial(apvts, ModuleId::cho, ParamID::choDepth, "Depth");
+    addDial(apvts, ModuleId::cho, ParamID::choMix,   "Mix");
+
+    addDial(apvts, ModuleId::cmb, ParamID::cmbTune,  "Tune");
+    addDial(apvts, ModuleId::cmb, ParamID::cmbFb,    "Fb");
+    addDial(apvts, ModuleId::cmb, ParamID::cmbMix,   "Mix");
+
+    addDial(apvts, ModuleId::fld, ParamID::fldDrive, "Drive");
+    addDial(apvts, ModuleId::fld, ParamID::fldSym,   "Sym");
+    addDial(apvts, ModuleId::fld, ParamID::fldMix,   "Mix");
+
+    addDial(apvts, ModuleId::vow, ParamID::vowMorph, "Vowel");
+    addDial(apvts, ModuleId::vow, ParamID::vowSharp, "Sharp");
+    addDial(apvts, ModuleId::vow, ParamID::vowMix,   "Mix");
+
+    addDial(apvts, ModuleId::ech, ParamID::echTime,  "Time");
+    addDial(apvts, ModuleId::ech, ParamID::echFb,    "Fb");
+    addDial(apvts, ModuleId::ech, ParamID::echMix,   "Mix");
+
+    addDial(apvts, ModuleId::eq,  ParamID::eqGain1,  "110");
+    addDial(apvts, ModuleId::eq,  ParamID::eqGain3,  "1.6k");
+    addDial(apvts, ModuleId::eq,  ParamID::eqGain5,  "9k");
+
+    addDial(apvts, ModuleId::out, ParamID::outLvl,   "Level");
 }
 
 void RackView::timerCallback()
@@ -79,6 +141,26 @@ void RackView::rebuildLayout()
             jacks.push_back ({ { s.m, Jack::cv },  { r.getX() + 8.0f, r.getCentreY() + 14.0f } });
         if (hasJack (s.m, Jack::out))
             jacks.push_back ({ { s.m, Jack::out }, { r.getRight() - 8.0f, r.getCentreY() } });
+    }
+
+    // Dials sit in the module's middle, between the jack columns. Clicking a module body
+    // toggles bypass, so the dials must not sit under that gesture — they're inset, and
+    // mouseDown checks for a jack/dial before treating a click as a power toggle.
+    for (const auto& s : slots)
+    {
+        std::vector<Dial*> mine;
+        for (auto& d : dials)
+            if (d.owner == s.m) mine.push_back (&d);
+        if (mine.empty()) continue;
+
+        auto r = modBounds[(int) s.m].reduced (20.0f, 0.0f).withTrimmedTop (16.0f)
+                                     .withTrimmedBottom (4.0f);
+        const float w = r.getWidth() / (float) mine.size();
+        for (size_t i = 0; i < mine.size(); ++i)
+        {
+            auto cell = r.withX (r.getX() + w * (float) i).withWidth (w).reduced (2.0f, 0.0f);
+            mine[i]->slider->setBounds (cell.toNearestInt());
+        }
     }
 }
 
@@ -142,13 +224,20 @@ void RackView::mouseDown(const juce::MouseEvent& e)
         return;
     }
 
-    // Clicking a module's body toggles its power.
+    // Clicking a module's NAME toggles its power. Not the whole body: the body now holds
+    // dials, and a stray click that silently bypassed a module would be a nasty surprise
+    // mid-take.
     const auto m = moduleAt (p);
     if (m != ModuleId::count && m != ModuleId::src && m != ModuleId::out)
     {
+        const auto header = modBounds[(int) m].withHeight (16.0f);
+        if (! header.contains (p)) return;
+
         auto& g = processorRef.getRackGraph();
         const juce::SpinLock::ScopedLockType sl (processorRef.getRackLock());
         g.setBypassed (m, ! g.isBypassed (m));
+        message = juce::String (moduleName (m)) + (g.isBypassed (m) ? " off" : " on");
+        messageTicks = 40;
         repaint();
     }
 }
@@ -231,16 +320,28 @@ void RackView::paint(juce::Graphics& g)
         g.drawText (moduleStateText (st), r.reduced (8.0f, 4.0f).removeFromTop (12.0f),
                     juce::Justification::topRight);
 
-        // The LFO draws its own moving value, so its rate and depth are visible, not implied.
+        // The LFO draws its own moving value along the bottom edge, so its rate and depth
+        // are visible rather than implied. Below the dials, not across them.
         if (s.m == ModuleId::lfo)
         {
-            auto strip = r.reduced (10.0f, 0.0f).withTop (r.getCentreY() + 2.0f).withHeight (14.0f);
+            auto strip = r.reduced (22.0f, 0.0f).removeFromBottom (10.0f);
             g.setColour (kLine);
             g.drawLine (strip.getX(), strip.getCentreY(), strip.getRight(), strip.getCentreY());
             g.setColour (kCV);
             const float x = strip.getCentreX() + lfoDot * strip.getWidth() * 0.45f;
             g.fillEllipse (x - 2.5f, strip.getCentreY() - 2.5f, 5.0f, 5.0f);
         }
+    }
+
+    // A dial on a module that can't be heard must not look live. It still WORKS (it's a
+    // host parameter and automation still lands), but it shouldn't advertise an effect on
+    // your sound that the patch can't deliver — law 4 applied to the rack.
+    for (auto& d : dials)
+    {
+        const auto st = states[(int) d.owner];
+        d.slider->setEnabled (st != ModuleState::off);
+        d.slider->setAlpha (st == ModuleState::live ? 1.0f
+                          : st == ModuleState::off  ? 0.35f : 0.6f);
     }
 
     // --- jacks ---

@@ -14,6 +14,52 @@ namespace Nebula2
         return r;
     }
 
+    // Readouts belong on the PARAMETER, not on a slider: the host's own automation lane
+    // and generic editor read this too. Put it on the slider and a DAW user still sees
+    // "5999.99951..." — these are log-skewed ranges, so trailing float garbage is the norm.
+    static juce::AudioParameterFloatAttributes hzText()
+    {
+        return juce::AudioParameterFloatAttributes()
+            .withStringFromValueFunction([](float v, int)
+            {
+                return v >= 1000.0f ? juce::String(v / 1000.0f, 2) + " kHz"
+                                    : juce::String(juce::roundToInt(v)) + " Hz";
+            })
+            .withValueFromStringFunction([](const juce::String& t)
+            {
+                const float v = t.getFloatValue();
+                return t.containsIgnoreCase("k") ? v * 1000.0f : v;
+            });
+    }
+
+    static juce::AudioParameterFloatAttributes suffixText(const juce::String& suffix, int dp)
+    {
+        return juce::AudioParameterFloatAttributes()
+            .withStringFromValueFunction([suffix, dp](float v, int)
+            {
+                return (dp <= 0 ? juce::String(juce::roundToInt(v)) : juce::String(v, dp)) + suffix;
+            })
+            .withValueFromStringFunction([](const juce::String& t) { return t.getFloatValue(); });
+    }
+
+    // The Vowel dial reads 0..4. "2.31" tells you nothing; "I>O 31%" tells you what you're
+    // about to hear, which is the entire point of the control.
+    static juce::AudioParameterFloatAttributes vowelText()
+    {
+        return juce::AudioParameterFloatAttributes()
+            .withStringFromValueFunction([](float v, int)
+            {
+                static const char* names[] = { "A", "E", "I", "O", "U" };
+                const float p = juce::jlimit(0.0f, 4.0f, v);
+                const int i = juce::jlimit(0, 4, (int) p);
+                const float fr = p - (float) i;
+                if (fr < 0.02f || i >= 4) return juce::String(names[i]);
+                return juce::String(names[i]) + ">" + juce::String(names[i + 1])
+                     + " " + juce::String(juce::roundToInt(fr * 100.0f)) + "%";
+            })
+            .withValueFromStringFunction([](const juce::String& t) { return t.getFloatValue(); });
+    }
+
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     {
         using APF = juce::AudioParameterFloat;
@@ -97,16 +143,16 @@ namespace Nebula2
 
         layout.add(std::make_unique<APF>(
             PID{ ParamID::fltCut, version }, "Ladder Cutoff",
-            logRange(40.0f, 14000.0f), 1200.0f));
+            logRange(40.0f, 14000.0f), 1200.0f, hzText()));
         layout.add(std::make_unique<APF>(
             PID{ ParamID::fltRes, version }, "Ladder Res",
-            juce::NormalisableRange<float>(0.1f, 18.0f, 0.1f), 1.0f));
+            juce::NormalisableRange<float>(0.1f, 18.0f, 0.1f), 1.0f, suffixText("", 1)));
         layout.add(std::make_unique<APC>(
             PID{ ParamID::fltType, version }, "Ladder Type",
             juce::StringArray{ "Low Pass", "Band Pass", "High Pass" }, 0));
 
         layout.add(std::make_unique<APF>(
-            PID{ ParamID::lfoRate, version }, "LFO Rate", logRange(0.05f, 20.0f), 1.5f));
+            PID{ ParamID::lfoRate, version }, "LFO Rate", logRange(0.05f, 20.0f), 1.5f, suffixText(" Hz", 2)));
         layout.add(std::make_unique<APF>(
             PID{ ParamID::lfoDepth, version }, "LFO Depth", pct(), 50.0f));
         layout.add(std::make_unique<APC>(
@@ -114,18 +160,18 @@ namespace Nebula2
             juce::StringArray{ "Sine", "Triangle", "Saw", "Square" }, 0));
 
         layout.add(std::make_unique<APF>(
-            PID{ ParamID::phsRate, version }, "Phaser Rate", logRange(0.05f, 8.0f), 0.5f));
+            PID{ ParamID::phsRate, version }, "Phaser Rate", logRange(0.05f, 8.0f), 0.5f, suffixText(" Hz", 2)));
         layout.add(std::make_unique<APF>(PID{ ParamID::phsDepth, version }, "Phaser Depth", pct(), 75.0f));
         layout.add(std::make_unique<APF>(PID{ ParamID::phsFb,    version }, "Phaser Feedback", pct(), 40.0f));
         layout.add(std::make_unique<APF>(PID{ ParamID::phsMix,   version }, "Phaser Mix", pct(), 50.0f));
 
         layout.add(std::make_unique<APF>(
-            PID{ ParamID::choRate, version }, "Chorus Rate", logRange(0.05f, 8.0f), 0.8f));
+            PID{ ParamID::choRate, version }, "Chorus Rate", logRange(0.05f, 8.0f), 0.8f, suffixText(" Hz", 2)));
         layout.add(std::make_unique<APF>(PID{ ParamID::choDepth, version }, "Chorus Depth", pct(), 50.0f));
         layout.add(std::make_unique<APF>(PID{ ParamID::choMix,   version }, "Chorus Mix", pct(), 50.0f));
 
         layout.add(std::make_unique<APF>(
-            PID{ ParamID::cmbTune, version }, "Comb Tune", logRange(20.0f, 2000.0f), 180.0f));
+            PID{ ParamID::cmbTune, version }, "Comb Tune", logRange(20.0f, 2000.0f), 180.0f, hzText()));
         layout.add(std::make_unique<APF>(PID{ ParamID::cmbFb,  version }, "Comb Feedback", pct(), 80.0f));
         layout.add(std::make_unique<APF>(PID{ ParamID::cmbMix, version }, "Comb Mix", pct(), 50.0f));
 
@@ -137,7 +183,7 @@ namespace Nebula2
 
         layout.add(std::make_unique<APF>(
             PID{ ParamID::vowMorph, version }, "Vowel",
-            juce::NormalisableRange<float>(0.0f, 4.0f, 0.01f), 0.0f));
+            juce::NormalisableRange<float>(0.0f, 4.0f, 0.01f), 0.0f, vowelText()));
         layout.add(std::make_unique<APF>(
             PID{ ParamID::vowSharp, version }, "Vowel Sharpness",
             juce::NormalisableRange<float>(2.0f, 40.0f, 0.1f), 9.0f));
@@ -145,7 +191,7 @@ namespace Nebula2
 
         layout.add(std::make_unique<APF>(
             PID{ ParamID::echTime, version }, "Echo Time",
-            logRange(20.0f, 2000.0f), 320.0f));
+            logRange(20.0f, 2000.0f), 320.0f, suffixText(" ms", 0)));
         layout.add(std::make_unique<APF>(PID{ ParamID::echFb,  version }, "Echo Feedback", pct(), 55.0f));
         layout.add(std::make_unique<APF>(PID{ ParamID::echWow, version }, "Echo Wow", pct(), 37.0f));
         layout.add(std::make_unique<APF>(PID{ ParamID::echMix, version }, "Echo Mix", pct(), 50.0f));

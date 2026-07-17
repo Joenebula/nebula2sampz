@@ -26,7 +26,24 @@ public:
 
     void clearPatch();
 
+    // Each module carries its OWN dials, rather than a shared row at the bottom of the
+    // panel. A row of ten knobs labelled "Cut / Res / Tune / Comb FB..." makes you map
+    // each one back to a box by memory; on the box, the dial IS the module.
+    void buildModuleDials(juce::AudioProcessorValueTreeState&);
+
 private:
+    struct Dial
+    {
+        std::unique_ptr<juce::Slider> slider;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
+        juce::String label;
+        Nebula2::ModuleId owner = Nebula2::ModuleId::count;
+    };
+    std::vector<Dial> dials;
+
+    void addDial(juce::AudioProcessorValueTreeState&, Nebula2::ModuleId,
+                 const juce::String& paramID, const juce::String& label);
+
     struct JackSpot
     {
         Nebula2::Port port;
