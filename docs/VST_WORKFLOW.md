@@ -215,6 +215,20 @@ reading both sources; each line notes what fixing it would do.
 (bits/rate/reconstruction), width mid/side, compressor mappings, tone filter, drive
 pre/post staging, delay sync→time table, feedback clamp, and all Colour/Space defaults.
 
+**2026-07-17 — Ported the PUMP (tempo-synced duck).** The groove feature the port had
+dropped (deferred since Phase 3/4). Per-beat sidechain-style duck: gain slams to
+`1 - pump·0.85` on the beat, exponentially recovers to 1 by phase 0.85 — the prototype's
+`scheduleDuck` shape. Sits between Tone and crush in the Colour chain (its prototype
+placement), sample-accurate off the host ppq, additive and OFF by default. `pump` param +
+COLOUR-panel knob. `pumpGain()` is pure and tested; RT-safe; in the dead-control gate.
+
+**Remaining prototype feature omissions (still open, in rough priority):** dub & warp delay
+modes (the port's delay is ping-pong only); the D7 ping-pong stereo routing/panning; the
+rack module visual screens (EQ curve / vowel formants / fold curve / scope — modules have
+dials but no meters); the "haunt" drone; and the movable-band EQ (needs a drag-band UI —
+poor fit for headless work, see [[self-checking-verifiers]] on why UI can't be verified
+without the user).
+
 Everything below this point is the **original planning document**, written before the
 above decisions, and is being updated in place as phases complete. Part B's recommendation
 of Path B is kept for the record of *why* it was considered, not as current guidance —
