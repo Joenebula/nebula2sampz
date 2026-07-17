@@ -63,9 +63,12 @@ void Nebula2LookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int w
     const float n = juce::jlimit(0.0f, 1.0f, sliderPos);
     const auto bounds = juce::Rectangle<int>(x, y, width, height).toFloat();
 
-    const float pad = 8.0f;
-    const float R = juce::jmin(bounds.getWidth(), bounds.getHeight()) * 0.5f - pad;
-    if (R <= 4.0f) return;
+    // Scale the padding rather than subtracting a fixed 8px: a fixed pad turns a small
+    // cell NEGATIVE and the knob silently disappears. A control that renders as nothing is
+    // the worst possible failure — it looks like a bug in the plugin, not in the layout.
+    const float d = juce::jmin(bounds.getWidth(), bounds.getHeight());
+    const float R = d * 0.5f - juce::jmin(8.0f, d * 0.12f);
+    if (R <= 1.0f) return;   // genuinely zero-sized; nothing sensible to draw
 
     const auto c = bounds.getCentre();
     const bool big = R >= 40.0f;
@@ -144,6 +147,41 @@ void Nebula2LookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int w
         g.setColour(lit ? Theme::teal : Theme::faint);
         g.drawLine(p1.x, p1.y, p2.x, p2.y, big ? 3.4f : 2.6f);
     }
+}
+
+void Nebula2LookAndFeel::drawLinearSlider(juce::Graphics& g, int x, int y, int width, int height,
+                                          float sliderPos, float, float,
+                                          juce::Slider::SliderStyle, juce::Slider& s)
+{
+    const auto b = juce::Rectangle<int>(x, y, width, height).toFloat();
+    const float cy = b.getCentreY();
+    const float trackH = 5.0f;
+
+    // Recessed track — the same well treatment as everything else that holds a value.
+    auto track = juce::Rectangle<float>(b.getX(), cy - trackH * 0.5f, b.getWidth(), trackH);
+    g.setColour(Theme::well);
+    g.fillRoundedRectangle(track, trackH * 0.5f);
+    g.setColour(juce::Colour(0x99000000));
+    g.drawRoundedRectangle(track.reduced(0.25f), trackH * 0.5f, 1.0f);
+
+    // Filled portion. Zero means zero: at the bottom of the range nothing lights up.
+    const float fillW = juce::jlimit(0.0f, b.getWidth(), sliderPos - b.getX());
+    if (fillW > 1.0f)
+    {
+        g.setColour(Theme::teal.withAlpha(0.25f));
+        g.fillRoundedRectangle(track.withWidth(fillW).expanded(0.0f, 2.0f), trackH * 0.5f + 2.0f);
+        g.setColour(Theme::teal);
+        g.fillRoundedRectangle(track.withWidth(fillW), trackH * 0.5f);
+    }
+
+    // Thumb, machined like the knob caps so the family reads as one set of controls.
+    const float tr = juce::jmin(7.0f, b.getHeight() * 0.5f);
+    juce::ColourGradient cap(juce::Colour(0xff39415f), sliderPos, cy - tr,
+                             juce::Colour(0xff10142a), sliderPos, cy + tr, false);
+    g.setGradientFill(cap);
+    g.fillEllipse(sliderPos - tr, cy - tr, tr * 2.0f, tr * 2.0f);
+    g.setColour(s.isEnabled() ? Theme::tealLit.withAlpha(0.8f) : Theme::faint);
+    g.drawEllipse(sliderPos - tr, cy - tr, tr * 2.0f, tr * 2.0f, 1.2f);
 }
 
 void Nebula2LookAndFeel::drawComboBox(juce::Graphics& g, int width, int height, bool,

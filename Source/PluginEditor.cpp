@@ -73,6 +73,12 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     addCombo(sliceCountBox, sliceCountLabel, Nebula2::ParamID::sliceCount, "Count",
              { "4", "8", "16", "32", "64" }, sliceCountAttachment);
     addKnob(sensitivity, Nebula2::ParamID::sensitivity, "Sens", "");
+    sensitivity.slider.setSliderStyle(juce::Slider::LinearHorizontal);
+    sensitivity.slider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 44, 18);
+    sensitivity.label.setJustificationType(juce::Justification::centredLeft);
+    sensitivity.slider.textFromValueFunction = [](double v) { return juce::String(juce::roundToInt(v * 100.0)) + " %"; };
+    sensitivity.slider.valueFromTextFunction = [](const juce::String& t) { return t.getDoubleValue() / 100.0; };
+    sensitivity.slider.updateText();
     sensitivity.slider.textFromValueFunction = [](double v) { return juce::String(juce::roundToInt(v * 100.0)) + " %"; };
     sensitivity.slider.valueFromTextFunction = [](const juce::String& t) { return t.getDoubleValue() / 100.0; };
     sensitivity.slider.updateText();
@@ -147,9 +153,9 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     startTimerHz(8);        // watch for slice-mode changes (incl. from host automation)
 
     setResizable(true, true);
-    setResizeLimits(620, 460, 1100, 1000);
+    setResizeLimits(620, 300, 1100, 1000);
     setSize(680, 700);
-    showPage(Page::play);
+    showPage(Page::play);        // sizes the window to the page
 }
 
 Nebula2AudioProcessorEditor::~Nebula2AudioProcessorEditor()
@@ -225,6 +231,11 @@ void Nebula2AudioProcessorEditor::showPage(Page p)
     }
 
     if (play) updateSliceControlStates();   // law 4 still applies on the page you're on
+
+    // Fit the window to the page. Without this, MORPH and GRID leave most of the window
+    // empty and PLAY leaves a dead band under SPACE — the window was sized for the tallest
+    // page and every other one paid for it. Height only: a width the user chose is theirs.
+    setSize(getWidth(), juce::jlimit(460, 1000, contentHeightFor(p) + headerH + 16));
 
     resized();
     repaint();
@@ -511,8 +522,10 @@ void Nebula2AudioProcessorEditor::layoutContent()
     sliceCountLabel.setBounds(sliceRow.removeFromLeft(42));
     sliceCountBox.setBounds(sliceRow.removeFromLeft(64).reduced(0, 5));
     sliceRow.removeFromLeft(14);
+    // Sens is a slider in a 34px row: as a rotary it had no room for a dial at all and
+    // rendered as a bare "50 %". A horizontal slider is the honest shape for this cell.
     sensitivity.label.setBounds(sliceRow.removeFromLeft(38));
-    sensitivity.slider.setBounds(sliceRow.removeFromLeft(70));
+    sensitivity.slider.setBounds(sliceRow.removeFromLeft(150).reduced(0, 6));
 
     sampleArea.removeFromTop(4);
     waveform.setBounds(sampleArea);
@@ -559,6 +572,6 @@ void Nebula2AudioProcessorEditor::layoutContent()
     dlySyncLabel.setBounds(right.removeFromLeft(36));
     dlySyncBox.setBounds(right.removeFromLeft(70).reduced(0, 1));
     right.removeFromLeft(10);
-    spaceOnButton.setBounds(right.removeFromLeft(86));
+    spaceOnButton.setBounds(right.removeFromLeft(100));   // 86 truncated it to "Space..."
 
 }
