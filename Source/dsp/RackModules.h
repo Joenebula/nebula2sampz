@@ -8,11 +8,16 @@ namespace Nebula2
     // Every dial in the rack, in one typed struct. The prototype kept these in a loose
     // `dialVals` string map; a struct is the same data with the typos caught at compile
     // time. Defaults are the prototype's own, so a fresh rack sounds like a fresh rack did.
+    // Every default here is the prototype's own dial `data-val` (reference HTML lines
+    // 1671-1709), verified value-by-value — an earlier version of this struct claimed that
+    // and was wrong on ELEVEN dials (cut 1200 not 6000, res 1 not 4, most mixes pulled to a
+    // flat 50), so a "fresh rack" sounded nothing like the prototype's fresh rack. If you
+    // change one, change it in Parameters.cpp too — they must agree.
     struct RackDials
     {
         // Ladder filter
-        float fltCut = 1200.0f;   // Hz
-        float fltRes = 1.0f;      // Q
+        float fltCut = 6000.0f;   // Hz
+        float fltRes = 4.0f;      // Q
         int   fltType = 0;        // 0 LP, 1 BP, 2 HP
 
         // LFO (CV source)
@@ -21,26 +26,26 @@ namespace Nebula2
         int   lfoShape = 0;       // 0 sine, 1 tri, 2 saw, 3 square
 
         // Phaser
-        float phsRate = 0.5f, phsDepth = 75.0f, phsFb = 40.0f, phsMix = 50.0f;
+        float phsRate = 0.5f, phsDepth = 70.0f, phsFb = 45.0f, phsMix = 60.0f;
 
         // Chorus
-        float choRate = 0.8f, choDepth = 50.0f, choMix = 50.0f;
+        float choRate = 0.8f, choDepth = 45.0f, choMix = 50.0f;
 
         // Comb
         float cmbTune = 180.0f;   // Hz — the delay is 1/tune
-        float cmbFb = 80.0f, cmbMix = 50.0f;
+        float cmbFb = 80.0f, cmbMix = 55.0f;
 
         // Wavefolder
-        float fldDrive = 35.0f, fldSym = 0.0f, fldMix = 50.0f;
+        float fldDrive = 35.0f, fldSym = 0.0f, fldMix = 70.0f;
 
         // Vowel
         float vowMorph = 0.0f;    // 0..4 = A E I O U, continuous
         float vowSharp = 9.0f;    // Q
-        float vowMix = 50.0f;
+        float vowMix = 70.0f;
 
         // Echo
         float echTime = 320.0f;   // ms
-        float echFb = 55.0f, echWow = 37.0f, echMix = 50.0f;
+        float echFb = 55.0f, echWow = 25.0f, echMix = 45.0f;
 
         // EQ — one gain per band, dB
         std::array<float, 6> eqGain { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
@@ -57,7 +62,13 @@ namespace Nebula2
 
     // The wavefolder's transfer curve: fold back on itself up to 4 times, so pushing drive
     // adds harmonics instead of just clipping. `bias` breaks the symmetry (even harmonics).
-    float foldSample(float x, float amt, float bias) noexcept;
+    // `preGain` is the signal multiplier the CV drives (1 + cv*6 in the prototype), applied
+    // BEFORE the fold and clamped to the shaper's [-1,1] domain — exactly what a Web Audio
+    // WaveShaper does with a pre-gain node in front. It defaults to 1 so the no-CV path is
+    // unchanged. `amt` is drive only. Getting CV into `amt` instead (as the first port did)
+    // makes a patched folder barely move where the prototype's screams — the "blunted
+    // effect" bug this project keeps finding.
+    float foldSample(float x, float amt, float bias, float preGain = 1.0f) noexcept;
 
     // Renders the rack: walks the graph's process order, feeds each module the sum of what
     // reaches its input, and sums whatever reaches the main out.

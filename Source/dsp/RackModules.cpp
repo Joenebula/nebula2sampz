@@ -62,9 +62,14 @@ namespace Nebula2
             outF[k] = vowels[i0].f[k] + (vowels[i1].f[k] - vowels[i0].f[k]) * fr;
     }
 
-    float foldSample(float x, float amt, float bias) noexcept
+    float foldSample(float x, float amt, float bias, float preGain) noexcept
     {
-        float y = (x + bias) * (1.0f + amt * 6.0f);
+        // The CV pre-gain scales the signal, then the shaper clamps its input to [-1,1]
+        // before the curve — so a hot pre-gain pins the signal into the curve's fully
+        // folded extremes. That clamp is the WaveShaper's, not decoration; without it the
+        // CV path would fold linearly forever instead of matching Web Audio.
+        const float idx = juce::jlimit (-1.0f, 1.0f, x * preGain);
+        float y = (idx + bias) * (1.0f + amt * 6.0f);
         for (int k = 0; k < 4; ++k)
             if (std::abs (y) > 1.0f)
                 y = (y > 0.0f ? 1.0f : -1.0f) * (2.0f - std::abs (y));
@@ -316,14 +321,16 @@ namespace Nebula2
                 for (int s = 0; s < n; s += cvChunk)
                 {
                     const int len = juce::jmin (cvChunk, n - s);
-                    // CV scale 6 on the pre-gain, as the prototype.
-                    const float amt = juce::jlimit (0.0f, 4.0f,
-                                                    d.fldDrive / 100.0f + (hasCV ? cv * 6.0f / 100.0f : 0.0f));
+                    // Drive is drive; CV is a separate multiplicative pre-gain (1 + cv*6),
+                    // as the prototype wires it. Folding CV into `amt` was the blunted-effect
+                    // bug — it made a patched folder barely respond.
+                    const float amt = d.fldDrive / 100.0f;
+                    const float preGain = 1.0f + (hasCV ? cv * 6.0f : 0.0f);
                     for (int i = s; i < s + len; ++i)
                     {
                         const float dL = L[i], dR = R[i];
-                        L[i] = dL * dry + foldSample (dL, amt, bias) * wet;
-                        if (ch > 1) R[i] = dR * dry + foldSample (dR, amt, bias) * wet;
+                        L[i] = dL * dry + foldSample (dL, amt, bias, preGain) * wet;
+                        if (ch > 1) R[i] = dR * dry + foldSample (dR, amt, bias, preGain) * wet;
                     }
                 }
                 break;

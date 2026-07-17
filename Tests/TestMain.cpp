@@ -2015,6 +2015,25 @@ int main()
             for (float x = -2.0f; x <= 2.0f; x += 0.05f)
                 if (std::abs(foldSample(x, 1.0f, 0.5f)) > 1.0f + 1e-5f) bounded = false;
             check(bounded, "rack folder: output never escapes -1..1");
+
+            // CV is a PRE-GAIN, and it must bite. The prototype folds the signal ~12x
+            // harder at drive=35 with the LFO at half depth; the first port folded CV into
+            // `amt` and barely moved. Measure it: at a modest drive, a hot pre-gain must
+            // change the output substantially where the old additive path could not.
+            {
+                float maxDelta = 0.0f;
+                for (float x = 0.05f; x <= 0.6f; x += 0.05f)
+                {
+                    const float noCV = foldSample(x, 0.35f, 0.0f, 1.0f);   // drive 35, no CV
+                    const float hotCV = foldSample(x, 0.35f, 0.0f, 4.0f);  // + cv=0.5 -> preGain 4
+                    maxDelta = juce::jmax(maxDelta, std::abs(hotCV - noCV));
+                }
+                check(maxDelta > 0.3f,
+                      "rack folder: CV pre-gain genuinely drives the fold (not the blunted bug)");
+            }
+            // preGain default of 1 must leave the no-CV path bit-identical to before.
+            check(foldSample(0.3f, 0.5f, 0.1f) == foldSample(0.3f, 0.5f, 0.1f, 1.0f),
+                  "rack folder: preGain defaults to 1 — the no-CV path is unchanged");
         }
 
         // --- an unpatched rack does NOT silence the track ---

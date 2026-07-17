@@ -142,10 +142,10 @@ namespace Nebula2
 
         layout.add(std::make_unique<APF>(
             PID{ ParamID::fltCut, version }, "Ladder Cutoff",
-            logRange(40.0f, 14000.0f), 1200.0f, hzText()));
+            logRange(40.0f, 14000.0f), 6000.0f, hzText()));
         layout.add(std::make_unique<APF>(
             PID{ ParamID::fltRes, version }, "Ladder Res",
-            juce::NormalisableRange<float>(0.1f, 18.0f, 0.1f), 1.0f, suffixText("", 1)));
+            juce::NormalisableRange<float>(0.1f, 18.0f, 0.1f), 4.0f, suffixText("", 1)));
         layout.add(std::make_unique<APC>(
             PID{ ParamID::fltType, version }, "Ladder Type",
             juce::StringArray{ "Low Pass", "Band Pass", "High Pass" }, 0));
@@ -160,25 +160,25 @@ namespace Nebula2
 
         layout.add(std::make_unique<APF>(
             PID{ ParamID::phsRate, version }, "Phaser Rate", logRange(0.05f, 8.0f), 0.5f, suffixText(" Hz", 2)));
-        layout.add(std::make_unique<APF>(PID{ ParamID::phsDepth, version }, "Phaser Depth", pct(), 75.0f));
-        layout.add(std::make_unique<APF>(PID{ ParamID::phsFb,    version }, "Phaser Feedback", pct(), 40.0f));
-        layout.add(std::make_unique<APF>(PID{ ParamID::phsMix,   version }, "Phaser Mix", pct(), 50.0f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::phsDepth, version }, "Phaser Depth", pct(), 70.0f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::phsFb,    version }, "Phaser Feedback", pct(), 45.0f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::phsMix,   version }, "Phaser Mix", pct(), 60.0f));
 
         layout.add(std::make_unique<APF>(
             PID{ ParamID::choRate, version }, "Chorus Rate", logRange(0.05f, 8.0f), 0.8f, suffixText(" Hz", 2)));
-        layout.add(std::make_unique<APF>(PID{ ParamID::choDepth, version }, "Chorus Depth", pct(), 50.0f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::choDepth, version }, "Chorus Depth", pct(), 45.0f));
         layout.add(std::make_unique<APF>(PID{ ParamID::choMix,   version }, "Chorus Mix", pct(), 50.0f));
 
         layout.add(std::make_unique<APF>(
             PID{ ParamID::cmbTune, version }, "Comb Tune", logRange(20.0f, 2000.0f), 180.0f, hzText()));
         layout.add(std::make_unique<APF>(PID{ ParamID::cmbFb,  version }, "Comb Feedback", pct(), 80.0f));
-        layout.add(std::make_unique<APF>(PID{ ParamID::cmbMix, version }, "Comb Mix", pct(), 50.0f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::cmbMix, version }, "Comb Mix", pct(), 55.0f));
 
         layout.add(std::make_unique<APF>(PID{ ParamID::fldDrive, version }, "Folder Drive", pct(), 35.0f));
         layout.add(std::make_unique<APF>(
             PID{ ParamID::fldSym, version }, "Folder Symmetry",
             juce::NormalisableRange<float>(-100.0f, 100.0f, 1.0f), 0.0f));
-        layout.add(std::make_unique<APF>(PID{ ParamID::fldMix, version }, "Folder Mix", pct(), 50.0f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::fldMix, version }, "Folder Mix", pct(), 70.0f));
 
         layout.add(std::make_unique<APF>(
             PID{ ParamID::vowMorph, version }, "Vowel",
@@ -186,14 +186,14 @@ namespace Nebula2
         layout.add(std::make_unique<APF>(
             PID{ ParamID::vowSharp, version }, "Vowel Sharpness",
             juce::NormalisableRange<float>(2.0f, 40.0f, 0.1f), 9.0f));
-        layout.add(std::make_unique<APF>(PID{ ParamID::vowMix, version }, "Vowel Mix", pct(), 50.0f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::vowMix, version }, "Vowel Mix", pct(), 70.0f));
 
         layout.add(std::make_unique<APF>(
             PID{ ParamID::echTime, version }, "Echo Time",
             logRange(20.0f, 2000.0f), 320.0f, suffixText(" ms", 0)));
         layout.add(std::make_unique<APF>(PID{ ParamID::echFb,  version }, "Echo Feedback", pct(), 55.0f));
-        layout.add(std::make_unique<APF>(PID{ ParamID::echWow, version }, "Echo Wow", pct(), 37.0f));
-        layout.add(std::make_unique<APF>(PID{ ParamID::echMix, version }, "Echo Mix", pct(), 50.0f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::echWow, version }, "Echo Wow", pct(), 25.0f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::echMix, version }, "Echo Mix", pct(), 45.0f));
 
         layout.add(std::make_unique<APF>(PID{ ParamID::outLvl, version }, "Rack Out", pct(), 100.0f));
 
