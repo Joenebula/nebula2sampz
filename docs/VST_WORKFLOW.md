@@ -105,6 +105,34 @@ on a topology hash. The **RT allocation detector** deferred since Phase 3 now ex
 live. It self-checks, and a mutation confirms it bites: restoring one line gives 1,920
 allocations across 20 blocks.
 
+**2026-07-17 — The false-green catalogue.** This project's recurring failure mode is not
+broken code; it's **checks that appear to verify and don't**. Every entry below shipped
+green for a while:
+
+| The green | Why it was a lie |
+|---|---|
+| `getCurrentIRSize() > 0` | satisfied by JUCE's 1-sample placeholder IR |
+| Phase 3 reverb test | passed by racing a background loader |
+| "pluginval passed strictness 10, first try" | one lucky sample of a randomised tool; it failed 1–3 tests *per run* |
+| `/utf-8` "fixed" the mojibake | `add_compile_options` applied it to the TEST binary; the shipping plugin never had it |
+| "RackModules is real-time safe" | true about *buffers*, false about the class (~8,300 allocs/sec) |
+| RT allocation detector on macOS | clang **elided** the self-check's `new`/`delete`; every RT test passed by counting nothing |
+| Layout gate `given >= getStringWidthInt` | the test binary's fonts underestimate the plugin's; passed with a visibly truncated control |
+| `bpm` parameter | published to the host, read by nothing |
+
+The rules that fall out, in order of how much they'd have saved:
+
+1. **A test that cannot fail is not a test.** Every detector needs a self-check that proves
+   it still detects, and a mutation before you trust its green.
+2. **Verify the artefact that ships**, not a proxy for it (inspect the `.vst3`'s bytes).
+3. **A randomised tool's green is one sample.** Loop it until it's boring.
+4. **Platform-independent beats accurate** for a gate — a crude character count survives a
+   font substitution; `getStringWidthInt` doesn't.
+5. **A comment precisely true about the thing you checked is the easiest kind to be wrong.**
+6. **The user's eyes and ears find what none of this does.** Every serious defect here —
+   chops cutting off, a dead Count control, an invisible Sens slider, a stale install, an
+   unreadable UI — came from them looking, not from assertions.
+
 Everything below this point is the **original planning document**, written before the
 above decisions, and is being updated in place as phases complete. Part B's recommendation
 of Path B is kept for the record of *why* it was considered, not as current guidance —
