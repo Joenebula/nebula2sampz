@@ -12,6 +12,10 @@ namespace
 Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& p)
     : AudioProcessorEditor(&p), processorRef(p)
 {
+    // One look-and-feel for the whole editor, set before any child is made, so nothing
+    // gets a chance to render in JUCE's default grey first.
+    setLookAndFeel(&lnf);
+
     // Colour
     addKnob(drive,   Nebula2::ParamID::drive,   "Drive",   " %");
     addKnob(crush,   Nebula2::ParamID::crush,   "Crush",   " %");
@@ -127,15 +131,103 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     viewport.setScrollBarsShown(true, false);
     addAndMakeVisible(viewport);
 
+    // --- tabs ---
+    const char* names[] = { "PLAY", "MORPH", "GRID", "RACK" };
+    for (size_t i = 0; i < tabs.size(); ++i)
+    {
+        auto& t = tabs[i];
+        t.setButtonText(names[i]);
+        t.setClickingTogglesState(false);
+        t.onClick = [this, i] { showPage((Page) i); };
+        addAndMakeVisible(t);
+    }
+
     refreshSampleInfo();
     updateSliceControlStates();
     startTimerHz(8);        // watch for slice-mode changes (incl. from host automation)
 
-    // The window opens at a height that fits a laptop; the surface scrolls to reach the
-    // rack. Resizable, so a big screen can just show more of it at once.
     setResizable(true, true);
-    setResizeLimits(620, 420, 1100, contentHeight);
-    setSize(680, 860);
+    setResizeLimits(620, 460, 1100, 1000);
+    setSize(680, 700);
+    showPage(Page::play);
+}
+
+Nebula2AudioProcessorEditor::~Nebula2AudioProcessorEditor()
+{
+    // A LookAndFeel must outlive every component using it. It's a member declared after
+    // the children, so clear it here rather than discovering the order the hard way.
+    setLookAndFeel(nullptr);
+}
+
+int Nebula2AudioProcessorEditor::contentHeightFor(Page p) const
+{
+    switch (p)
+    {
+        case Page::play:  return 560;   // sample + colour + space
+        case Page::morph: return 240;
+        case Page::grid:  return 210;
+        case Page::rack:  return 470;
+        default:          return 560;
+    }
+}
+
+void Nebula2AudioProcessorEditor::showPage(Page p)
+{
+    page = p;
+
+    for (size_t i = 0; i < tabs.size(); ++i)
+        tabs[i].setToggleState(i == (size_t) p, juce::dontSendNotification);
+
+    // Only the current page's controls exist on screen. Hiding rather than rebuilding
+    // keeps every attachment live, so a knob on a hidden page still tracks host
+    // automation and is correct the instant you switch to it.
+    const bool play  = p == Page::play;
+    const bool morph = p == Page::morph;
+    const bool grid  = p == Page::grid;
+    const bool rack  = p == Page::rack;
+
+    juce::Component* playChildren[] = {
+        &loadButton, &sampleInfo, &waveform,
+        &sliceModeBox, &sliceCountBox, &sliceModeLabel, &sliceCountLabel,
+        &charBox, &charLabel, &revCharBox, &revCharLabel,
+        &dlySyncBox, &dlySyncLabel, &fxOnButton, &limiterButton, &spaceOnButton
+    };
+    for (auto* c : playChildren) c->setVisible(play);
+
+    for (auto* k : { &drive, &crush, &squeeze, &tone, &width, &master,
+                     &revMix, &dlyMix, &dlyFb, &sensitivity })
+    {
+        k->slider.setVisible(play);
+        k->label.setVisible(play);
+    }
+
+    morphPad.setVisible(morph);
+    padOnButton.setVisible(morph);
+
+    gridView.setVisible(grid);
+    gridOnButton.setVisible(grid);
+    gridStepsBox.setVisible(grid);
+    gridStepsLabel.setVisible(grid);
+    gridClearButton.setVisible(grid);
+
+    rackView.setVisible(rack);
+    rackOnButton.setVisible(rack);
+    rackClearButton.setVisible(rack);
+    fltTypeBox.setVisible(rack);
+    fltTypeLabel.setVisible(rack);
+    lfoShapeBox.setVisible(rack);
+    lfoShapeLabel.setVisible(rack);
+    for (auto* k : { &fltCut, &fltRes, &lfoRate, &lfoDepth, &cmbTune,
+                     &cmbFb, &vowMorph, &echTime, &echFb, &outLvl })
+    {
+        k->slider.setVisible(rack);
+        k->label.setVisible(rack);
+    }
+
+    if (play) updateSliceControlStates();   // law 4 still applies on the page you're on
+
+    resized();
+    repaint();
 }
 
 void Nebula2AudioProcessorEditor::timerCallback()
@@ -257,78 +349,151 @@ void Nebula2AudioProcessorEditor::addCombo(juce::ComboBox& box, juce::Label& lab
 
 void Nebula2AudioProcessorEditor::paint(juce::Graphics& g)
 {
-    g.fillAll(kBg);      // behind the viewport, so an over-scroll doesn't flash white
+    using namespace Nebula2;
+
+    // A vertical wash rather than a flat fill — it's what stops a dark plugin reading as a
+    // black hole. Straight from the prototype's body gradient.
+    juce::ColourGradient bgGrad(juce::Colour(0xff131a30), 0.0f, 0.0f,
+                                Theme::bg, 0.0f, (float) getHeight(), false);
+    bgGrad.addColour(0.55, juce::Colour(0xff0d1222));
+    g.setGradientFill(bgGrad);
+    g.fillAll();
+
+    auto header = getLocalBounds().removeFromTop(headerH);
+
+    auto title = header.reduced(16, 8).removeFromTop(24);
+    g.setColour(Theme::ink);
+    g.setFont(Theme::ui(19.0f, true));
+    g.drawFittedText("Nebula2", title.removeFromLeft(96), juce::Justification::centredLeft, 1);
+
+    g.setColour(Theme::faint);
+    g.setFont(Theme::mono(10.0f));
+    g.drawFittedText("drums 36-46, 75   |   B4 whole break   |   C5+ slices",
+                     title, juce::Justification::centredLeft, 1);
+
+    g.setColour(Theme::line);
+    g.drawLine(0.0f, (float) headerH - 0.5f, (float) getWidth(), (float) headerH - 0.5f);
 }
 
 void Nebula2AudioProcessorEditor::paintContent(juce::Graphics& g)
 {
-    g.fillAll(kBg);
+    using namespace Nebula2;
+    g.fillAll(juce::Colours::transparentBlack);
 
-    auto header = content.getLocalBounds().removeFromTop(44).reduced(16, 8);
-    g.setColour(juce::Colours::white);
-    g.setFont(juce::FontOptions(18.0f));
-    g.drawFittedText("Nebula2", header.removeFromLeft(100), juce::Justification::centredLeft, 1);
-    g.setColour(kSub);
-    g.setFont(juce::FontOptions(11.0f));
-    g.drawFittedText("drums 36-46, 75    |    B4 whole break    |    C5+ slices",
-                     header, juce::Justification::centredLeft, 1);
+    auto body = content.getLocalBounds().reduced(12, 8).toFloat();
 
-    auto body = content.getLocalBounds().reduced(12).withTrimmedTop(38);
-
-    auto sampleArea = body.removeFromTop(188);
-    g.setColour(dragHighlight ? kAccent.withAlpha(0.25f) : kPanel);
-    g.fillRoundedRectangle(sampleArea.toFloat(), 8.0f);
-    if (dragHighlight)
+    if (page == Page::play)
     {
-        g.setColour(kAccent);
-        g.drawRoundedRectangle(sampleArea.toFloat().reduced(1.0f), 8.0f, 1.5f);
+        auto sampleArea = body.removeFromTop(188.0f);
+        Nebula2LookAndFeel::drawCard(g, sampleArea, "SAMPLE");
+        if (dragHighlight)
+        {
+            g.setColour(Theme::teal.withAlpha(0.18f));
+            g.fillRoundedRectangle(sampleArea, Theme::cardRadius);
+            g.setColour(Theme::teal);
+            g.drawRoundedRectangle(sampleArea.reduced(1.0f), Theme::cardRadius, 1.5f);
+        }
+
+        body.removeFromTop(10.0f);
+        Nebula2LookAndFeel::drawCard(g, body.removeFromTop(200.0f), "COLOUR");
+        body.removeFromTop(10.0f);
+        Nebula2LookAndFeel::drawCard(g, body.removeFromTop(126.0f), "SPACE");
     }
-    g.setColour(kAccent);
-    g.setFont(juce::FontOptions(10.0f));
-    g.drawFittedText("SAMPLE", sampleArea.reduced(12, 6).removeFromTop(12), juce::Justification::topLeft, 1);
-
-    body.removeFromTop(8);
-    auto colour = body.removeFromTop(200);
-    g.setColour(kPanel);
-    g.fillRoundedRectangle(colour.toFloat(), 8.0f);
-
-    body.removeFromTop(8);
-    auto space = body.removeFromTop(120);
-    g.fillRoundedRectangle(space.toFloat(), 8.0f);
-
-    body.removeFromTop(8);
-    auto morphArea = body.removeFromTop(170);
-    g.fillRoundedRectangle(morphArea.toFloat(), 8.0f);
-
-    body.removeFromTop(8);
-    auto gridArea = body.removeFromTop(150);
-    g.fillRoundedRectangle(gridArea.toFloat(), 8.0f);
-
-    body.removeFromTop(8);
-    g.fillRoundedRectangle(body.toFloat(), 8.0f);
-
-    g.setColour(kAccent);
-    g.setFont(juce::FontOptions(10.0f));
-    g.drawFittedText("COLOUR", colour.reduced(12, 6).removeFromTop(12), juce::Justification::topLeft, 1);
-    g.drawFittedText("SPACE", space.reduced(12, 6).removeFromTop(12), juce::Justification::topLeft, 1);
-    g.drawFittedText("MORPH", morphArea.reduced(12, 6).removeFromTop(12), juce::Justification::topLeft, 1);
-    g.drawFittedText("GRID", gridArea.reduced(12, 6).removeFromTop(12), juce::Justification::topLeft, 1);
-    g.drawFittedText("RACK", body.reduced(12, 6).removeFromTop(12), juce::Justification::topLeft, 1);
+    else if (page == Page::morph)
+    {
+        Nebula2LookAndFeel::drawCard(g, body.removeFromTop(224.0f), "MORPH");
+    }
+    else if (page == Page::grid)
+    {
+        Nebula2LookAndFeel::drawCard(g, body.removeFromTop(194.0f), "GRID");
+    }
+    else if (page == Page::rack)
+    {
+        Nebula2LookAndFeel::drawCard(g, body.removeFromTop(454.0f), "RACK");
+    }
 }
 
 void Nebula2AudioProcessorEditor::resized()
 {
-    viewport.setBounds(getLocalBounds());
+    auto r = getLocalBounds();
 
-    // The content keeps its full height; the window shows as much of it as it has room
-    // for. Subtract the scrollbar so nothing hides underneath it.
+    // Tabs sit under the title, in the header.
+    auto tabRow = r.removeFromTop(headerH).withTrimmedTop(38).reduced(14, 4);
+    const int tw = juce::jmin(84, tabRow.getWidth() / (int) tabs.size());
+    for (auto& t : tabs)
+    {
+        t.setBounds(tabRow.removeFromLeft(tw).reduced(2, 0));
+        tabRow.removeFromLeft(2);
+    }
+
+    viewport.setBounds(r);
     const int sbW = viewport.isVerticalScrollBarShown() ? viewport.getScrollBarThickness() : 0;
-    content.setSize(juce::jmax(560, getWidth() - sbW), contentHeight);
+    content.setSize(juce::jmax(560, r.getWidth() - sbW), contentHeightFor(page));
 }
 
 void Nebula2AudioProcessorEditor::layoutContent()
 {
-    auto body = content.getLocalBounds().reduced(12).withTrimmedTop(38);
+    auto body = content.getLocalBounds().reduced(12, 8);
+
+    if (page != Page::play)
+    {
+        // --- Morph page ---
+        if (page == Page::morph)
+        {
+            auto mp = body.removeFromTop(224).reduced(12);
+            mp.removeFromTop(14);
+            padOnButton.setBounds(mp.removeFromTop(22).removeFromLeft(96));
+            mp.removeFromTop(6);
+            morphPad.setBounds(mp);
+        }
+        // --- Grid page ---
+        else if (page == Page::grid)
+        {
+            auto gp = body.removeFromTop(194).reduced(12);
+            gp.removeFromTop(14);
+            auto gRow = gp.removeFromTop(24);
+            gridOnButton.setBounds(gRow.removeFromLeft(82));
+            gRow.removeFromLeft(10);
+            gridStepsLabel.setBounds(gRow.removeFromLeft(40));
+            gridStepsBox.setBounds(gRow.removeFromLeft(66));
+            gRow.removeFromLeft(12);
+            gridClearButton.setBounds(gRow.removeFromLeft(62));
+            gp.removeFromTop(8);
+            gridView.setBounds(gp);
+        }
+        // --- Rack page ---
+        else if (page == Page::rack)
+        {
+            auto rp = body.removeFromTop(454).reduced(12);
+            rp.removeFromTop(14);
+            auto rRow = rp.removeFromTop(24);
+            rackOnButton.setBounds(rRow.removeFromLeft(80));
+            rRow.removeFromLeft(8);
+            rackClearButton.setBounds(rRow.removeFromLeft(86));
+            rRow.removeFromLeft(12);
+            fltTypeLabel.setBounds(rRow.removeFromLeft(38));
+            fltTypeBox.setBounds(rRow.removeFromLeft(86));
+            rRow.removeFromLeft(8);
+            lfoShapeLabel.setBounds(rRow.removeFromLeft(28));
+            lfoShapeBox.setBounds(rRow.removeFromLeft(80));
+
+            rp.removeFromTop(6);
+            rackView.setBounds(rp.removeFromTop(rp.getHeight() - 84));
+
+            rp.removeFromTop(6);
+            auto kRow = rp;
+            const int kw = kRow.getWidth() / 10;
+            Knob* rackKnobs[] = { &fltCut, &fltRes, &lfoRate, &lfoDepth, &cmbTune,
+                                  &cmbFb, &vowMorph, &echTime, &echFb, &outLvl };
+            for (auto* k : rackKnobs)
+            {
+                auto cell = kRow.removeFromLeft(kw);
+                k->label.setBounds(cell.removeFromTop(14));
+                k->slider.setBounds(cell.reduced(2, 0));
+            }
+        }
+        return;
+    }
 
     // --- Sample panel ---
     auto sampleArea = body.removeFromTop(188).reduced(10);
@@ -396,56 +561,4 @@ void Nebula2AudioProcessorEditor::layoutContent()
     right.removeFromLeft(10);
     spaceOnButton.setBounds(right.removeFromLeft(86));
 
-    // --- Morph panel ---
-    body.removeFromTop(8);
-    auto mp = body.removeFromTop(170).reduced(10);
-    mp.removeFromTop(12);
-    auto mRow = mp.removeFromTop(24);
-    padOnButton.setBounds(mRow.removeFromLeft(90));
-    mp.removeFromTop(4);
-    morphPad.setBounds(mp);
-
-    // --- Grid panel ---
-    body.removeFromTop(8);
-    auto gp = body.removeFromTop(150).reduced(10);
-    gp.removeFromTop(12);
-    auto gRow = gp.removeFromTop(26);
-    gridOnButton.setBounds(gRow.removeFromLeft(78));
-    gRow.removeFromLeft(8);
-    gridStepsLabel.setBounds(gRow.removeFromLeft(40));
-    gridStepsBox.setBounds(gRow.removeFromLeft(64).reduced(0, 2));
-    gRow.removeFromLeft(12);
-    gridClearButton.setBounds(gRow.removeFromLeft(60).reduced(0, 2));
-    gp.removeFromTop(6);
-    gridView.setBounds(gp);
-
-    // --- Rack panel ---
-    body.removeFromTop(8);
-    auto rp = body.reduced(10);
-    rp.removeFromTop(12);
-    auto rRow = rp.removeFromTop(26);
-    rackOnButton.setBounds(rRow.removeFromLeft(78));
-    rRow.removeFromLeft(8);
-    rackClearButton.setBounds(rRow.removeFromLeft(84).reduced(0, 2));
-    rRow.removeFromLeft(12);
-    fltTypeLabel.setBounds(rRow.removeFromLeft(38));
-    fltTypeBox.setBounds(rRow.removeFromLeft(84).reduced(0, 2));
-    rRow.removeFromLeft(8);
-    lfoShapeLabel.setBounds(rRow.removeFromLeft(28));
-    lfoShapeBox.setBounds(rRow.removeFromLeft(80).reduced(0, 2));
-
-    rp.removeFromTop(4);
-    rackView.setBounds(rp.removeFromTop(rp.getHeight() - 78));
-
-    rp.removeFromTop(4);
-    auto kRow = rp.removeFromTop(72);
-    const int kw = kRow.getWidth() / 10;
-    Knob* rackKnobs[] = { &fltCut, &fltRes, &lfoRate, &lfoDepth, &cmbTune,
-                          &cmbFb, &vowMorph, &echTime, &echFb, &outLvl };
-    for (auto* k : rackKnobs)
-    {
-        auto cell = kRow.removeFromLeft(kw);
-        k->label.setBounds(cell.removeFromTop(12));
-        k->slider.setBounds(cell);
-    }
 }

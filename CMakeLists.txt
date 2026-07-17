@@ -43,6 +43,9 @@ target_sources(Nebula2 PRIVATE
     Source/MorphPadView.h
     Source/RackView.cpp
     Source/RackView.h
+    Source/Nebula2LookAndFeel.cpp
+    Source/Nebula2LookAndFeel.h
+    Source/Theme.h
     Source/Parameters.cpp
     Source/Parameters.h
     Source/ParameterIDs.h

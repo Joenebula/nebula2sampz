@@ -6,6 +6,8 @@
 #include "GridView.h"
 #include "MorphPadView.h"
 #include "RackView.h"
+#include "Nebula2LookAndFeel.h"
+#include "Theme.h"
 
 // A functional control surface: every live parameter, attached to the APVTS so the host
 // and the UI can never disagree (law: one source of truth — the visual derives from state).
@@ -17,7 +19,7 @@ class Nebula2AudioProcessorEditor final : public juce::AudioProcessorEditor,
 {
 public:
     explicit Nebula2AudioProcessorEditor(Nebula2AudioProcessor&);
-    ~Nebula2AudioProcessorEditor() override = default;
+    ~Nebula2AudioProcessorEditor() override;
 
     void paint(juce::Graphics&) override;
     void resized() override;
@@ -49,14 +51,27 @@ private:
         void resized() override { if (onResized) onResized(); }
     };
 
+    Nebula2LookAndFeel lnf;
+
     juce::Viewport viewport;
     ScrollingContent content;
+
+    // Pages. The instrument has six blocks and they no longer fit on one surface — the
+    // scroll was a stop-gap for exactly that. Tabs beat scrolling here because the blocks
+    // are separate jobs (choose a break / colour it / patch a rack), not one long list you
+    // read top to bottom.
+    enum class Page { play, morph, grid, rack, numPages };
+    Page page = Page::play;
+    std::array<juce::TextButton, (size_t) Page::numPages> tabs;
+    void showPage(Page);
+    int contentHeightFor(Page) const;
 
     void paintContent(juce::Graphics&);
     void layoutContent();
 
-    // How tall the panels actually are. The editor window can be smaller — that's the point.
-    static constexpr int contentHeight = 1330;
+    // A page can still be taller than a small window, so the viewport stays — but now it
+    // scrolls one page's worth, not the whole instrument.
+    static constexpr int headerH = 74;
 
     struct Knob
     {

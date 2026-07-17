@@ -29,6 +29,31 @@ initial "local-only" call the same day.) Phase 0 scaffold pushed to `main`. CI
 (`.github/workflows/build.yml`) runs on push; a local toolchain (CMake + Visual Studio
 Build Tools) is being installed in parallel as a second verification path.
 
+**2026-07-16 — Scope: the COMPLETE port, not a polished v1.** The user's word: "until
+complete". FX-grid sequencer, Morph pad, modular rack, designed UI — all in.
+
+**2026-07-17 — Phase 9 (Morph pad) and Phase 10 (modular rack) are done and confirmed by
+ear.** Split that both follow: continuous controls are host PARAMETERS; structure is
+state-chunk data. Morph pad → padX/padY automate, the four scenes are state. Rack → all 33
+dials automate, the patch is state. Overrule either freely; both are cheap to change and
+expensive once presets depend on them.
+
+**2026-07-17 — Rack cable loops are REFUSED at patch time** (see `Source/dsp/RackGraph.h`
+for the full reasoning). Web Audio only tolerated loops by silently inserting a 128-sample
+delay; a block-based graph has no defined answer. Comb/Echo/Phaser each carry their own
+feedback dial, so the musical idiom survives. ~20 lines to reverse if wanted.
+
+**2026-07-17 — The DAW loads from `%LOCALAPPDATA%\Programs\Common\VST3\`, not Program
+Files.** Install there after every build the user is meant to try, and verify with `cmp`
+against the fresh build — not by the copy command's exit code. Three merged phases once sat
+invisible on disk behind a stale install while the user reported "I dont see the rack?".
+Building and committing puts nothing in front of the user; only the install does.
+
+**2026-07-17 — The editor SCROLLS (Viewport) and is resizable.** The panels total ~1330px,
+taller than a laptop plugin window. Clipped-off is indistinguishable from not-there — this
+was a real defect, found by the user, not cosmetics. Phase 5's designed UI should replace
+the scroll with real navigation (tabs/pages), not keep stretching.
+
 Everything below this point is the **original planning document**, written before the
 above decisions, and is being updated in place as phases complete. Part B's recommendation
 of Path B is kept for the record of *why* it was considered, not as current guidance —
