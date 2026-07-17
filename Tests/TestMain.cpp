@@ -929,6 +929,45 @@ int main()
             check(grit > noGrit * 3.0f,
                   "colour: crush grit survives a closed Tone — crush is AFTER Tone (chain order)");
         }
+
+        // Pump: the per-beat duck (prototype groove move). Shape checks on the pure gain fn.
+        {
+            const float depth = 1.0f - 0.8f * 0.85f;   // pump 80%
+            check(std::abs(ColourChain::pumpGain(0.0, depth) - depth) < 1e-5f,
+                  "pump: slams to `depth` on the beat");
+            check(std::abs(ColourChain::pumpGain(0.85, depth) - 1.0f) < 1e-5f,
+                  "pump: fully recovered by phase 0.85");
+            check(std::abs(ColourChain::pumpGain(0.95, depth) - 1.0f) < 1e-5f,
+                  "pump: stays open from 0.85 to the next beat");
+            check(ColourChain::pumpGain(0.4, depth) > ColourChain::pumpGain(0.1, depth),
+                  "pump: breathes back UP across the beat (monotonic recovery)");
+            check(std::abs(ColourChain::pumpGain(0.0, 1.0f) - 1.0f) < 1e-5f,
+                  "pump: depth 1 (pump off) is no duck at all");
+
+            // End-to-end: at pump=0 the Colour block is UNCHANGED (additive feature, off by
+            // default), and at pump>0 with a moving beat the output level actually varies.
+            ColourChain chain;
+            juce::dsp::ProcessSpec spec { 44100.0, 512, 2 };
+            chain.prepare(spec);
+
+            auto blockRms = [&](float pumpVal, double ppq)
+            {
+                chain.reset();
+                AudioBuffer<float> b(2, 512);
+                for (int i = 0; i < 512; ++i) { b.setSample(0, i, 0.4f); b.setSample(1, i, 0.4f); }
+                ColourChain::Params p;
+                p.on = true; p.pump = pumpVal; p.bpm = 120.0; p.ppq = ppq;
+                chain.process(b, p);
+                return b.getRMSLevel(0, 0, 512);
+            };
+            // pump=0: identical whatever the beat position.
+            check(std::abs(blockRms(0.0f, 0.0) - blockRms(0.0f, 0.5)) < 1e-6f,
+                  "pump: off means off — no beat dependence at pump 0");
+            // pump high: the block starting ON the beat (ducked) is quieter than one landing
+            // in the recovered part of the beat.
+            check(blockRms(90.0f, 0.0) < blockRms(90.0f, 0.9),
+                  "pump: on the beat is ducked, later in the beat is open");
+        }
     }
 
     // ---------------------------------------------------------------------------------
@@ -2752,11 +2791,17 @@ int main()
             colour.reset();
             ColourChain::Params cp;
             cp.on = true; cp.drive = 40.0f; cp.squeeze = 30.0f; cp.width = 120.0f;
+            cp.pump = 70.0f; cp.bpm = 128.0;   // the per-sample pump (pow/fmod) must not allocate
             { auto b = tone(); colour.process(b, cp); }
 
             auto b = tone();
             rtcheck::Scope watch;
-            for (int i = 0; i < 20; ++i) { cp.tone = 20.0f + (float) i * 3.0f; colour.process(b, cp); }
+            for (int i = 0; i < 20; ++i)
+            {
+                cp.tone = 20.0f + (float) i * 3.0f;
+                cp.ppq = (double) i * 0.25;   // move the beat under the pump
+                colour.process(b, cp);
+            }
             const int n = watch.count();
             check(n == 0, "rt: ColourChain allocates nothing with FX on and Tone sweeping"
                           + (n == 0 ? String() : " — got " + String(n)));
@@ -3092,7 +3137,7 @@ int main()
             "sliceMode", "sliceCount", "sens",
             "padOn", "padX", "padY",
             "gridOn", "gridSteps",
-            "drive", "char", "crush", "squeeze", "tone", "width", "fxOn",
+            "drive", "char", "crush", "squeeze", "tone", "width", "pump", "fxOn",
             "revMix", "revSize", "dlyMix", "dlyFb", "dlySync", "spaceOn", "revChar",
             "rackOn",
             "flt.cut", "flt.res", "flt.type",

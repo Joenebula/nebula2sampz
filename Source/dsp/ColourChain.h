@@ -26,16 +26,29 @@ namespace Nebula2
             float width = 100.0f;    // 0..200 (100 = unchanged)
             int driveChar = 0;       // DriveChar: tube/fuzz/fold
             bool on = true;
+
+            // Pump: a per-beat sidechain-style duck, tempo-synced (the prototype's groove
+            // move). 0 = off, so it changes nothing unless you turn it up. Needs the host
+            // position to land the duck on the beat.
+            float pump = 0.0f;       // 0..100 %
+            double ppq = 0.0;        // host beat position (quarter notes)
+            double bpm = 120.0;
         };
 
         void prepare(const juce::dsp::ProcessSpec& spec);
         void reset();
         void process(juce::AudioBuffer<float>& buffer, const Params& p) noexcept;
 
+        // The per-beat pump gain at a beat phase in [0,1): slams to `depth` on the beat,
+        // then exponentially breathes back to 1 by phase 0.85 (the prototype's shape).
+        // Exposed and pure so it can be tested without a whole processor.
+        static float pumpGain(double beatPhase, float depth) noexcept;
+
     private:
         Saturator saturator;
         Compressor compressor;
         ToneFilter toneFilter;
         juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> preGain, postGain;
+        double sampleRate = 44100.0;
     };
 }

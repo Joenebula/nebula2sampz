@@ -16,6 +16,7 @@ Nebula2AudioProcessor::Nebula2AudioProcessor()
     squeezeParam   = apvts.getRawParameterValue(Nebula2::ParamID::squeeze);
     toneParam      = apvts.getRawParameterValue(Nebula2::ParamID::tone);
     widthParam     = apvts.getRawParameterValue(Nebula2::ParamID::width);
+    pumpParam      = apvts.getRawParameterValue(Nebula2::ParamID::pump);
     fxOnParam      = apvts.getRawParameterValue(Nebula2::ParamID::fxOn);
     revMixParam    = apvts.getRawParameterValue(Nebula2::ParamID::revMix);
     revCharParam   = apvts.getRawParameterValue(Nebula2::ParamID::revChar);
@@ -340,6 +341,9 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
         cp.width     = amt(widthParam,   Nebula2::GridRow::Width,   100.0f);
         cp.driveChar = driveCharParam != nullptr ? (int) driveCharParam->load() : 0;
         cp.on        = fxOnParam      != nullptr ? fxOnParam->load() > 0.5f : true;
+        cp.pump      = pumpParam      != nullptr ? pumpParam->load() : 0.0f;
+        cp.ppq       = transport.ppq;   // so the duck lands on the beat
+        cp.bpm       = transport.bpm;
         colourChain.process(buffer, cp);
     }
 

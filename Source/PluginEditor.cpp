@@ -17,6 +17,7 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     setLookAndFeel(&lnf);
 
     // Colour
+    addKnob(pump,    Nebula2::ParamID::pump,    "Pump",    " %");
     addKnob(drive,   Nebula2::ParamID::drive,   "Drive",   " %");
     addKnob(crush,   Nebula2::ParamID::crush,   "Crush",   " %");
     addKnob(squeeze, Nebula2::ParamID::squeeze, "Squeeze", " %");
@@ -251,7 +252,7 @@ void Nebula2AudioProcessorEditor::showPage(Page p)
     };
     for (auto* c : playChildren) c->setVisible(play);
 
-    for (auto* k : { &drive, &crush, &squeeze, &tone, &width, &master,
+    for (auto* k : { &drive, &crush, &squeeze, &tone, &width, &pump, &master,
                      &revMix, &revSize, &dlyMix, &dlyFb, &sensitivity })
     {
         k->slider.setVisible(play);
@@ -602,8 +603,8 @@ void Nebula2AudioProcessorEditor::layoutContent()
     auto colour = body.removeFromTop(200).reduced(10);
     colour.removeFromTop(12);
     auto knobRow = colour.removeFromTop(120);
-    Knob* cKnobs[] = { &drive, &crush, &squeeze, &tone, &width, &master };
-    const int cw = knobRow.getWidth() / 6;
+    Knob* cKnobs[] = { &drive, &crush, &squeeze, &tone, &width, &pump, &master };
+    const int cw = knobRow.getWidth() / 7;   // drive/crush/squeeze/tone/width/pump/master
     for (auto* k : cKnobs)
     {
         auto cell = knobRow.removeFromLeft(cw);

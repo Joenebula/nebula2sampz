@@ -1,9 +1,20 @@
 #include "ColourChain.h"
 
+#include <cmath>
+
 namespace Nebula2
 {
+    float ColourChain::pumpGain(double beatPhase, float depth) noexcept
+    {
+        // Prototype: setValueAtTime(depth) on the beat, exponentialRampToValueAtTime(1) by
+        // phase 0.85. An exponential ramp from depth to 1 is depth^(1 - phase/0.85).
+        if (beatPhase >= 0.85) return 1.0f;
+        return std::pow(depth, 1.0f - (float) (beatPhase / 0.85));
+    }
+
     void ColourChain::prepare(const juce::dsp::ProcessSpec& spec)
     {
+        sampleRate = spec.sampleRate;
         saturator.prepare(spec);
         compressor.prepare(spec);
         toneFilter.prepare(spec);
@@ -57,7 +68,25 @@ namespace Nebula2
         compressor.process(buffer, sq);
         toneFilter.process(buffer, tn);
 
-        // 4. Crush + width, after tone.
+        // 3b. Pump: the per-beat duck, between tone and crush (prototype: filt -> duck ->
+        // crush). Off at pump=0, so it's transparent unless dialled up. Sample-accurate so
+        // the duck lands on the beat rather than snapping to the block grid.
+        const float pumpAmt = p.on ? juce::jlimit(0.0f, 1.0f, p.pump / 100.0f) : 0.0f;
+        if (pumpAmt > 0.001f)
+        {
+            const float depth = 1.0f - pumpAmt * 0.85f;
+            const double beatsPerSample = (p.bpm / 60.0) / sampleRate;
+            for (int i = 0; i < numSamples; ++i)
+            {
+                double phase = std::fmod(p.ppq + (double) i * beatsPerSample, 1.0);
+                if (phase < 0.0) phase += 1.0;
+                const float g = pumpGain(phase, depth);
+                for (int c = 0; c < numChannels; ++c)
+                    buffer.setSample(c, i, buffer.getSample(c, i) * g);
+            }
+        }
+
+        // 4. Crush + width, after tone (and the duck).
         saturator.processCrushWidth(buffer, cr, w);
 
         // 5. Compensate for the drive boost (last in the chain, as in the prototype).

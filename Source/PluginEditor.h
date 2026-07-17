@@ -107,7 +107,7 @@ private:
 
     Nebula2AudioProcessor& processorRef;
 
-    Knob drive, crush, squeeze, tone, width, master;
+    Knob drive, crush, squeeze, tone, width, pump, master;
     Knob revMix, revSize, dlyMix, dlyFb;
 
     juce::ComboBox charBox, revCharBox, dlySyncBox, sliceModeBox, sliceCountBox;
