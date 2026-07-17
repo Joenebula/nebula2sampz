@@ -1346,6 +1346,11 @@ int main()
         using namespace Nebula2;
         const auto& presets = getFactoryPresets();
 
+        // The rack and scenes live outside the APVTS, so applyPreset takes them too.
+        RackGraph pRack;
+        juce::SpinLock pRackLock;
+        auto pScenes = defaultMorphScenes();
+
         check(presets.size() >= 10, "presets: a usable factory set exists");
 
         // Names are unique and non-empty — a duplicate would be indistinguishable in the
@@ -1396,7 +1401,7 @@ int main()
                 if (juce::String(presets[(size_t) i].name) == "Tube Drive") tubeIdx = i;
             check(tubeIdx > 0, "presets: Tube Drive present");
 
-            applyPreset(dp.apvts, tubeIdx);
+            applyPreset(dp.apvts, tubeIdx, pRack, pRackLock, pScenes);
 
             const float drive = *dp.apvts.getRawParameterValue(ParamID::drive);
             const float crush = *dp.apvts.getRawParameterValue(ParamID::crush);
@@ -1416,15 +1421,15 @@ int main()
                 if (juce::String(presets[(size_t) i].name) == "Tube Drive") tubeIdx = i;
             }
 
-            applyPreset(dp.apvts, tubeIdx);
+            applyPreset(dp.apvts, tubeIdx, pRack, pRackLock, pScenes);
             const float driveA = *dp.apvts.getRawParameterValue(ParamID::drive);
             const float dlyA   = *dp.apvts.getRawParameterValue(ParamID::dlyMix);
 
-            applyPreset(dp.apvts, dubIdx);
+            applyPreset(dp.apvts, dubIdx, pRack, pRackLock, pScenes);
             const float dlyB = *dp.apvts.getRawParameterValue(ParamID::dlyMix);
             check(dlyB > dlyA, "presets: Dub Echo actually changes the delay");
 
-            applyPreset(dp.apvts, tubeIdx);
+            applyPreset(dp.apvts, tubeIdx, pRack, pRackLock, pScenes);
             const float driveBack = *dp.apvts.getRawParameterValue(ParamID::drive);
             const float dlyBack   = *dp.apvts.getRawParameterValue(ParamID::dlyMix);
             check(std::abs(driveBack - driveA) < 0.01f, "presets: A -> B -> A restores A exactly");
@@ -1435,7 +1440,7 @@ int main()
         {
             DummyProcessor dp;
             dp.apvts.getParameter(ParamID::drive)->setValueNotifyingHost(1.0f);
-            applyPreset(dp.apvts, 0);   // Init
+            applyPreset(dp.apvts, 0, pRack, pRackLock, pScenes);   // Init
             check(*dp.apvts.getRawParameterValue(ParamID::drive) < 1.0f, "presets: Init returns everything to default");
         }
     }
@@ -2233,6 +2238,113 @@ int main()
             p->setValueNotifyingHost(0.0f);
             check(std::abs(pv(ParamID::vowMorph) - 0.0f) < 0.01f,
                   "rack wiring: and back to A");
+        }
+    }
+
+    // ---- Phase 6: preset recall is TOTAL (params AND structure) ----
+    {
+        using namespace Nebula2;
+        DummyProcessor proc;
+        RackGraph rack;
+        juce::SpinLock rackLock;
+        auto scenes = defaultMorphScenes();
+
+        const auto& presets = getFactoryPresets();
+        check(! presets.empty(), "presets: there are factory presets");
+
+        // Every preset's parameter ids must exist. A typo here silently does nothing —
+        // the preset would just quietly not apply that value.
+        {
+            bool allValid = true;
+            String bad;
+            for (const auto& p : presets)
+                for (const auto& v : p.values)
+                    if (proc.apvts.getParameter(v.id) == nullptr)
+                    { allValid = false; if (bad.isEmpty()) bad = String(p.name) + "/" + v.id; }
+            check(allValid, "presets: every preset id is a real parameter"
+                            + (bad.isEmpty() ? String() : " (bad: " + bad + ")"));
+        }
+
+        // Every preset's rack patch must actually patch. A typo'd slug would silently
+        // yield an empty rack and the preset would sound like nothing.
+        {
+            bool ok = true;
+            String bad;
+            for (const auto& p : presets)
+            {
+                const String patch(p.rackPatch);
+                if (patch.isEmpty()) continue;
+                const auto g = RackGraph::fromString(patch);
+                if (! g.isLive()) { ok = false; if (bad.isEmpty()) bad = p.name; }
+            }
+            check(ok, "presets: every rack preset's patch actually reaches the Main Out"
+                      + (bad.isEmpty() ? String() : " (dead: " + bad + ")"));
+        }
+
+        // Every preset's morph scenes must parse to something other than the fallback.
+        {
+            bool ok = true;
+            for (const auto& p : presets)
+            {
+                const String s(p.morphScenes);
+                if (s.isEmpty()) continue;
+                const auto parsed = morphScenesFromString(s);
+                const auto seed = defaultMorphScenes();
+                if (std::abs(parsed[0].cut - seed[0].cut) < 0.001f
+                    && std::abs(parsed[3].sht - seed[3].sht) < 0.001f) ok = false;
+            }
+            check(ok, "presets: a morph preset's scenes parse (not silently the seed set)");
+        }
+
+        // THE ONE THAT WAS MISSING. Wire a rack by hand, then load a preset that has no
+        // patch: the patch must be GONE. Before this, every dial reset and the previous
+        // patch stayed wired — recall to a combination nobody designed.
+        {
+            rack.addCable(parsePort("src:out"), parsePort("cmb:in"));
+            rack.addCable(parsePort("cmb:out"), parsePort("out:in"));
+            check(rack.isLive(), "presets: (setup) a hand-wired rack is live");
+
+            int initIdx = -1;
+            for (int i = 0; i < (int) presets.size(); ++i)
+                if (String(presets[(size_t) i].name) == "Init") initIdx = i;
+            check(initIdx >= 0, "presets: there's an Init preset");
+
+            applyPreset(proc.apvts, initIdx, rack, rackLock, scenes);
+            check(! rack.isLive(),
+                  "presets: loading a preset with no patch CLEARS the rack — recall is total");
+        }
+
+        // And the reverse: loading a rack preset must actually wire it.
+        {
+            int rackIdx = -1;
+            for (int i = 0; i < (int) presets.size(); ++i)
+                if (String(presets[(size_t) i].name).startsWith("Rack:")) { rackIdx = i; break; }
+            check(rackIdx >= 0, "presets: there are rack presets");
+
+            applyPreset(proc.apvts, rackIdx, rack, rackLock, scenes);
+            check(rack.isLive(), "presets: loading a rack preset wires the rack");
+            check(proc.apvts.getRawParameterValue(ParamID::rackOn)->load() > 0.5f,
+                  "presets: a rack preset turns the rack on — it can't be heard otherwise");
+        }
+
+        // Morph scenes must be restored to the seed set by a preset that doesn't set them,
+        // for exactly the same reason as the patch.
+        {
+            scenes[0].cut = 12345.0f;
+            int initIdx = 0;
+            for (int i = 0; i < (int) presets.size(); ++i)
+                if (String(presets[(size_t) i].name) == "Init") initIdx = i;
+            applyPreset(proc.apvts, initIdx, rack, rackLock, scenes);
+            check(std::abs(scenes[0].cut - 12345.0f) > 1.0f,
+                  "presets: a preset with no scenes restores the seed scenes, not yours");
+        }
+
+        // An out-of-range index must do nothing at all, not half-apply.
+        {
+            rack.addCable(parsePort("src:out"), parsePort("eq:in"));
+            rack.addCable(parsePort("eq:out"), parsePort("out:in"));
+            applyPreset(proc.apvts, 9999, rack, rackLock, scenes);
+            check(rack.isLive(), "presets: a bad index changes nothing (no half-apply)");
         }
     }
 
