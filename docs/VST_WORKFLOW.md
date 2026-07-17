@@ -184,6 +184,37 @@ is a judgement I can't make headless:**
   fed-back signal (`pIn` is the summing node); the port's dry is the clean input. Subtle at
   high feedback.
 
+**2026-07-17 — Divergences in the APPROVED Colour/Space blocks — USER DECISION NEEDED.**
+An audit of the older, always-on effects (which the user has heard and approved) found real
+differences from the prototype. Unlike the rack (new code, fixed on sight), these change
+audio the user already blessed — so they are FLAGGED, not silently changed. Verified by
+reading both sources; each line notes what fixing it would do.
+
+- **D1 — Colour chain ORDER differs (most consequential).** Prototype: `drive → squeeze →
+  tone → crush → width`. Port: `drive → crush → width → squeeze → tone`. So the port's Tone
+  lowpass filters the crush grit (prototype leaves it raw), and the compressor reacts to the
+  crushed signal (prototype to the clean one). Fixing = reorder ColourChain (split the
+  Saturator's bundled drive/crush/width). Recommend fixing — the port order was an accident
+  of bundling, not a design choice — but it WILL change the Colour sound.
+- **D4 — Reverb send missing ×1.35** (`SpaceProcessor.cpp:100`): at equal Mix the port's
+  reverb is ~2.6 dB quieter than the prototype. Trivial to match.
+- **D5 — Delay send missing ×1.1**: ~0.8 dB quieter. Trivial to match.
+- **D6 — Delay damping 4200 Hz symmetric** vs the prototype's **5200 Hz on the L→R path
+  only**: the port's echoes are darker and damp both directions. Fixing brightens echoes and
+  changes the stereo decay.
+- **D7 — Ping-pong routing:** prototype feeds the LEFT line only (true one-sided start) and
+  pans wet ±0.75; the port feeds each channel its own line with no panning. Different stereo
+  image. The larger structural item alongside D1.
+- **D3 — Reverb "Size" is a MISSING FEATURE**, not a bug: the port has no size param and
+  hard-codes a 2.2 s tail (prototype: 0.25–6.7 s via a Size knob, default ~2.0 s). Same
+  class as the other documented omissions (pump/duck, dub & warp delay modes, haunt drone).
+- **D2 — the reverse reverb: the port is CORRECT and the prototype was the buggy one** (its
+  reverse swelled a *growing* envelope to a net decay). Already the documented fix; no action.
+
+**Faithful, verified identical:** the drive curves (tube/fuzz/fold), crush
+(bits/rate/reconstruction), width mid/side, compressor mappings, tone filter, drive
+pre/post staging, delay sync→time table, feedback clamp, and all Colour/Space defaults.
+
 Everything below this point is the **original planning document**, written before the
 above decisions, and is being updated in place as phases complete. Part B's recommendation
 of Path B is kept for the record of *why* it was considered, not as current guidance —
