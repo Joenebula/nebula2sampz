@@ -23,6 +23,7 @@
 #include "../Source/dsp/ColourChain.h"
 #include "../Source/dsp/SpaceProcessor.h"
 #include "../Source/dsp/SampleLayer.h"
+#include "../Source/dsp/FxGrid.h"
 
 #include <iostream>
 #include <cmath>
@@ -1432,6 +1433,114 @@ int main()
             dp.apvts.getParameter(ParamID::drive)->setValueNotifyingHost(1.0f);
             applyPreset(dp.apvts, 0);   // Init
             check(*dp.apvts.getRawParameterValue(ParamID::drive) < 1.0f, "presets: Init returns everything to default");
+        }
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Phase 8 — FX grid sequencer (the prototype's laws, asserted)
+    // ---------------------------------------------------------------------------------
+    {
+        using namespace Nebula2;
+
+        // --- the clock: which step is sounding, from host musical position ---
+        check(FxGrid::stepAtPpq(0.0, 16, 0.25) == 0, "grid: ppq 0 -> step 0");
+        check(FxGrid::stepAtPpq(0.25, 16, 0.25) == 1, "grid: a 1/16 later -> step 1");
+        check(FxGrid::stepAtPpq(0.9, 16, 0.25) == 3, "grid: mid-step stays on that step");
+        check(FxGrid::stepAtPpq(4.0, 16, 0.25) == 0, "grid: 16 x 1/16 = 1 bar -> wraps to 0");
+        check(FxGrid::stepAtPpq(4.25, 16, 0.25) == 1, "grid: keeps counting after the wrap");
+        // Hosts hand you NEGATIVE ppq during count-in/pre-roll. Naive modulo gives a
+        // negative index and reads out of bounds.
+        check(FxGrid::stepAtPpq(-0.25, 16, 0.25) == 15, "grid: negative ppq (host pre-roll) wraps sanely");
+        check(FxGrid::stepAtPpq(1.0, 16, 0.0) == 0, "grid: zero division doesn't divide by zero");
+
+        // --- LAW: a cell is a GATE, not a second volume ---
+        // The prototype's bug: strength came from the cell alone, so Shatter at 0% still
+        // shattered. The panel must set the ceiling.
+        {
+            FxGrid g;
+            g.setCell((int) GridRow::Drive, 0, 3);   // fully painted
+
+            check(std::abs(g.amountFor(GridRow::Drive, 0.0f, 0) - 0.0f) < 0.001f,
+                  "grid LAW: drive at 0% stays SILENT however hard the cell is painted");
+            check(std::abs(g.amountFor(GridRow::Drive, 80.0f, 0) - 80.0f) < 0.001f,
+                  "grid: a full cell reaches the panel amount, never beyond");
+            check(std::abs(g.amountFor(GridRow::Drive, 80.0f, 1) - 0.0f) < 0.001f,
+                  "grid: an unpainted step is the effect's neutral (silent)");
+
+            g.setCell((int) GridRow::Drive, 1, 2);   // 2/3
+            const float partial = g.amountFor(GridRow::Drive, 90.0f, 1);
+            check(partial > 55.0f && partial < 65.0f, "grid: cell level scales the panel amount (2/3 of 90)");
+        }
+
+        // --- neutral is per-row: Tone rests OPEN, not at zero ---
+        // If every row rested at 0, an unpainted Tone row would slam the filter shut and
+        // mute the instrument.
+        {
+            FxGrid g;
+            check(std::abs(g.amountFor(GridRow::Tone, 20.0f, 0) - 100.0f) < 0.001f,
+                  "grid: unpainted Tone rests OPEN (100), it does not close and mute");
+            check(std::abs(g.amountFor(GridRow::Width, 0.0f, 0) - 100.0f) < 0.001f,
+                  "grid: unpainted Width rests unchanged (100)");
+
+            g.setCell((int) GridRow::Tone, 0, 3);
+            check(std::abs(g.amountFor(GridRow::Tone, 20.0f, 0) - 20.0f) < 0.001f,
+                  "grid: a full Tone cell closes toward YOUR setting (20), not to zero");
+            check(gridRowNeutral(GridRow::Drive) == 0.0f, "grid: Drive's neutral is silent");
+            check(gridRowNeutral(GridRow::Tone) == 100.0f, "grid: Tone's neutral is open");
+        }
+
+        // --- cells: set/get/clear/bounds ---
+        {
+            FxGrid g;
+            g.setCell((int) GridRow::Crush, 5, 2);
+            check(g.getCell((int) GridRow::Crush, 5) == 2, "grid: cell set and read back");
+            check(g.rowHasAnyCells((int) GridRow::Crush), "grid: row reports it has cells");
+            check(! g.rowHasAnyCells((int) GridRow::Delay), "grid: empty row reports empty");
+
+            g.setCell((int) GridRow::Crush, 5, 99);
+            check(g.getCell((int) GridRow::Crush, 5) == 3, "grid: cell level clamps to 3");
+            g.setCell(-1, 0, 3); g.setCell(0, 999, 3);            // must not crash or corrupt
+            check(g.getCell(-1, 0) == 0 && g.getCell(0, 999) == 0, "grid: out-of-range access is safe");
+
+            g.clearRow((int) GridRow::Crush);
+            check(! g.rowHasAnyCells((int) GridRow::Crush), "grid: clearRow empties it");
+
+            g.setCell((int) GridRow::Drive, 1, 3);
+            g.clearAll();
+            check(! g.rowHasAnyCells((int) GridRow::Drive), "grid: clearAll empties everything");
+        }
+
+        // --- state: the grid is structured data and must survive save/load intact ---
+        {
+            FxGrid a;
+            a.setNumSteps(32);
+            a.setCell((int) GridRow::Drive, 0, 3);
+            a.setCell((int) GridRow::Drive, 7, 1);
+            a.setCell((int) GridRow::Reverb, 31, 2);
+            a.setCell((int) GridRow::Tone, 15, 3);
+
+            FxGrid b;
+            b.fromString(a.toString());
+
+            check(b.getNumSteps() == 32, "grid state: step count round-trips");
+            check(b.getCell((int) GridRow::Drive, 0) == 3, "grid state: cells round-trip");
+            check(b.getCell((int) GridRow::Drive, 7) == 1, "grid state: partial levels round-trip");
+            check(b.getCell((int) GridRow::Reverb, 31) == 2, "grid state: the last step round-trips");
+            check(b.getCell((int) GridRow::Tone, 15) == 3, "grid state: every row round-trips");
+            check(b.toString() == a.toString(), "grid state: save -> load -> save is identical");
+
+            FxGrid c;
+            c.fromString("");                       // junk in must not crash
+            c.fromString("garbage-not-a-grid");
+            check(c.getCell(0, 0) == 0, "grid state: malformed input is ignored safely");
+        }
+
+        // --- step count ---
+        {
+            FxGrid g;
+            g.setNumSteps(8);   check(g.getNumSteps() == 8, "grid: 8 steps");
+            g.setNumSteps(999); check(g.getNumSteps() == FxGrid::maxSteps, "grid: step count clamps to max");
+            g.setNumSteps(0);   check(g.getNumSteps() == 1, "grid: step count can't be zero");
         }
     }
 

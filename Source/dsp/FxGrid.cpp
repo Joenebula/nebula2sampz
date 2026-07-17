@@ -1,0 +1,120 @@
+#include "FxGrid.h"
+
+#include <cmath>
+
+namespace Nebula2
+{
+    const char* gridRowName(GridRow r)
+    {
+        switch (r)
+        {
+            case GridRow::Drive:   return "Drive";
+            case GridRow::Crush:   return "Crush";
+            case GridRow::Squeeze: return "Squeeze";
+            case GridRow::Tone:    return "Tone";
+            case GridRow::Width:   return "Width";
+            case GridRow::Reverb:  return "Reverb";
+            case GridRow::Delay:   return "Delay";
+            default:               return "?";
+        }
+    }
+
+    float gridRowNeutral(GridRow r)
+    {
+        switch (r)
+        {
+            case GridRow::Tone:    return 100.0f;   // open
+            case GridRow::Width:   return 100.0f;   // unchanged
+            default:               return 0.0f;     // silent / no send
+        }
+    }
+
+    int FxGrid::stepAtPpq(double ppq, int numStepsIn, double beatsPerStep) noexcept
+    {
+        if (numStepsIn <= 0 || beatsPerStep <= 0.0) return 0;
+        const double raw = std::floor(ppq / beatsPerStep);
+        long long s = (long long) raw;
+        int step = (int) (s % (long long) numStepsIn);
+        if (step < 0) step += numStepsIn;          // negative ppq (host pre-roll) must wrap sanely
+        return step;
+    }
+
+    float FxGrid::blend(float neutral, float panelAmount, int cell) noexcept
+    {
+        const int c = juce::jlimit(0, 3, cell);
+        return neutral + (panelAmount - neutral) * ((float) c / 3.0f);
+    }
+
+    void FxGrid::setNumSteps(int n) noexcept
+    {
+        numSteps = juce::jlimit(1, maxSteps, n);
+    }
+
+    void FxGrid::setCell(int row, int step, int level) noexcept
+    {
+        if (row < 0 || row >= numRows || step < 0 || step >= maxSteps) return;
+        cells[(size_t) row][(size_t) step] = (uint8_t) juce::jlimit(0, 3, level);
+    }
+
+    int FxGrid::getCell(int row, int step) const noexcept
+    {
+        if (row < 0 || row >= numRows || step < 0 || step >= maxSteps) return 0;
+        return (int) cells[(size_t) row][(size_t) step];
+    }
+
+    void FxGrid::clearAll() noexcept
+    {
+        for (auto& r : cells) r.fill(0);
+    }
+
+    void FxGrid::clearRow(int row) noexcept
+    {
+        if (row < 0 || row >= numRows) return;
+        cells[(size_t) row].fill(0);
+    }
+
+    bool FxGrid::rowHasAnyCells(int row) const noexcept
+    {
+        if (row < 0 || row >= numRows) return false;
+        for (int s = 0; s < numSteps; ++s) if (cells[(size_t) row][(size_t) s] > 0) return true;
+        return false;
+    }
+
+    float FxGrid::amountFor(GridRow row, float panelAmount, int step) const noexcept
+    {
+        return blend(gridRowNeutral(row), panelAmount, getCell((int) row, step));
+    }
+
+    juce::String FxGrid::toString() const
+    {
+        juce::String out;
+        out << numSteps << ":";
+        for (int r = 0; r < numRows; ++r)
+        {
+            for (int s = 0; s < maxSteps; ++s) out << (int) cells[(size_t) r][(size_t) s];
+            if (r < numRows - 1) out << ",";
+        }
+        return out;
+    }
+
+    void FxGrid::fromString(const juce::String& s)
+    {
+        clearAll();
+        const int colon = s.indexOfChar(':');
+        if (colon < 0) return;
+
+        setNumSteps(s.substring(0, colon).getIntValue());
+
+        auto rows = juce::StringArray::fromTokens(s.substring(colon + 1), ",", "");
+        for (int r = 0; r < juce::jmin(rows.size(), numRows); ++r)
+        {
+            const auto& line = rows[r];
+            for (int st = 0; st < juce::jmin(line.length(), maxSteps); ++st)
+            {
+                // String::operator[] gives a juce_wchar, not an int — cast before jlimit.
+                const int level = (int) (line[st] - (juce::juce_wchar) '0');
+                cells[(size_t) r][(size_t) st] = (uint8_t) juce::jlimit(0, 3, level);
+            }
+        }
+    }
+}
