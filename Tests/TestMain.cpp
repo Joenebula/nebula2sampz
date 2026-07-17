@@ -26,6 +26,7 @@
 #include "../Source/dsp/FxGrid.h"
 #include "../Source/dsp/MorphPad.h"
 #include "../Source/dsp/MorphEngine.h"
+#include "../Source/dsp/RackGraph.h"
 
 #include <iostream>
 #include <cmath>
@@ -1722,6 +1723,183 @@ int main()
             }
             check(quietest < loudest * 0.5f, "morph engine: shatter gates the signal on and off");
             check(loudest > 0.1f, "morph engine: shatter is a gate, not a mute");
+        }
+    }
+
+    // ---- Phase 10: the modular rack's graph (what's audible, and why) ----
+    {
+        using namespace Nebula2;
+
+        auto P = [](const char* s) { return parsePort(s); };
+        auto patch = [&](RackGraph& g, const char* a, const char* b) { return g.addCable(P(a), P(b)); };
+
+        // --- ports ---
+        {
+            check(P("flt:cv").valid(), "rack: flt has a cv jack");
+            check(! P("eq:cv").valid(), "rack: eq has NO cv jack — patching to it is refused, not ignored");
+            check(! P("src:in").valid(), "rack: the beat has no input");
+            check(! P("out:out").valid(), "rack: the main out has no output");
+            check(! P("nope:in").valid(), "rack: an unknown module is not a port");
+            check(! P("flt").valid() && ! P("").valid(), "rack: malformed port text is not a port");
+            check(portToString(P("cmb:cv")) == "cmb:cv", "rack: a port round-trips through text");
+        }
+
+        // --- an unpatched rack must not silence the track ---
+        {
+            RackGraph g;
+            check(! g.isLive(), "rack: an empty rack is not live (the dry beat still plays)");
+            check(g.stateOf(ModuleId::flt) == ModuleState::idle, "rack: an unpatched module is idle");
+            check(g.processOrder().empty(), "rack: nothing to process when nothing is patched");
+        }
+
+        // --- reachable but trapped: wired, and silent ---
+        {
+            RackGraph g;
+            check(patch(g, "src:out", "flt:in") == PatchResult::ok, "rack: beat -> filter patches");
+            check(! g.isLive(), "rack: audio that never reaches the out doesn't make the rack live");
+            check(g.stateOf(ModuleId::flt) == ModuleState::noPathOut,
+                  "rack: a module with no path out says so, instead of pretending to work");
+            check(patch(g, "flt:out", "out:in") == PatchResult::ok, "rack: filter -> out patches");
+            check(g.isLive(), "rack: now the rack is live");
+            check(g.stateOf(ModuleId::flt) == ModuleState::live, "rack: the filter is live");
+        }
+
+        // --- THE PROTOTYPE'S BUG: a branch is not dead ---
+        // Its old code walked one straight line from the beat, so a module reached by a
+        // second cable was wrongly greyed out. Both branches here are genuinely audible.
+        {
+            RackGraph g;
+            patch(g, "src:out", "flt:in");
+            patch(g, "src:out", "cmb:in");    // a SECOND cable off the same out
+            patch(g, "flt:out", "out:in");
+            patch(g, "cmb:out", "out:in");
+            check(g.stateOf(ModuleId::flt) == ModuleState::live, "rack: branch A is live");
+            check(g.stateOf(ModuleId::cmb) == ModuleState::live,
+                  "rack: branch B is live too — a branch is not dead (the prototype's bug)");
+            const auto order = g.processOrder();
+            check(order.size() == 2, "rack: both branches get processed");
+        }
+
+        // --- a mid-chain module that dead-ends ---
+        {
+            RackGraph g;
+            patch(g, "src:out", "eq:in");
+            patch(g, "eq:out",  "out:in");
+            patch(g, "src:out", "fld:in");   // patched off the beat, but goes nowhere
+            check(g.stateOf(ModuleId::eq)  == ModuleState::live, "rack: the wired-through path is live");
+            check(g.stateOf(ModuleId::fld) == ModuleState::noPathOut,
+                  "rack: a dead-ending branch is called out, not shown as live");
+            const auto order = g.processOrder();
+            check(order.size() == 1 && order[0] == ModuleId::eq,
+                  "rack: a module that can't be heard costs no CPU");
+        }
+
+        // --- cables run one way ---
+        {
+            RackGraph g;
+            check(patch(g, "flt:in", "out:in") == PatchResult::wrongDirection, "rack: in -> in is refused");
+            check(patch(g, "src:out", "flt:out") == PatchResult::wrongDirection, "rack: out -> out is refused");
+            check(patch(g, "src:out", "flt:in") == PatchResult::ok, "rack: out -> in is the only legal cable");
+            check(patch(g, "src:out", "flt:in") == PatchResult::duplicate, "rack: the same cable twice is refused");
+        }
+
+        // --- CV is control, not audio ---
+        {
+            RackGraph g;
+            check(patch(g, "lfo:out", "flt:in") == PatchResult::cvIntoAudio,
+                  "rack: the LFO can't be patched into an audio input");
+            check(patch(g, "src:out", "flt:cv") == PatchResult::audioIntoCV,
+                  "rack: audio can't be patched into a CV input");
+            check(patch(g, "lfo:out", "flt:cv") == PatchResult::ok, "rack: LFO -> cv patches");
+
+            // A CV cable must not make the filter look like it's carrying audio.
+            check(! g.isLive(), "rack: a CV cable alone doesn't make the rack live");
+            check(g.stateOf(ModuleId::flt) == ModuleState::noPathOut,
+                  "rack: CV alone doesn't put the filter in the audio path");
+
+            patch(g, "src:out", "flt:in");
+            patch(g, "flt:out", "out:in");
+            check(g.stateOf(ModuleId::lfo) == ModuleState::live,
+                  "rack: the LFO is live when what it drives is live");
+            check(g.cvSourcesFor(ModuleId::flt).size() == 1, "rack: the filter knows its CV source");
+        }
+
+        // --- the LFO driving a dead module is not live ---
+        {
+            RackGraph g;
+            patch(g, "lfo:out", "cmb:cv");   // cmb isn't in any audio path
+            check(g.stateOf(ModuleId::lfo) == ModuleState::noPathOut,
+                  "rack: an LFO driving an unheard module says so");
+        }
+
+        // --- loops are refused, by name ---
+        {
+            RackGraph g;
+            patch(g, "src:out", "flt:in");
+            patch(g, "flt:out", "cmb:in");
+            check(patch(g, "cmb:out", "flt:in") == PatchResult::wouldLoop,
+                  "rack: a cable that closes a loop is refused");
+            check(patch(g, "flt:out", "flt:in") == PatchResult::wouldLoop,
+                  "rack: a module can't feed itself");
+            check(g.processOrder().empty() || g.isLive() == false, "rack: still no path out, so nothing runs");
+        }
+
+        // --- process order is a real topological order ---
+        {
+            RackGraph g;
+            patch(g, "src:out", "eq:in");
+            patch(g, "eq:out",  "flt:in");
+            patch(g, "flt:out", "ech:in");
+            patch(g, "ech:out", "out:in");
+            const auto order = g.processOrder();
+            check(order.size() == 3, "rack: three modules in the chain");
+            check(order[0] == ModuleId::eq && order[1] == ModuleId::flt && order[2] == ModuleId::ech,
+                  "rack: modules process in signal order, never before their input exists");
+        }
+
+        // --- bypass ---
+        {
+            RackGraph g;
+            patch(g, "src:out", "flt:in");
+            patch(g, "flt:out", "out:in");
+            g.setBypassed(ModuleId::flt, true);
+            check(g.stateOf(ModuleId::flt) == ModuleState::off, "rack: a bypassed module reads OFF");
+            check(g.isLive(), "rack: bypassing a module doesn't unpatch the rack");
+        }
+
+        // --- unplugging ---
+        {
+            RackGraph g;
+            patch(g, "src:out", "flt:in");
+            patch(g, "flt:out", "out:in");
+            g.removeCablesTouching(ModuleId::flt);
+            check(g.getCables().empty(), "rack: pulling a module pulls its cables");
+            check(! g.isLive(), "rack: and the rack falls back to the dry beat");
+        }
+
+        // --- state: a patch is part of the song ---
+        {
+            RackGraph g;
+            patch(g, "src:out", "flt:in");
+            patch(g, "flt:out", "out:in");
+            patch(g, "lfo:out", "flt:cv");
+            g.setBypassed(ModuleId::ech, true);
+
+            const auto r = RackGraph::fromString(g.toString());
+            check(r.getCables().size() == 3, "rack state: every cable round-trips");
+            check(r.isLive(), "rack state: the restored patch is live");
+            check(r.isBypassed(ModuleId::ech), "rack state: bypass round-trips");
+            check(r.stateOf(ModuleId::lfo) == ModuleState::live, "rack state: the CV patch round-trips");
+
+            const auto empty = RackGraph::fromString("");
+            check(empty.getCables().empty() && ! empty.isLive(), "rack state: empty input is safe");
+
+            const auto junk = RackGraph::fromString("gibberish;;;flt:out>;>out:in|nope");
+            check(junk.getCables().empty(), "rack state: malformed input yields no cables, not garbage");
+
+            // A saved file that predates the no-loops rule must not be able to smuggle one in.
+            const auto loop = RackGraph::fromString("src:out>flt:in;flt:out>cmb:in;cmb:out>flt:in|");
+            check(loop.getCables().size() == 2, "rack state: a saved loop is dropped on load, not honoured");
         }
     }
 
