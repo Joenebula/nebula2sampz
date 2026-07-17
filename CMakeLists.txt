@@ -73,6 +73,8 @@ target_sources(Nebula2 PRIVATE
     Source/dsp/SampleLayer.h
     Source/dsp/FxGrid.cpp
     Source/dsp/FxGrid.h
+    Source/dsp/MorphPad.cpp
+    Source/dsp/MorphPad.h
 )
 
 target_compile_definitions(Nebula2 PUBLIC
@@ -139,6 +141,8 @@ target_sources(Nebula2Tests PRIVATE
     Source/dsp/SampleLayer.h
     Source/dsp/FxGrid.cpp
     Source/dsp/FxGrid.h
+    Source/dsp/MorphPad.cpp
+    Source/dsp/MorphPad.h
 )
 
 target_compile_definitions(Nebula2Tests PRIVATE

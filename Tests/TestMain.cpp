@@ -24,6 +24,7 @@
 #include "../Source/dsp/SpaceProcessor.h"
 #include "../Source/dsp/SampleLayer.h"
 #include "../Source/dsp/FxGrid.h"
+#include "../Source/dsp/MorphPad.h"
 
 #include <iostream>
 #include <cmath>
@@ -1541,6 +1542,92 @@ int main()
             g.setNumSteps(8);   check(g.getNumSteps() == 8, "grid: 8 steps");
             g.setNumSteps(999); check(g.getNumSteps() == FxGrid::maxSteps, "grid: step count clamps to max");
             g.setNumSteps(0);   check(g.getNumSteps() == 1, "grid: step count can't be zero");
+        }
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Phase 9 — Morph pad: four scenes blended across an X/Y pad
+    // ---------------------------------------------------------------------------------
+    {
+        using namespace Nebula2;
+        const auto c = defaultMorphScenes();
+
+        // --- bilinear weights ---
+        {
+            const auto w = morphWeights(0.0f, 0.0f);
+            check(std::abs(w[0] - 1.0f) < 1e-6f, "morph: top-left is corner A alone");
+            const auto w2 = morphWeights(1.0f, 1.0f);
+            check(std::abs(w2[3] - 1.0f) < 1e-6f, "morph: bottom-right is corner D alone");
+            const auto wc = morphWeights(0.5f, 0.5f);
+            for (int i = 0; i < 4; ++i)
+                check(std::abs(wc[i] - 0.25f) < 1e-6f, "morph: centre weights all four equally");
+            // Weights must always sum to 1, or the blend gains/loses level as you move.
+            bool sums = true;
+            for (float x = 0.0f; x <= 1.0f; x += 0.13f)
+                for (float y = 0.0f; y <= 1.0f; y += 0.17f)
+                {
+                    const auto ww = morphWeights(x, y);
+                    if (std::abs((ww[0] + ww[1] + ww[2] + ww[3]) - 1.0f) > 1e-5f) sums = false;
+                }
+            check(sums, "morph: weights always sum to 1 (no level jump as the dot moves)");
+            const auto wOut = morphWeights(-5.0f, 9.0f);
+            check(std::abs((wOut[0] + wOut[1] + wOut[2] + wOut[3]) - 1.0f) < 1e-5f,
+                  "morph: out-of-range positions are clamped, not broken");
+        }
+
+        // --- corners return their scene exactly ---
+        {
+            const auto a = blendMorph(c, 0.0f, 0.0f);
+            check(std::abs(a.cut - c[0].cut) < 1.0f && std::abs(a.drv - c[0].drv) < 0.01f,
+                  "morph: the pad's corner IS that scene (A)");
+            const auto d = blendMorph(c, 1.0f, 1.0f);
+            check(std::abs(d.wid - c[3].wid) < 0.01f && std::abs(d.sht - c[3].sht) < 0.01f,
+                  "morph: the pad's corner IS that scene (D)");
+            const auto b = blendMorph(c, 1.0f, 0.0f);
+            check(std::abs(b.drv - c[1].drv) < 0.01f, "morph: corner B exact");
+            const auto cc = blendMorph(c, 0.0f, 1.0f);
+            check(std::abs(cc.phs - c[2].phs) < 0.01f, "morph: corner C exact");
+        }
+
+        // --- linear params blend linearly ---
+        {
+            const auto mid = blendMorph(c, 0.5f, 0.0f);   // halfway A..B along the top
+            const float wantDrv = (c[0].drv + c[1].drv) * 0.5f;
+            check(std::abs(mid.drv - wantDrv) < 0.01f, "morph: drive blends linearly between corners");
+        }
+
+        // --- THE ONE THAT MATTERS: cutoff blends in LOG space ---
+        // A linear blend of 16k and 700 gives 8.35k — which still sounds "open", so the
+        // whole bottom half of the pad's travel would do almost nothing. Geometric gives
+        // ~3.3k, which is what "halfway from bright to dark" actually sounds like.
+        {
+            const auto mid = blendMorph(c, 0.0f, 0.5f);   // halfway A(16k) .. C(700)
+            const float linearWould = (c[0].cut + c[2].cut) * 0.5f;         // 8350
+            const float geometric   = std::sqrt(c[0].cut * c[2].cut);       // ~3346
+            check(std::abs(mid.cut - geometric) < geometric * 0.05f,
+                  "morph: cutoff blends GEOMETRICALLY (halfway bright->dark sounds halfway)");
+            check(mid.cut < linearWould * 0.6f,
+                  "morph: cutoff is NOT a linear blend (which would barely leave 'open')");
+        }
+
+        // --- scenes are structured state: they must round-trip ---
+        {
+            auto edited = defaultMorphScenes();
+            edited[1].cut = 1234.5f; edited[1].drv = 77.0f;
+            edited[3].wid = 180.0f;  edited[3].sht = 12.5f;
+
+            const auto back = morphScenesFromString(morphScenesToString(edited));
+            check(std::abs(back[1].cut - 1234.5f) < 0.1f, "morph state: edited cutoff round-trips");
+            check(std::abs(back[1].drv - 77.0f) < 0.01f,  "morph state: edited drive round-trips");
+            check(std::abs(back[3].wid - 180.0f) < 0.01f, "morph state: every corner round-trips");
+            check(std::abs(back[3].sht - 12.5f) < 0.01f,  "morph state: fractional values survive");
+
+            const auto junk = morphScenesFromString("not a scene at all");
+            check(std::abs(junk[0].cut - defaultMorphScenes()[0].cut) < 1.0f,
+                  "morph state: malformed input falls back to the seed scenes, never garbage");
+            const auto empty = morphScenesFromString("");
+            check(std::abs(empty[2].res - defaultMorphScenes()[2].res) < 0.01f,
+                  "morph state: empty input is safe");
         }
     }
 
