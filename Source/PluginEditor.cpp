@@ -40,7 +40,7 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     for (auto* b : { &fxOnButton, &limiterButton, &spaceOnButton })
     {
         b->setColour(juce::ToggleButton::textColourId, kSub);
-        addAndMakeVisible(*b);
+        content.addAndMakeVisible(*b);
     }
     fxOnAttachment    = std::make_unique<APVTS::ButtonAttachment>(processorRef.getValueTreeState(), Nebula2::ParamID::fxOn, fxOnButton);
     limiterAttachment = std::make_unique<APVTS::ButtonAttachment>(processorRef.getValueTreeState(), Nebula2::ParamID::limiter, limiterButton);
@@ -58,11 +58,11 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
                                  if (f.existsAsFile()) loadSampleFile(f);
                              });
     };
-    addAndMakeVisible(loadButton);
+    content.addAndMakeVisible(loadButton);
 
     sampleInfo.setColour(juce::Label::textColourId, kSub);
     sampleInfo.setJustificationType(juce::Justification::centredLeft);
-    addAndMakeVisible(sampleInfo);
+    content.addAndMakeVisible(sampleInfo);
 
     addCombo(sliceModeBox, sliceModeLabel, Nebula2::ParamID::sliceMode, "Slice",
              { "Grid", "Transient" }, sliceModeAttachment);
@@ -73,35 +73,35 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     sensitivity.slider.valueFromTextFunction = [](const juce::String& t) { return t.getDoubleValue() / 100.0; };
     sensitivity.slider.updateText();
 
-    addAndMakeVisible(waveform);
+    content.addAndMakeVisible(waveform);
 
     // --- FX grid ---
-    addAndMakeVisible(gridView);
+    content.addAndMakeVisible(gridView);
     gridOnButton.setColour(juce::ToggleButton::textColourId, kSub);
-    addAndMakeVisible(gridOnButton);
+    content.addAndMakeVisible(gridOnButton);
     gridOnAttachment = std::make_unique<APVTS::ButtonAttachment>(
         processorRef.getValueTreeState(), Nebula2::ParamID::gridOn, gridOnButton);
     addCombo(gridStepsBox, gridStepsLabel, Nebula2::ParamID::gridSteps, "Steps",
              { "8", "16", "32" }, gridStepsAttachment);
     gridClearButton.onClick = [this] { processorRef.getGrid().clearAll(); gridView.repaint(); };
-    addAndMakeVisible(gridClearButton);
+    content.addAndMakeVisible(gridClearButton);
 
     // --- Morph pad ---
-    addAndMakeVisible(morphPad);
+    content.addAndMakeVisible(morphPad);
     padOnButton.setColour(juce::ToggleButton::textColourId, kSub);
-    addAndMakeVisible(padOnButton);
+    content.addAndMakeVisible(padOnButton);
     padOnAttachment = std::make_unique<APVTS::ButtonAttachment>(
         processorRef.getValueTreeState(), Nebula2::ParamID::padOn, padOnButton);
 
     // --- Modular rack ---
-    addAndMakeVisible(rackView);
+    content.addAndMakeVisible(rackView);
     rackOnButton.setColour(juce::ToggleButton::textColourId, kSub);
-    addAndMakeVisible(rackOnButton);
+    content.addAndMakeVisible(rackOnButton);
     rackOnAttachment = std::make_unique<APVTS::ButtonAttachment>(
         processorRef.getValueTreeState(), Nebula2::ParamID::rackOn, rackOnButton);
 
     rackClearButton.onClick = [this] { rackView.clearPatch(); };
-    addAndMakeVisible(rackClearButton);
+    content.addAndMakeVisible(rackClearButton);
 
     // Only the dials you'd reach for while patching are on the panel; the rest are still
     // full host parameters, so nothing here is a control the DAW can't see.
@@ -121,11 +121,21 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     addCombo(lfoShapeBox, lfoShapeLabel, Nebula2::ParamID::lfoShape, "LFO",
              { "Sine", "Triangle", "Saw", "Square" }, lfoShapeAttachment);
 
+    content.onPaint   = [this](juce::Graphics& g) { paintContent(g); };
+    content.onResized = [this] { layoutContent(); };
+    viewport.setViewedComponent(&content, false);
+    viewport.setScrollBarsShown(true, false);
+    addAndMakeVisible(viewport);
+
     refreshSampleInfo();
     updateSliceControlStates();
     startTimerHz(8);        // watch for slice-mode changes (incl. from host automation)
 
-    setSize(660, 1320);
+    // The window opens at a height that fits a laptop; the surface scrolls to reach the
+    // rack. Resizable, so a big screen can just show more of it at once.
+    setResizable(true, true);
+    setResizeLimits(620, 420, 1100, contentHeight);
+    setSize(680, 860);
 }
 
 void Nebula2AudioProcessorEditor::timerCallback()
@@ -220,12 +230,12 @@ void Nebula2AudioProcessorEditor::addKnob(Knob& k, const juce::String& paramID,
     k.slider.setColour(juce::Slider::thumbColourId, kAccent);
     k.slider.setColour(juce::Slider::textBoxTextColourId, juce::Colours::white);
     k.slider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
-    addAndMakeVisible(k.slider);
+    content.addAndMakeVisible(k.slider);
 
     k.label.setText(name, juce::dontSendNotification);
     k.label.setJustificationType(juce::Justification::centred);
     k.label.setColour(juce::Label::textColourId, kSub);
-    addAndMakeVisible(k.label);
+    content.addAndMakeVisible(k.label);
 
     k.attachment = std::make_unique<APVTS::SliderAttachment>(processorRef.getValueTreeState(), paramID, k.slider);
 }
@@ -238,18 +248,23 @@ void Nebula2AudioProcessorEditor::addCombo(juce::ComboBox& box, juce::Label& lab
     label.setText(name, juce::dontSendNotification);
     label.setJustificationType(juce::Justification::centredLeft);
     label.setColour(juce::Label::textColourId, kSub);
-    addAndMakeVisible(label);
+    content.addAndMakeVisible(label);
 
     box.addItemList(items, 1);
-    addAndMakeVisible(box);
+    content.addAndMakeVisible(box);
     attachment = std::make_unique<APVTS::ComboBoxAttachment>(processorRef.getValueTreeState(), paramID, box);
 }
 
 void Nebula2AudioProcessorEditor::paint(juce::Graphics& g)
 {
+    g.fillAll(kBg);      // behind the viewport, so an over-scroll doesn't flash white
+}
+
+void Nebula2AudioProcessorEditor::paintContent(juce::Graphics& g)
+{
     g.fillAll(kBg);
 
-    auto header = getLocalBounds().removeFromTop(44).reduced(16, 8);
+    auto header = content.getLocalBounds().removeFromTop(44).reduced(16, 8);
     g.setColour(juce::Colours::white);
     g.setFont(juce::FontOptions(18.0f));
     g.drawFittedText("Nebula2", header.removeFromLeft(100), juce::Justification::centredLeft, 1);
@@ -258,7 +273,7 @@ void Nebula2AudioProcessorEditor::paint(juce::Graphics& g)
     g.drawFittedText("drums 36-46, 75    |    B4 whole break    |    C5+ slices",
                      header, juce::Justification::centredLeft, 1);
 
-    auto body = getLocalBounds().reduced(12).withTrimmedTop(38);
+    auto body = content.getLocalBounds().reduced(12).withTrimmedTop(38);
 
     auto sampleArea = body.removeFromTop(188);
     g.setColour(dragHighlight ? kAccent.withAlpha(0.25f) : kPanel);
@@ -303,7 +318,17 @@ void Nebula2AudioProcessorEditor::paint(juce::Graphics& g)
 
 void Nebula2AudioProcessorEditor::resized()
 {
-    auto body = getLocalBounds().reduced(12).withTrimmedTop(38);
+    viewport.setBounds(getLocalBounds());
+
+    // The content keeps its full height; the window shows as much of it as it has room
+    // for. Subtract the scrollbar so nothing hides underneath it.
+    const int sbW = viewport.isVerticalScrollBarShown() ? viewport.getScrollBarThickness() : 0;
+    content.setSize(juce::jmax(560, getWidth() - sbW), contentHeight);
+}
+
+void Nebula2AudioProcessorEditor::layoutContent()
+{
+    auto body = content.getLocalBounds().reduced(12).withTrimmedTop(38);
 
     // --- Sample panel ---
     auto sampleArea = body.removeFromTop(188).reduced(10);

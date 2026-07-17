@@ -34,6 +34,30 @@ public:
 private:
     using APVTS = juce::AudioProcessorValueTreeState;
 
+    // The panels now add up to more height than a laptop screen has, so the surface
+    // SCROLLS rather than being clipped by the host window. This was a real defect, not a
+    // nicety: the rack panel existed, was wired, and was simply below the bottom edge —
+    // which is indistinguishable from "the rack isn't there".
+    //
+    // A viewport needs a component to scroll. This forwards paint/resized back to the
+    // editor so the panel-drawing code stays in one place rather than being duplicated.
+    struct ScrollingContent final : public juce::Component
+    {
+        std::function<void(juce::Graphics&)> onPaint;
+        std::function<void()> onResized;
+        void paint(juce::Graphics& g) override { if (onPaint) onPaint(g); }
+        void resized() override { if (onResized) onResized(); }
+    };
+
+    juce::Viewport viewport;
+    ScrollingContent content;
+
+    void paintContent(juce::Graphics&);
+    void layoutContent();
+
+    // How tall the panels actually are. The editor window can be smaller — that's the point.
+    static constexpr int contentHeight = 1330;
+
     struct Knob
     {
         juce::Slider slider;
