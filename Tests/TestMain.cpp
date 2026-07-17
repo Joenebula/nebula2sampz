@@ -2461,6 +2461,66 @@ int main()
         }
     }
 
+    // ---- The de-allocation refactor must not have changed the SOUND ----
+    // Removing the allocations meant swapping IIR::Coefficients::make*() for
+    // IIR::ArrayCoefficients::make*(). JUCE documents them as the same maths, but "the docs
+    // say so" is not evidence, and this path is the Tone knob every user turns. If these
+    // ever diverge, the plugin sounds different and every response test above still passes,
+    // because they only assert loose properties like "cuts 5 kHz".
+    {
+        using namespace Nebula2;
+        const double sr = 44100.0;
+
+        // Compare what actually gets STORED, not the raw arrays. Coefficients::assignImpl
+        // normalises by a0 and drops it, so a Coefficients holds 5 values where the array
+        // has 6 — my first version of this test compared 6 raw against 5 normalised and
+        // failed, which looked like a real sound change for a worrying minute. The code was
+        // right; the comparison wasn't. Assigning the array is what the DSP does, so that's
+        // what to check.
+        auto sameCoeffs = [](const std::array<float, 6>& arr,
+                             const juce::dsp::IIR::Coefficients<float>::Ptr& ptr)
+        {
+            if (ptr == nullptr) return false;
+            juce::dsp::IIR::Coefficients<float> viaArray;
+            viaArray = arr;                       // the same assignImpl the DSP uses
+            if (viaArray.coefficients.size() != ptr->coefficients.size()) return false;
+            for (int i = 0; i < ptr->coefficients.size(); ++i)
+                if (std::abs(viaArray.coefficients[i] - ptr->coefficients[i]) > 1.0e-9f) return false;
+            return true;
+        };
+
+        bool toneMatches = true;
+        for (float t = 0.0f; t <= 1.0f; t += 0.05f)
+        {
+            const float tn   = juce::jlimit(0.0f, 1.0f, t);
+            const float freq = juce::jlimit(20.0f, (float) (sr * 0.49), 200.0f * std::pow(100.0f, tn));
+            const float q    = 0.9f + (1.0f - tn) * 6.0f;
+
+            const auto viaArray = ToneFilter::arrayCoefficientsFor(t, sr);
+            const auto viaPtr   = juce::dsp::IIR::Coefficients<float>::makeLowPass(sr, freq, q);
+            if (! sameCoeffs(viaArray, viaPtr)) toneMatches = false;
+        }
+        check(toneMatches,
+              "refactor: Tone's alloc-free coefficients are IDENTICAL to the allocating ones");
+
+        // Same for the rack's paths, which were the ~8,300/sec offenders.
+        bool rackMatches = true;
+        for (float f = 100.0f; f < 8000.0f; f *= 1.7f)
+        {
+            if (! sameCoeffs(juce::dsp::IIR::ArrayCoefficients<float>::makeAllPass(sr, f, 0.7f),
+                             juce::dsp::IIR::Coefficients<float>::makeAllPass(sr, f, 0.7f)))
+                rackMatches = false;
+            if (! sameCoeffs(juce::dsp::IIR::ArrayCoefficients<float>::makeBandPass(sr, f, 9.0f),
+                             juce::dsp::IIR::Coefficients<float>::makeBandPass(sr, f, 9.0f)))
+                rackMatches = false;
+            if (! sameCoeffs(juce::dsp::IIR::ArrayCoefficients<float>::makePeakFilter(sr, f, 1.1f, 2.0f),
+                             juce::dsp::IIR::Coefficients<float>::makePeakFilter(sr, f, 1.1f, 2.0f)))
+                rackMatches = false;
+        }
+        check(rackMatches,
+              "refactor: the rack's phaser/vowel/EQ coefficients are identical too");
+    }
+
     // ---- REAL-TIME SAFETY: the audio path must not touch the heap ----
     {
         using namespace Nebula2;
