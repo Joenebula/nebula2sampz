@@ -222,12 +222,18 @@ dropped (deferred since Phase 3/4). Per-beat sidechain-style duck: gain slams to
 placement), sample-accurate off the host ppq, additive and OFF by default. `pump` param +
 COLOUR-panel knob. `pumpGain()` is pure and tested; RT-safe; in the dead-control gate.
 
-**Remaining prototype feature omissions (still open, in rough priority):** dub & warp delay
-modes (the port's delay is ping-pong only); the D7 ping-pong stereo routing/panning; the
-rack module visual screens (EQ curve / vowel formants / fold curve / scope — modules have
-dials but no meters); the "haunt" drone; and the movable-band EQ (needs a drag-band UI —
-poor fit for headless work, see [[self-checking-verifiers]] on why UI can't be verified
-without the user).
+**2026-07-18 — Delay modes done (Ping-Pong / Dub / Warp) + the D7 stereo topology.** The
+user chose this and blessed the sound change. The delay is now the prototype's real
+architecture: send feeds the LEFT line only, taps hard-panned ±0.75, damping on the L→R
+feedback path only. Ping-Pong therefore sounds different (wider) than the old symmetric
+version — that's D7, approved. `dlyMode` param + DELAY-section dropdown. RT-safe across mode
+changes. So D6 and D7 are now both resolved.
+
+**Remaining prototype feature omissions (still open, in rough priority):** the rack module
+visual screens (EQ curve / vowel formants / fold curve / scope — modules have dials but no
+meters); the "haunt" drone; and the movable-band EQ (needs a drag-band UI). The first and
+third are UI-heavy — verifiable only via the user's screenshots (see
+[[self-checking-verifiers]]).
 
 Everything below this point is the **original planning document**, written before the
 above decisions, and is being updated in place as phases complete. Part B's recommendation
