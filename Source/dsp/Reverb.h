@@ -28,12 +28,14 @@ namespace Nebula2
         void prepare(const juce::dsp::ProcessSpec& spec);
         void reset();
 
-        // Rebuilds the IR for the character and hands it to the convolution engine.
-        // Allocates — message thread only. Each call queues an async IR load, and a load
-        // landing RESETS the convolution state (killing any ringing tail), so never call
-        // it redundantly.
-        void setCharacter(ReverbChar character);
+        // Rebuilds the IR for the character AND size, and hands it to the convolution
+        // engine. Allocates — message thread only. Each call queues an async IR load, and a
+        // load landing RESETS the convolution state (killing any ringing tail), so never
+        // call it redundantly (SpaceProcessor only calls it when char or size changed).
+        // sizeSeconds is the tail length: the prototype's Size knob spanned 0.25..~6.75 s.
+        void setCharacter(ReverbChar character, double sizeSeconds);
         ReverbChar getCharacter() const noexcept { return currentChar; }
+        double getSizeSeconds() const noexcept { return currentSize; }
 
         // wetMix 0..1 dry/wet blend.
         void process(juce::AudioBuffer<float>& buffer, float wetMix) noexcept;
@@ -45,5 +47,6 @@ namespace Nebula2
         juce::AudioBuffer<float> dryScratch;
         double sampleRate = 44100.0;
         ReverbChar currentChar = ReverbChar::Hall;
+        double currentSize = 2.0;      // seconds; the prototype's default Size (~50%)
     };
 }

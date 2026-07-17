@@ -79,6 +79,12 @@ public:
     // The LFO's current value (-1..1) so the rack UI can draw a moving picture.
     float getRackLfoValue() const noexcept { return rackEngine.lfoValue(); }
 
+    // In-app audition: play the loaded break WITHOUT the DAW rolling. Toggled by the
+    // editor's Play button. The moment the host transport starts, it takes over and this
+    // clears itself — so the DAW is always the authority when it's running.
+    void setAudition(bool on) noexcept { auditionActive.store(on); }
+    bool isAuditioning() const noexcept { return auditionActive.load(); }
+
     // UI zoom. Lives here (not in the editor) so it survives the editor being closed and
     // reopened, and travels in the session. NOT a parameter: it's a property of the screen
     // you're looking at, not of the song — automating it would be nonsense.
@@ -107,6 +113,7 @@ private:
     std::atomic<float>* fxOnParam { nullptr };
     std::atomic<float>* revMixParam { nullptr };
     std::atomic<float>* revCharParam { nullptr };
+    std::atomic<float>* revSizeParam { nullptr };
     std::atomic<float>* dlyMixParam { nullptr };
     std::atomic<float>* dlyFbParam { nullptr };
     std::atomic<float>* dlySyncParam { nullptr };
@@ -150,6 +157,7 @@ private:
     // re-slicing ALLOCATE, so the audio thread only records what's wanted and pokes the
     // async updater; handleAsyncUpdate() does the real work on the message thread.
     std::atomic<int> wantedRevChar { 1 };        // 1 = Hall, matches the param default
+    std::atomic<float> wantedRevSize { 50.0f };  // reverb Size %, matches the param default
     std::atomic<int> wantedSliceMode { 0 };      // 0 = Grid
     std::atomic<int> wantedSliceCount { 16 };
     std::atomic<float> wantedSensitivity { 0.5f };
@@ -161,6 +169,13 @@ private:
 
     int currentProgram = 0;
     float uiScale = 0.0f;      // 0 = never chosen; the editor then follows the screen
+
+    // In-app audition (see setAudition). auditionActive is set from the editor; the rest is
+    // audio-thread only. B4 (83) is the whole-break note.
+    std::atomic<bool> auditionActive { false };
+    double auditionPpq = 0.0;          // audio thread: the synthesized transport position
+    bool   auditionWasHostPlaying = false;
+    static constexpr int wholeBreakNote = 83;
 
     void handleAsyncUpdate() override;
 

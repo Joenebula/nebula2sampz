@@ -59,7 +59,7 @@ namespace Nebula2
         sampleRate = spec.sampleRate;
         conv.prepare(spec);
         dryScratch.setSize((int) spec.numChannels, (int) spec.maximumBlockSize, false, false, true);
-        setCharacter(currentChar);
+        setCharacter(currentChar, currentSize);
     }
 
     void Reverb::reset()
@@ -67,10 +67,11 @@ namespace Nebula2
         conv.reset();
     }
 
-    void Reverb::setCharacter(ReverbChar character)
+    void Reverb::setCharacter(ReverbChar character, double sizeSeconds)
     {
         currentChar = character;
-        conv.loadImpulseResponse(makeImpulseResponse(sampleRate, 2.2, character),
+        currentSize = juce::jlimit(0.25, 6.75, sizeSeconds);
+        conv.loadImpulseResponse(makeImpulseResponse(sampleRate, currentSize, character),
                                  sampleRate,
                                  juce::dsp::Convolution::Stereo::yes,
                                  juce::dsp::Convolution::Trim::no,

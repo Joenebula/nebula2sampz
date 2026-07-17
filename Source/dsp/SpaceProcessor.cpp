@@ -29,11 +29,11 @@ namespace Nebula2
         delay.prepare(spec);
         wetScratch.setSize((int) spec.numChannels, (int) spec.maximumBlockSize, false, false, true);
 
-        // Only load again if we actually want a DIFFERENT character. A redundant load
-        // queues a second async IR swap that resets the convolution mid-flight and cuts
-        // off whatever tail is ringing.
-        if (reverb.getCharacter() != character)
-            reverb.setCharacter(character);
+        // Only load again if our wanted char/size actually differs from what reverb.prepare
+        // already loaded. Route through setCharacterAndSize so its skip-guard applies — a
+        // redundant load queues a second async IR swap (an allocation on JUCE's loader
+        // thread, and it resets the convolution mid-flight, cutting the tail).
+        setCharacterAndSize(character, sizePercent);
     }
 
     void SpaceProcessor::reset()
@@ -42,11 +42,15 @@ namespace Nebula2
         delay.reset();
     }
 
-    void SpaceProcessor::setCharacter(ReverbChar c)
+    void SpaceProcessor::setCharacterAndSize(ReverbChar c, float newSizePercent)
     {
-        if (c == character && reverb.getCharacter() == c) return;   // no redundant IR swap
-        character = c;
-        reverb.setCharacter(c);   // allocates — message thread only
+        // No redundant IR swap: rebuild only when the character or the size actually moved.
+        const bool sameChar = (c == character && reverb.getCharacter() == c);
+        const bool sameSize = std::abs(newSizePercent - sizePercent) < 0.5f;
+        if (sameChar && sameSize) return;
+        character   = c;
+        sizePercent = newSizePercent;
+        reverb.setCharacter(c, sizeSecondsFor(sizePercent));   // allocates — message thread only
     }
 
     void SpaceProcessor::process(juce::AudioBuffer<float>& buffer, const Params& p) noexcept

@@ -44,6 +44,7 @@ namespace Nebula2::ParamID
 
     // --- Space (live: parallel reverb + tempo-synced delay send) ---
     inline constexpr auto revMix   = "revMix";     // float 0..100  %
+    inline constexpr auto revSize  = "revSize";    // float 0..100  % (reverb tail length)
     inline constexpr auto dlyMix   = "dlyMix";     // float 0..100  %
     inline constexpr auto dlyFb    = "dlyFb";      // float 0..92   %
     inline constexpr auto dlySync  = "dlySync";    // choice: 1/16, 1/8T, 1/8, 1/8., 1/4, 1/4.

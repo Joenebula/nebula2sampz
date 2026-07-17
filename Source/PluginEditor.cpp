@@ -29,10 +29,12 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     master.slider.valueFromTextFunction = [](const juce::String& t) { return t.getDoubleValue() / 100.0; };
     master.slider.updateText();
 
-    // Space
-    addKnob(revMix, Nebula2::ParamID::revMix, "Reverb", " %");
-    addKnob(dlyMix, Nebula2::ParamID::dlyMix, "Delay",  " %");
-    addKnob(dlyFb,  Nebula2::ParamID::dlyFb,  "Feedbk", " %");
+    // Space — Reverb and Delay are now clearly separate sections (the user's request:
+    // "separate controls"). Under REVERB/DELAY headers the knobs can just say Mix.
+    addKnob(revMix,  Nebula2::ParamID::revMix,  "Mix",  " %");
+    addKnob(revSize, Nebula2::ParamID::revSize, "Size", " %");
+    addKnob(dlyMix,  Nebula2::ParamID::dlyMix,  "Mix",  " %");
+    addKnob(dlyFb,   Nebula2::ParamID::dlyFb,   "Feedback", " %");
 
     addCombo(charBox, charLabel, Nebula2::ParamID::driveChar, "Character",
              { "Tube", "Fuzz", "Fold" }, charAttachment);
@@ -127,6 +129,16 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     viewport.setScrollBarsShown(true, false);
     addAndMakeVisible(viewport);
 
+    // --- audition (in-app Play) ---
+    auditionButton.onClick = [this]
+    {
+        const bool nowOn = ! processorRef.isAuditioning();
+        processorRef.setAudition(nowOn);
+        auditionButton.setButtonText(nowOn ? juce::String::fromUTF8("■ Stop")
+                                           : juce::String::fromUTF8("▶ Play"));
+    };
+    addAndMakeVisible(auditionButton);
+
     // --- tabs ---
     const char* names[] = { "PLAY", "MORPH", "GRID", "RACK" };
     for (size_t i = 0; i < tabs.size(); ++i)
@@ -206,7 +218,7 @@ int Nebula2AudioProcessorEditor::contentHeightFor(Page p) const
 {
     switch (p)
     {
-        case Page::play:  return 560;   // sample + colour + space
+        case Page::play:  return 648;   // sample + colour + space (reverb/delay split)
         case Page::morph: return 240;
         case Page::grid:  return 210;
         case Page::rack:  return 470;
@@ -238,7 +250,7 @@ void Nebula2AudioProcessorEditor::showPage(Page p)
     for (auto* c : playChildren) c->setVisible(play);
 
     for (auto* k : { &drive, &crush, &squeeze, &tone, &width, &master,
-                     &revMix, &dlyMix, &dlyFb, &sensitivity })
+                     &revMix, &revSize, &dlyMix, &dlyFb, &sensitivity })
     {
         k->slider.setVisible(play);
         k->label.setVisible(play);
@@ -275,6 +287,14 @@ void Nebula2AudioProcessorEditor::showPage(Page p)
 void Nebula2AudioProcessorEditor::timerCallback()
 {
     updateSliceControlStates();
+
+    // Keep the Play button honest: the host transport can clear audition on its own (it
+    // "takes over"), so the button must follow the processor's real state, not the last
+    // click.
+    const bool on = processorRef.isAuditioning();
+    const auto want = on ? juce::String::fromUTF8("■ Stop") : juce::String::fromUTF8("▶ Play");
+    if (auditionButton.getButtonText() != want)
+        auditionButton.setButtonText(want);
 }
 
 void Nebula2AudioProcessorEditor::updateSliceControlStates()
@@ -404,6 +424,7 @@ void Nebula2AudioProcessorEditor::paint(juce::Graphics& g)
     auto header = getLocalBounds().removeFromTop(headerH);
 
     auto title = header.reduced(16, 8).removeFromTop(24);
+    title.removeFromRight(100);   // the Play button lives here (placed in resized())
     g.setColour(Theme::ink);
     g.setFont(Theme::ui(19.0f, true));
     g.drawFittedText("Nebula2", title.removeFromLeft(96), juce::Justification::centredLeft, 1);
@@ -439,7 +460,22 @@ void Nebula2AudioProcessorEditor::paintContent(juce::Graphics& g)
         body.removeFromTop(10.0f);
         Nebula2LookAndFeel::drawCard(g, body.removeFromTop(200.0f), "COLOUR");
         body.removeFromTop(10.0f);
-        Nebula2LookAndFeel::drawCard(g, body.removeFromTop(126.0f), "SPACE");
+
+        // SPACE, split into REVERB and DELAY sub-sections (the user's request). One card,
+        // two labelled halves — a divider makes the separation read at a glance.
+        auto spaceCard = body.removeFromTop(214.0f);
+        Nebula2LookAndFeel::drawCard(g, spaceCard, "SPACE");
+        auto inner = spaceCard.reduced(14.0f, 4.0f);
+        inner.removeFromTop(16.0f);                        // clear the SPACE title
+        g.setColour(Theme::teal.withAlpha(0.85f));
+        g.setFont(Theme::ui(9.0f, true));
+        g.drawText("REVERB", inner.removeFromTop(14.0f), juce::Justification::topLeft);
+        auto delayHalf = inner.withTop(inner.getY() + 92.0f);
+        g.setColour(Theme::line);
+        g.drawLine(delayHalf.getX(), delayHalf.getY() - 4.0f,
+                   delayHalf.getRight(), delayHalf.getY() - 4.0f);   // divider
+        g.setColour(Theme::teal.withAlpha(0.85f));
+        g.drawText("DELAY", delayHalf.removeFromTop(14.0f), juce::Justification::topLeft);
     }
     else if (page == Page::morph)
     {
@@ -458,9 +494,13 @@ void Nebula2AudioProcessorEditor::paintContent(juce::Graphics& g)
 void Nebula2AudioProcessorEditor::resized()
 {
     auto r = getLocalBounds();
+    auto header = r.removeFromTop(headerH);
 
-    // Tabs sit under the title, in the header.
-    auto tabRow = r.removeFromTop(headerH).withTrimmedTop(38).reduced(14, 4);
+    // The in-app Play button sits in the title row, top-right (paint() reserves the space).
+    auditionButton.setBounds(header.reduced(16, 8).removeFromTop(24).removeFromRight(92));
+
+    // Tabs sit under the title.
+    auto tabRow = header.withTrimmedTop(38).reduced(14, 4);
     zoomBox.setBounds(tabRow.removeFromRight(66).reduced(0, 2));
     tabRow.removeFromRight(10);
 
@@ -576,40 +616,39 @@ void Nebula2AudioProcessorEditor::layoutContent()
     fxOnButton.setBounds(cRow.removeFromLeft(90));
     limiterButton.setBounds(cRow.removeFromLeft(90));
 
-    // --- Space panel ---
+    // --- Space panel: REVERB section over DELAY section ---
     body.removeFromTop(8);
-    auto sp = body.removeFromTop(120).reduced(10);
-    sp.removeFromTop(12);
-    auto sRow = sp.removeFromTop(90);
-    Knob* sKnobs[] = { &revMix, &dlyMix, &dlyFb };
-    const int sw = 90;
-    for (auto* k : sKnobs)
+    auto sp = body.removeFromTop(214).reduced(14, 4);
+    sp.removeFromTop(16);   // SPACE card title
+
+    auto layoutKnob = [](juce::Rectangle<int> cell, Knob& k)
     {
-        auto cell = sRow.removeFromLeft(sw);
-        k->label.setBounds(cell.removeFromTop(16));
-        k->slider.setBounds(cell.reduced(3));
-    }
-    sRow.removeFromLeft(12);
-    auto right = sRow;
+        k.label.setBounds(cell.removeFromTop(15));
+        k.slider.setBounds(cell.reduced(3));
+    };
 
-    // TWO ROWS, not one. The old single row asked for 100px at the end when 62 were left —
-    // and juce::Rectangle::removeFromLeft does NOT fail on an exhausted rectangle, it
-    // silently returns whatever remains. So "Space On" rendered as "S...", and widening it
-    // 86 -> 100 changed nothing, because the number I was editing was never the constraint.
-    //
-    // Reordering wouldn't have saved it either: three knobs (270) + both combos (~242) +
-    // the toggle (~94) + gaps needs ~620px in a 616px row. The row was over-committed, so
-    // something had to be squashed whichever order I laid it out in. There's plenty of
-    // vertical room here — use it.
-    auto rowA = right.removeFromTop(24);
-    revCharLabel.setBounds(rowA.removeFromLeft(50));
-    revCharBox.setBounds(rowA.removeFromLeft(100).reduced(0, 1));
-    rowA.removeFromLeft(12);
-    dlySyncLabel.setBounds(rowA.removeFromLeft(36));
-    dlySyncBox.setBounds(rowA.removeFromLeft(74).reduced(0, 1));
+    // REVERB: Mix, Size knobs + Character dropdown.
+    sp.removeFromTop(14);   // "REVERB" sub-label
+    auto revRow = sp.removeFromTop(74);
+    layoutKnob(revRow.removeFromLeft(84), revMix);
+    layoutKnob(revRow.removeFromLeft(84), revSize);
+    revRow.removeFromLeft(14);
+    auto revRight = revRow.withTrimmedTop(20);
+    revCharLabel.setBounds(revRight.removeFromLeft(56).removeFromTop(24));
+    revCharBox.setBounds(revRight.removeFromLeft(120).removeFromTop(24).reduced(0, 1));
 
-    right.removeFromTop(8);
-    auto rowB = right.removeFromTop(24);
-    spaceOnButton.setBounds(rowB.removeFromLeft(110));
+    sp.removeFromTop(4);    // divider gap
 
+    // DELAY: Mix, Feedback knobs + Sync dropdown + Space On.
+    sp.removeFromTop(14);   // "DELAY" sub-label
+    auto dlyRow = sp.removeFromTop(74);
+    layoutKnob(dlyRow.removeFromLeft(84), dlyMix);
+    layoutKnob(dlyRow.removeFromLeft(84), dlyFb);
+    dlyRow.removeFromLeft(14);
+    auto dlyRight = dlyRow.withTrimmedTop(16);
+    auto dRowA = dlyRight.removeFromTop(24);
+    dlySyncLabel.setBounds(dRowA.removeFromLeft(38));
+    dlySyncBox.setBounds(dRowA.removeFromLeft(78).reduced(0, 1));
+    dRowA.removeFromLeft(14);
+    spaceOnButton.setBounds(dRowA.removeFromLeft(110));
 }

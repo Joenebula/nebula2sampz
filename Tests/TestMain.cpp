@@ -501,7 +501,28 @@ int main()
         // scope has `using namespace juce`, so the bare name would be ambiguous.)
         Nebula2::Reverb rev;
         rev.prepare(spec);
-        rev.setCharacter(ReverbChar::Hall);
+        rev.setCharacter(ReverbChar::Hall, 2.0);
+
+        // Reverb SIZE: the control the prototype had and the port was missing (D3). It must
+        // actually change the IR length. The percent->seconds map is the prototype's own.
+        {
+            check(std::abs(SpaceProcessor::sizeSecondsFor(0.0f) - 0.25) < 0.01,
+                  "reverb size: 0% is the shortest tail (0.25 s)");
+            check(SpaceProcessor::sizeSecondsFor(100.0f) > 6.0,
+                  "reverb size: 100% is a long tail (>6 s)");
+            check(SpaceProcessor::sizeSecondsFor(100.0f) > SpaceProcessor::sizeSecondsFor(50.0f)
+                  && SpaceProcessor::sizeSecondsFor(50.0f) > SpaceProcessor::sizeSecondsFor(10.0f),
+                  "reverb size: bigger % is a longer tail, monotonically");
+
+            // And the IR itself is longer for a bigger Size. Test makeImpulseResponse
+            // DIRECTLY, not through the convolution — the convolution loads async on a
+            // background thread, so measuring its IR size is a timing race (my first version
+            // of this was flaky for exactly that reason). The IR generator is deterministic.
+            const auto irSmall = makeImpulseResponse(44100.0, SpaceProcessor::sizeSecondsFor(10.0f), ReverbChar::Hall);
+            const auto irBig   = makeImpulseResponse(44100.0, SpaceProcessor::sizeSecondsFor(90.0f), ReverbChar::Hall);
+            check(irBig.getNumSamples() > irSmall.getNumSamples() * 2,
+                  "reverb size: a bigger Size generates a longer impulse response");
+        }
 
         // wetMix 0 is an exact dry pass-through (independent of async IR load).
         {
@@ -2535,6 +2556,31 @@ int main()
             check(idle.getRetainedCount() >= 2,
                   "sample: with audio stopped nothing is freed (can't prove no render is in flight)");
         }
+
+        // isSounding() is what the in-app audition loops on: re-trigger the whole break the
+        // instant nothing is playing. So it must go true on note-on and back to false when
+        // the voice finishes — if it stuck true, audition would play once and never loop; if
+        // it stuck false, audition would re-trigger every block and machine-gun.
+        {
+            SampleLayer layer;
+            layer.prepare(sr, block);
+            AudioBuffer<float> shortBreak(2, 2000);   // ~45ms — finishes quickly
+            for (int c = 0; c < 2; ++c)
+                for (int i = 0; i < 2000; ++i) shortBreak.setSample(c, i, 0.3f * std::sin((float) i * 0.05f));
+            layer.loadBuffer(std::move(shortBreak), sr, "short");
+
+            check(! layer.isSounding(), "audition: nothing sounds before the beat is triggered");
+
+            layer.noteOn(83, 0.9f);   // B4 = whole break
+            AudioBuffer<float> bus(2, block);
+            bus.clear(); layer.render(bus, 0, block);
+            check(layer.isSounding(), "audition: the whole break sounds once triggered");
+
+            // Render well past the (short) break length; the voice must finish.
+            for (int i = 0; i < 40; ++i) { bus.clear(); layer.render(bus, 0, block); }
+            check(! layer.isSounding(),
+                  "audition: isSounding() clears when the break finishes — so the loop can re-trigger");
+        }
     }
 
     // ---- The de-allocation refactor must not have changed the SOUND ----
@@ -2733,7 +2779,25 @@ int main()
             space.reset();
             SpaceProcessor::Params sp;
             sp.on = true; sp.revMix = 40.0f; sp.dlyMix = 45.0f; sp.dlyFb = 60.0f; sp.bpm = 174.0;
-            { auto b = tone(); space.process(b, sp); }
+
+            // THE CONFOUND: juce::dsp::Convolution loads its IR on a BACKGROUND thread — by
+            // design, precisely so process() is RT-safe — and it allocates there. The
+            // detector counts every thread, so a load landing mid-watch is miscounted as a
+            // process() allocation. (This test flaked with 5/38/38 allocs across runs until
+            // I understood that.)
+            //
+            // So genuinely WAIT for the async load to finish before watching. A bounded
+            // sleep-loop is the honest tool for an async subsystem — you can't measure "does
+            // process() allocate" while a background load is still in flight. Once the IR is
+            // in and the loader is idle, process() itself allocates nothing, which is the
+            // real contract.
+            for (int i = 0; i < 200 && space.reverbIRSize() <= 1; ++i)
+            {
+                { auto b = tone(); space.process(b, sp); }
+                juce::Thread::sleep(5);
+            }
+            juce::Thread::sleep(100);   // let the loader thread go fully idle
+            for (int i = 0; i < 4; ++i) { auto b = tone(); space.process(b, sp); }
 
             auto b = tone();
             rtcheck::Scope watch;
@@ -3017,7 +3081,7 @@ int main()
             "padOn", "padX", "padY",
             "gridOn", "gridSteps",
             "drive", "char", "crush", "squeeze", "tone", "width", "fxOn",
-            "revMix", "dlyMix", "dlyFb", "dlySync", "spaceOn", "revChar",
+            "revMix", "revSize", "dlyMix", "dlyFb", "dlySync", "spaceOn", "revChar",
             "rackOn",
             "flt.cut", "flt.res", "flt.type",
             "lfo.rate", "lfo.depth", "lfo.shape",

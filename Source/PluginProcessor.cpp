@@ -19,6 +19,7 @@ Nebula2AudioProcessor::Nebula2AudioProcessor()
     fxOnParam      = apvts.getRawParameterValue(Nebula2::ParamID::fxOn);
     revMixParam    = apvts.getRawParameterValue(Nebula2::ParamID::revMix);
     revCharParam   = apvts.getRawParameterValue(Nebula2::ParamID::revChar);
+    revSizeParam   = apvts.getRawParameterValue(Nebula2::ParamID::revSize);
     dlyMixParam    = apvts.getRawParameterValue(Nebula2::ParamID::dlyMix);
     dlyFbParam     = apvts.getRawParameterValue(Nebula2::ParamID::dlyFb);
     dlySyncParam   = apvts.getRawParameterValue(Nebula2::ParamID::dlySync);
@@ -149,8 +150,9 @@ void Nebula2AudioProcessor::handleAsyncUpdate()
     }
 
     const auto wanted = (Nebula2::ReverbChar) juce::jlimit(0, 4, wantedRevChar.load());
-    if (wanted != space.getCharacter())
-        space.setCharacter(wanted);
+    const float wantedSize = wantedRevSize.load();
+    // One rebuild path for character AND size; setCharacterAndSize skips a redundant swap.
+    space.setCharacterAndSize(wanted, wantedSize);
 
     Nebula2::SampleLayer::SliceSettings s;
     s.transient   = wantedSliceMode.load() == 1;
@@ -219,6 +221,42 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
     if (auto* ph = getPlayHead())
         if (auto pos = ph->getPosition())
             transport = Nebula2::readTransport(*pos);
+
+    // In-app audition. When the DAW is rolling, it is the authority: the host drives the
+    // notes and the audition button clears itself (it "takes over", the user's words).
+    // Only when the host is stopped does the app Play button run its own loop.
+    const bool hostPlaying = transport.playing;
+    if (hostPlaying)
+    {
+        if (auditionActive.load()) auditionActive.store(false);   // DAW took over
+        auditionPpq = 0.0;
+    }
+    else if (auditionActive.load())
+    {
+        // Synthesize a playing transport so the grid, morph shatter and delay-sync all run
+        // while auditioning — the app should sound like the DAW will. Tempo = the host's set
+        // BPM if we have one, else the break's own detected tempo, else 120.
+        double bpm = transport.bpm;
+        if (bpm <= 0.0) bpm = sampleLayer.getDetectedBpm() > 0.0 ? sampleLayer.getDetectedBpm() : 120.0;
+        transport.bpm     = bpm;
+        transport.playing = true;
+        transport.ppq     = auditionPpq;
+        auditionPpq += (bpm / 60.0) * ((double) numSamples / juce::jmax(1.0, getSampleRate()));
+
+        // Loop the whole break: re-trigger it the instant nothing is sounding. B4 = 83.
+        if (! sampleLayer.isSounding())
+            sampleLayer.noteOn(wholeBreakNote, 0.9f);
+    }
+    else
+    {
+        auditionPpq = 0.0;
+    }
+    // A clean hand-off: when the host STARTS this block, silence any audition voice so the
+    // app loop and the host's notes don't briefly double up.
+    if (hostPlaying && ! auditionWasHostPlaying)
+        sampleLayer.noteOff(wholeBreakNote);
+    auditionWasHostPlaying = hostPlaying;
+
     sampleLayer.setHostBpm(transport.bpm);
 
     // Both layers render in sub-blocks split at MIDI event positions, so hits land
@@ -332,10 +370,12 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
     // Space: parallel reverb + tempo-synced delay send (dry is preserved).
     {
         const int wantChar = revCharParam != nullptr ? (int) revCharParam->load() : 1;
-        if (wantChar != wantedRevChar.load())
+        const float wantSize = revSizeParam != nullptr ? revSizeParam->load() : 50.0f;
+        if (wantChar != wantedRevChar.load() || std::abs(wantSize - wantedRevSize.load()) > 0.5f)
         {
             wantedRevChar.store(wantChar);
-            triggerAsyncUpdate();          // rebuild the IR off the audio thread
+            wantedRevSize.store(wantSize);
+            triggerAsyncUpdate();          // rebuild the IR off the audio thread (allocates)
         }
 
         Nebula2::SpaceProcessor::Params sp;

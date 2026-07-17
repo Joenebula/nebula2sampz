@@ -37,9 +37,20 @@ namespace Nebula2
         void prepare(const juce::dsp::ProcessSpec& spec);
         void reset();
 
-        // Message thread only (allocates: synthesises + loads a new IR).
-        void setCharacter(ReverbChar c);
+        // Message thread only (allocates: synthesises + loads a new IR). Character and Size
+        // both drive the IR, so they rebuild through one path — a redundant rebuild resets
+        // the convolution and cuts the tail.
+        void setCharacterAndSize(ReverbChar c, float sizePercent);
         ReverbChar getCharacter() const noexcept { return character; }
+        float      getSizePercent() const noexcept { return sizePercent; }
+
+        // sizePercent 0..100 -> seconds, the prototype's own curve (0.25 + (p/100)^1.9*6.5,
+        // ~0.25..6.75 s). Public so the processor can decide whether a rebuild is needed.
+        static double sizeSecondsFor(float sizePercent) noexcept
+        {
+            const double p = juce::jlimit(0.0, 1.0, (double) sizePercent / 100.0);
+            return 0.25 + std::pow(p, 1.9) * 6.5;
+        }
 
         void process(juce::AudioBuffer<float>& buffer, const Params& p) noexcept;
 
@@ -50,6 +61,7 @@ namespace Nebula2
         PingPongDelay delay;
         juce::AudioBuffer<float> wetScratch;   // preallocated: the send's wet copy
         ReverbChar character = ReverbChar::Hall;
+        float sizePercent = 50.0f;             // the prototype's default Size
         double sampleRate = 44100.0;
     };
 }

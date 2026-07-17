@@ -71,6 +71,15 @@ namespace Nebula2
         // while audio is running, however many breaks you load.
         int getRetainedCount() const noexcept { return (int) retained.size(); }
 
+        // Is any voice still sounding? The in-app audition uses this to loop the whole
+        // break: re-trigger it the moment nothing is playing. Audio-thread safe (reads the
+        // voice flags only).
+        bool isSounding() const noexcept
+        {
+            for (const auto& v : voices) if (v.active) return true;
+            return false;
+        }
+
         bool hasSample() const noexcept { return current.load() != nullptr; }
         juce::String getSampleName() const;
 

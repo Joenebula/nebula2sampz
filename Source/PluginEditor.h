@@ -81,6 +81,11 @@ private:
     void showPage(Page);
     int contentHeightFor(Page) const;
 
+    // In-app audition: play the loaded break without rolling the DAW. Reflects the
+    // processor's state (which the host transport can clear), so the Timer keeps the
+    // button's label honest rather than trusting the last click.
+    juce::TextButton auditionButton { "▶ Play" };
+
     void paintContent(juce::Graphics&);
     void layoutContent();
 
@@ -103,7 +108,7 @@ private:
     Nebula2AudioProcessor& processorRef;
 
     Knob drive, crush, squeeze, tone, width, master;
-    Knob revMix, dlyMix, dlyFb;
+    Knob revMix, revSize, dlyMix, dlyFb;
 
     juce::ComboBox charBox, revCharBox, dlySyncBox, sliceModeBox, sliceCountBox;
     juce::Label charLabel, revCharLabel, dlySyncLabel, sliceModeLabel, sliceCountLabel;

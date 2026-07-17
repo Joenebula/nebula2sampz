@@ -127,6 +127,7 @@ namespace Nebula2
 
         // --- Space (live) ---
         layout.add(std::make_unique<APF>(PID{ ParamID::revMix, version }, "Reverb Mix", pct(), 0.0f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::revSize, version }, "Reverb Size", pct(), 50.0f));
         layout.add(std::make_unique<APF>(PID{ ParamID::dlyMix, version }, "Delay Mix",  pct(), 0.0f));
         layout.add(std::make_unique<APF>(
             PID{ ParamID::dlyFb, version }, "Delay Feedback",
