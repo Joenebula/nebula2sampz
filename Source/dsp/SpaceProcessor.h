@@ -29,7 +29,7 @@ namespace Nebula2
             float dlyMix = 0.0f;    // 0..100 %
             float dlyFb = 40.0f;    // 0..92 %
             DelaySync dlySync = DelaySync::Eighth;
-            bool pingPong = true;
+            DelayMode mode = DelayMode::PingPong;
             double bpm = 120.0;
             bool on = true;
         };

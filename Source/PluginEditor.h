@@ -110,8 +110,9 @@ private:
     Knob drive, crush, squeeze, tone, width, pump, master;
     Knob revMix, revSize, dlyMix, dlyFb;
 
-    juce::ComboBox charBox, revCharBox, dlySyncBox, sliceModeBox, sliceCountBox;
-    juce::Label charLabel, revCharLabel, dlySyncLabel, sliceModeLabel, sliceCountLabel;
+    juce::ComboBox charBox, revCharBox, dlySyncBox, dlyModeBox, sliceModeBox, sliceCountBox;
+    juce::Label charLabel, revCharLabel, dlySyncLabel, dlyModeLabel, sliceModeLabel, sliceCountLabel;
+    std::unique_ptr<APVTS::ComboBoxAttachment> dlyModeAttachment;
     std::unique_ptr<APVTS::ComboBoxAttachment> charAttachment, revCharAttachment, dlySyncAttachment,
                                                sliceModeAttachment, sliceCountAttachment;
     Knob sensitivity;

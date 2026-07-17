@@ -43,6 +43,8 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
              { "Room", "Hall", "Plate", "Cathedral", "Reverse" }, revCharAttachment);
     addCombo(dlySyncBox, dlySyncLabel, Nebula2::ParamID::dlySync, "Sync",
              { "1/16", "1/8T", "1/8", "1/8.", "1/4", "1/4." }, dlySyncAttachment);
+    addCombo(dlyModeBox, dlyModeLabel, Nebula2::ParamID::dlyMode, "Mode",
+             { "Ping-Pong", "Dub", "Warp" }, dlyModeAttachment);
 
     for (auto* b : { &fxOnButton, &limiterButton, &spaceOnButton })
     {
@@ -248,7 +250,7 @@ void Nebula2AudioProcessorEditor::showPage(Page p)
         &loadButton, &sampleInfo, &waveform,
         &sliceModeBox, &sliceCountBox, &sliceModeLabel, &sliceCountLabel,
         &charBox, &charLabel, &revCharBox, &revCharLabel,
-        &dlySyncBox, &dlySyncLabel, &fxOnButton, &limiterButton, &spaceOnButton
+        &dlySyncBox, &dlySyncLabel, &dlyModeBox, &dlyModeLabel, &fxOnButton, &limiterButton, &spaceOnButton
     };
     for (auto* c : playChildren) c->setVisible(play);
 
@@ -648,10 +650,15 @@ void Nebula2AudioProcessorEditor::layoutContent()
     layoutKnob(dlyRow.removeFromLeft(84), dlyMix);
     layoutKnob(dlyRow.removeFromLeft(84), dlyFb);
     dlyRow.removeFromLeft(14);
-    auto dlyRight = dlyRow.withTrimmedTop(16);
+    auto dlyRight = dlyRow.withTrimmedTop(8);
     auto dRowA = dlyRight.removeFromTop(24);
     dlySyncLabel.setBounds(dRowA.removeFromLeft(38));
-    dlySyncBox.setBounds(dRowA.removeFromLeft(78).reduced(0, 1));
-    dRowA.removeFromLeft(14);
-    spaceOnButton.setBounds(dRowA.removeFromLeft(110));
+    dlySyncBox.setBounds(dRowA.removeFromLeft(72).reduced(0, 1));
+    dRowA.removeFromLeft(12);
+    dlyModeLabel.setBounds(dRowA.removeFromLeft(40));
+    dlyModeBox.setBounds(dRowA.removeFromLeft(96).reduced(0, 1));
+
+    dlyRight.removeFromTop(6);
+    auto dRowB = dlyRight.removeFromTop(24);
+    spaceOnButton.setBounds(dRowB.removeFromLeft(110));
 }

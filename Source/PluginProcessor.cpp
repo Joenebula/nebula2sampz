@@ -24,6 +24,7 @@ Nebula2AudioProcessor::Nebula2AudioProcessor()
     dlyMixParam    = apvts.getRawParameterValue(Nebula2::ParamID::dlyMix);
     dlyFbParam     = apvts.getRawParameterValue(Nebula2::ParamID::dlyFb);
     dlySyncParam   = apvts.getRawParameterValue(Nebula2::ParamID::dlySync);
+    dlyModeParam   = apvts.getRawParameterValue(Nebula2::ParamID::dlyMode);
     spaceOnParam   = apvts.getRawParameterValue(Nebula2::ParamID::spaceOn);
     sliceModeParam   = apvts.getRawParameterValue(Nebula2::ParamID::sliceMode);
     sliceCountParam  = apvts.getRawParameterValue(Nebula2::ParamID::sliceCount);
@@ -398,6 +399,7 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
         sp.dlyMix   = amt(dlyMixParam, Nebula2::GridRow::Delay,  0.0f);
         sp.dlyFb    = dlyFbParam   != nullptr ? dlyFbParam->load()   : 40.0f;
         sp.dlySync  = (Nebula2::DelaySync) (dlySyncParam != nullptr ? juce::jlimit(0, 5, (int) dlySyncParam->load()) : 2);
+        sp.mode     = (Nebula2::DelayMode) (dlyModeParam != nullptr ? juce::jlimit(0, 2, (int) dlyModeParam->load()) : 0);
         sp.on       = spaceOnParam != nullptr ? spaceOnParam->load() > 0.5f : true;
         sp.bpm      = transport.bpm;       // musical time, from the host
         space.process(buffer, sp);

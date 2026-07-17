@@ -118,6 +118,7 @@ private:
     std::atomic<float>* dlyMixParam { nullptr };
     std::atomic<float>* dlyFbParam { nullptr };
     std::atomic<float>* dlySyncParam { nullptr };
+    std::atomic<float>* dlyModeParam { nullptr };
     std::atomic<float>* spaceOnParam { nullptr };
     std::atomic<float>* sliceModeParam { nullptr };
     std::atomic<float>* sliceCountParam { nullptr };

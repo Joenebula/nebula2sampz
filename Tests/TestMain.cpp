@@ -462,40 +462,70 @@ int main()
             AudioBuffer<float> b(2, 1024);
             for (int i = 0; i < 1024; ++i) { const float v = 0.4f * std::sin(0.02f * (float) i); b.setSample(0, i, v); b.setSample(1, i, v); }
             AudioBuffer<float> ref(b);
-            d.process(b, 100.0f / 48000.0f, 0.5f, 0.0f, true);
+            d.process(b, 100.0f / 48000.0f, 0.5f, 0.0f, DelayMode::PingPong);
             float maxDiff = 0.0f;
             for (int i = 0; i < 1024; ++i) maxDiff = std::max(maxDiff, std::abs(b.getSample(0, i) - ref.getSample(0, i)));
             check(maxDiff < 1.0e-6f, "delay: wetMix 0 is dry pass-through");
         }
 
-        // A single echo lands one delay-time later.
+        // A single echo lands one delay-time later (on the left, where the send feeds).
         {
             PingPongDelay d; d.prepare(spec);
             AudioBuffer<float> b(2, 1024); b.clear();
             b.setSample(0, 0, 1.0f); b.setSample(1, 0, 1.0f);   // impulse
-            d.process(b, 100.0f / 48000.0f, 0.0f, 1.0f, false); // 100-sample delay, no feedback
+            d.process(b, 100.0f / 48000.0f, 0.0f, 1.0f, DelayMode::PingPong);
             check(std::abs(b.getSample(0, 0) - 1.0f) < 1.0e-4f, "delay: dry impulse present at t=0");
             check(std::abs(b.getSample(0, 50)) < 1.0e-4f, "delay: silence before the echo");
-            check(b.getSample(0, 100) > 0.5f, "delay: echo lands at the delay time");
+            check(b.getSample(0, 100) > 0.3f, "delay: echo lands at the delay time");
         }
 
-        // Ping-pong cross-feed leaks an L-only input into R; straight feedback does not.
-        auto rChannelEnergy = [&](bool pingPong)
+        // The stereo bounce: the send feeds the LEFT line, but its echoes appear in R too
+        // (the hard-panned taps + cross-feedback). A mono-summed input should light up both
+        // channels — that's the ping-pong image.
         {
             PingPongDelay d; d.prepare(spec);
-            AudioBuffer<float> b(2, 1024); b.clear();
-            b.setSample(0, 0, 1.0f);   // impulse in L only
-            d.process(b, 100.0f / 48000.0f, 0.6f, 1.0f, pingPong);
-            double s = 0.0; for (int i = 0; i < 1024; ++i) { const float v = b.getSample(1, i); s += (double) v * v; }
-            return std::sqrt(s / 1024.0);
-        };
-        const double rPing = rChannelEnergy(true);
-        const double rStraight = rChannelEnergy(false);
-        // Straight feedback leaves R silent (== 0); ping-pong leaks L into R. Test the
-        // routing by relative dominance, not an absolute floor (the damping LP makes the
-        // single-impulse cross-feed small but non-zero).
-        check(rStraight < 1.0e-6, "delay straight: L-only input stays out of R");
-        check(rPing > 1.0e-4 && rPing > rStraight * 20.0, "delay ping-pong: L-only cross-feeds into R");
+            AudioBuffer<float> b(2, 2048); b.clear();
+            b.setSample(0, 0, 1.0f); b.setSample(1, 0, 1.0f);
+            d.process(b, 100.0f / 48000.0f, 0.7f, 1.0f, DelayMode::PingPong);
+            double eL = 0.0, eR = 0.0;
+            for (int i = 10; i < 2048; ++i) { eL += std::abs(b.getSample(0, i)); eR += std::abs(b.getSample(1, i)); }
+            check(eL > 0.05 && eR > 0.05, "delay ping-pong: echoes appear in BOTH channels (stereo bounce)");
+        }
+
+        // Dub is darker than Ping-Pong (900 Hz damping vs 5.2 kHz) — less high-frequency in
+        // the tail. Measure successive-sample difference energy (a crude HF proxy).
+        {
+            auto tailHF = [&](DelayMode mode)
+            {
+                PingPongDelay d; d.prepare(spec);
+                AudioBuffer<float> b(2, 4096); b.clear();
+                for (int i = 0; i < 64; ++i) { b.setSample(0, i, (i % 2 ? -0.6f : 0.6f)); b.setSample(1, i, b.getSample(0, i)); }
+                d.process(b, 200.0f / 48000.0f, 0.8f, 1.0f, mode);
+                double s = 0.0;
+                for (int i = 1500; i < 4096; ++i) { const float v = b.getSample(0, i) - b.getSample(0, i - 1); s += std::abs(v); }
+                return s;
+            };
+            check(tailHF(DelayMode::Dub) < tailHF(DelayMode::PingPong) * 0.8,
+                  "delay dub: darker feedback damping than ping-pong");
+        }
+
+        // Warp differs from Ping-Pong over time (its LFO drifts the left delay time), so a
+        // sustained input produces a different tail.
+        {
+            auto tail = [&](DelayMode mode)
+            {
+                PingPongDelay d; d.prepare(spec);
+                AudioBuffer<float> b(2, 4096);
+                for (int i = 0; i < 4096; ++i) { const float v = 0.3f * std::sin(0.05f * (float) i); b.setSample(0, i, v); b.setSample(1, i, v); }
+                d.process(b, 300.0f / 48000.0f, 0.6f, 1.0f, mode);
+                return b;
+            };
+            const auto pp = tail(DelayMode::PingPong);
+            const auto wp = tail(DelayMode::Warp);
+            double diff = 0.0;
+            for (int i = 2000; i < 4096; ++i) diff += std::abs(pp.getSample(0, i) - wp.getSample(0, i));
+            check(diff > 1.0, "delay warp: the LFO drifts the tail away from a static ping-pong");
+        }
 
         // Convolution reverb engine. (Qualified: juce also has a juce::Reverb, and this
         // scope has `using namespace juce`, so the bare name would be ambiguous.)
@@ -2874,12 +2904,12 @@ int main()
             PingPongDelay delay;
             delay.prepare(spec);
             delay.reset();
-            { auto b = tone(); delay.process(b, 0.25f, 0.8f, 0.5f, true); }
+            { auto b = tone(); delay.process(b, 0.25f, 0.8f, 0.5f, DelayMode::PingPong); }
 
             auto b = tone();
             rtcheck::Scope watch;
             for (int i = 0; i < 20; ++i)
-                delay.process(b, 0.1f + (float) i * 0.02f, 0.85f, 0.5f, true);   // sweep the time
+                delay.process(b, 0.1f + (float) i * 0.02f, 0.85f, 0.5f, i % 3 == 0 ? DelayMode::Warp : DelayMode::Dub);   // sweep the time
             const int n = watch.count();
             check(n == 0, "rt: PingPongDelay allocates nothing even as the time sweeps"
                           + (n == 0 ? String() : " — got " + String(n)));
@@ -3138,7 +3168,7 @@ int main()
             "padOn", "padX", "padY",
             "gridOn", "gridSteps",
             "drive", "char", "crush", "squeeze", "tone", "width", "pump", "fxOn",
-            "revMix", "revSize", "dlyMix", "dlyFb", "dlySync", "spaceOn", "revChar",
+            "revMix", "revSize", "dlyMix", "dlyFb", "dlySync", "dlyMode", "spaceOn", "revChar",
             "rackOn",
             "flt.cut", "flt.res", "flt.type",
             "lfo.rate", "lfo.depth", "lfo.shape",

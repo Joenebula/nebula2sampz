@@ -136,6 +136,9 @@ namespace Nebula2
         layout.add(std::make_unique<APC>(
             PID{ ParamID::dlySync, version }, "Delay Sync",
             juce::StringArray{ "1/16", "1/8T", "1/8", "1/8.", "1/4", "1/4." }, 2));   // default 1/8
+        layout.add(std::make_unique<APC>(
+            PID{ ParamID::dlyMode, version }, "Delay Mode",
+            juce::StringArray{ "Ping-Pong", "Dub", "Warp" }, 0));
         layout.add(std::make_unique<APB>(PID{ ParamID::spaceOn, version }, "Space On", true));
 
         // --- Modular rack ---

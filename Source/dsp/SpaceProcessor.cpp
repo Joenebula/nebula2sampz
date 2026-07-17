@@ -74,7 +74,7 @@ namespace Nebula2
             juce::AudioBuffer<float> view(wetScratch.getArrayOfWritePointers(), numChannels, numSamples);
             // wetMix 1 inside the delay: we do our own send-level blend below.
             delay.process(view, (float) delayTimeSeconds(p.dlySync, p.bpm),
-                          juce::jlimit(0.0f, 0.92f, p.dlyFb / 100.0f), 1.0f, p.pingPong);
+                          juce::jlimit(0.0f, 0.92f, p.dlyFb / 100.0f), 1.0f, p.mode);
 
             // `view` now holds dry+echoes. (wet - dry) isolates the echo content, so the
             // send adds only the echoes and leaves the dry signal untouched.

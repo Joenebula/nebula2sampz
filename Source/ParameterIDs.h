@@ -49,6 +49,7 @@ namespace Nebula2::ParamID
     inline constexpr auto dlyMix   = "dlyMix";     // float 0..100  %
     inline constexpr auto dlyFb    = "dlyFb";      // float 0..92   %
     inline constexpr auto dlySync  = "dlySync";    // choice: 1/16, 1/8T, 1/8, 1/8., 1/4, 1/4.
+    inline constexpr auto dlyMode  = "dlyMode";    // choice: Ping-Pong / Dub / Warp
     inline constexpr auto spaceOn  = "spaceOn";    // bool
 
     // --- Modular rack ---
