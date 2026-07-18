@@ -2,6 +2,7 @@
 
 #include <juce_audio_formats/juce_audio_formats.h>
 #include "SliceAnalysis.h"
+#include "AmpShape.h"
 #include <juce_dsp/juce_dsp.h>
 #include <atomic>
 #include <vector>
@@ -107,6 +108,17 @@ namespace Nebula2
 
         juce::String sliceSettingsToString() const;
         void sliceSettingsFromString(const juce::String& s) noexcept;
+
+        // --- amplitude envelope ---
+        // One curve applied to every slice as it fires, relative to the slice's own length.
+        // Off by default and Flat is a no-op, so an untouched instrument is unchanged.
+        void setAmpShape(const AmpShape& s, bool enabled) noexcept
+        {
+            ampShape = s;
+            ampOn.store(enabled);
+        }
+        bool isAmpShapeOn() const noexcept { return ampOn.load(); }
+        AmpShape getAmpShape() const noexcept { return ampShape; }
 
         // What each slice of the loaded break sounds like (kick / snare / hat / ...).
         // MESSAGE THREAD ONLY: it walks the whole sample and allocates. Empty if nothing
@@ -298,6 +310,8 @@ namespace Nebula2
         std::array<Voice, maxVoices> voices;
         double hostRate = 44100.0;
         double hostBpm = 0.0;
+        AmpShape ampShape = makeAmpShape(AmpShapeId::Flat);
+        std::atomic<bool> ampOn { false };
         float pitchOffsetSemis = 0.0f;    // grid Pitch +/-; read at note-on
         bool stretchEnabled = true;
         SliceSettings slicing;

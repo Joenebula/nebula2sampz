@@ -93,6 +93,8 @@ target_sources(Nebula2 PRIVATE
     Source/dsp/FxGrid.cpp
     Source/dsp/FxGrid.h
     Source/dsp/StepFx.cpp
+    Source/dsp/AmpShape.cpp
+    Source/dsp/AmpShape.h
     Source/dsp/SliceAnalysis.cpp
     Source/dsp/Resonator.cpp
     Source/dsp/StepFx.h
@@ -181,6 +183,8 @@ target_sources(Nebula2Tests PRIVATE
     Source/dsp/FxGrid.cpp
     Source/dsp/FxGrid.h
     Source/dsp/StepFx.cpp
+    Source/dsp/AmpShape.cpp
+    Source/dsp/AmpShape.h
     Source/dsp/SliceAnalysis.cpp
     Source/dsp/Resonator.cpp
     Source/dsp/StepFx.h

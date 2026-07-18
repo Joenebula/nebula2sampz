@@ -228,7 +228,30 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
         l.setSlicePan(s, 0.0f);
         l.setSliceSemitones(s, 0.0f);
         l.setSliceReverse(s, false);
-        refreshSliceEditor();
+        // --- per-hit amplitude envelope ---
+    ampOnButton.setColour(juce::ToggleButton::textColourId, kSub);
+    ampOnButton.onClick = [this] { applyAmpShape(); };
+    content.addAndMakeVisible(ampOnButton);
+
+    for (int i = 0; i < (int) Nebula2::AmpShapeId::Count; ++i)
+        ampShapeBox.addItem(Nebula2::ampShapeName((Nebula2::AmpShapeId) i), i + 1);
+    ampShapeBox.setSelectedId(1, juce::dontSendNotification);
+    ampShapeBox.onChange = [this] { applyAmpShape(); };
+    content.addAndMakeVisible(ampShapeBox);
+
+    // Vary keeps the chosen curve's CHARACTER and perturbs it — 32 independent random
+    // values would be a stutter, not an envelope.
+    ampRandButton.onClick = [this]
+    {
+        juce::Random rng;
+        const auto id = (Nebula2::AmpShapeId) juce::jlimit(0, (int) Nebula2::AmpShapeId::Count - 1,
+                                                          ampShapeBox.getSelectedId() - 1);
+        processorRef.getSampleLayer().setAmpShape(Nebula2::randomAmpShape(id, rng),
+                                                  ampOnButton.getToggleState());
+    };
+    content.addAndMakeVisible(ampRandButton);
+
+    refreshSliceEditor();
         waveform.repaint();
     };
     content.addAndMakeVisible(sliceResetButton);
@@ -715,7 +738,8 @@ void Nebula2AudioProcessorEditor::showPage(Page p)
         &resoKeyBox, &resoKeyLabel, &resoScaleBox, &resoScaleLabel,
         &colourRandButton, &spaceRandButton,
         &sliceEditLabel, &sliceGainSlider, &slicePanSlider, &slicePitchSlider,
-        &sliceGainLabel, &slicePanLabel, &slicePitchLabel, &sliceRevButton, &sliceResetButton
+        &sliceGainLabel, &slicePanLabel, &slicePitchLabel, &sliceRevButton, &sliceResetButton,
+        &ampOnButton, &ampShapeBox, &ampRandButton
     };
     for (auto* c : playChildren) c->setVisible(play);
 
@@ -1177,6 +1201,11 @@ void Nebula2AudioProcessorEditor::layoutContent()
     sliceFxRow.removeFromLeft(8);
     sliceRevButton.setBounds(sliceFxRow.removeFromLeft(84));
     sliceResetButton.setBounds(sliceFxRow.removeFromLeft(92));
+    sliceFxRow.removeFromLeft(10);
+    ampOnButton.setBounds(sliceFxRow.removeFromLeft(66));
+    ampShapeBox.setBounds(sliceFxRow.removeFromLeft(82).reduced(0, 3));
+    sliceFxRow.removeFromLeft(4);
+    ampRandButton.setBounds(sliceFxRow.removeFromLeft(52));
 
     sampleArea.removeFromBottom(4);
     sampleArea.removeFromTop(4);
@@ -1296,4 +1325,12 @@ void Nebula2AudioProcessorEditor::updateUndoButtons()
     // nothing when you press it.
     undoButton.setEnabled(processorRef.getHistory().canUndo());
     redoButton.setEnabled(processorRef.getHistory().canRedo());
+}
+
+void Nebula2AudioProcessorEditor::applyAmpShape()
+{
+    const auto id = (Nebula2::AmpShapeId) juce::jlimit(0, (int) Nebula2::AmpShapeId::Count - 1,
+                                                      ampShapeBox.getSelectedId() - 1);
+    processorRef.getSampleLayer().setAmpShape(Nebula2::makeAmpShape(id),
+                                              ampOnButton.getToggleState());
 }

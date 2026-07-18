@@ -172,7 +172,12 @@ private:
     juce::Label sliceGainLabel, slicePanLabel, slicePitchLabel;
     juce::ToggleButton sliceRevButton { "Reverse" };
     juce::TextButton sliceResetButton { "Reset Slice" };
+    // Per-hit amplitude envelope: one curve applied to every slice as it fires.
+    juce::ToggleButton ampOnButton { "Shape" };
+    juce::ComboBox ampShapeBox;
+    juce::TextButton ampRandButton { "Vary" };
     void refreshSliceEditor();
+    void applyAmpShape();
     void setSliceEditorEnabled(bool);
 
     juce::TextButton colourRandButton { "Randomise" };

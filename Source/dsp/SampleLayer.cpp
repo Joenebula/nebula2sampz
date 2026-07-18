@@ -789,8 +789,12 @@ namespace Nebula2
                         acc[c] += readAt(c, rd) * w;
                 }
 
-                // Note-off gate: 5 ms fade, then the voice frees itself.
+                // The amplitude envelope, read at this voice's progress through its own
+                // slice — so the same curve shapes a 1/16 and a whole bar identically.
                 float env = v.gain;
+                if (ampOn.load() && v.outDur > 0.0)
+                    env *= ampShapeAt(ampShape, v.outSample / v.outDur);
+
                 if (v.release >= 0.0)
                 {
                     env *= (float) (v.release / v.releaseLen);

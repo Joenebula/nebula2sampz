@@ -28,6 +28,7 @@
 #include "../Source/Randomise.h"
 #include "../Source/History.h"
 #include "../Source/dsp/SliceAnalysis.h"
+#include "../Source/dsp/AmpShape.h"
 #include "../Source/dsp/MorphPad.h"
 #include "../Source/dsp/MorphEngine.h"
 #include "../Source/dsp/RackGraph.h"
@@ -3656,6 +3657,92 @@ int main()
             randomiseRack(g, r2);
             check(g.getCables().size() == firstCount,
                   "rack dice: rolling again replaces the patch rather than accumulating");
+        }
+    }
+
+    // ---- Amp envelope ----
+    {
+        using namespace Nebula2;
+
+        // Flat must be EXACTLY 1 everywhere. It's the "off" shape and the fallback for
+        // corrupt data, so anything less would quietly attenuate every slice in the
+        // instrument — the sort of change nobody looks for because nothing announces it.
+        {
+            const auto flat = makeAmpShape(AmpShapeId::Flat);
+            bool allUnity = true;
+            for (auto v : flat) if (v != 1.0f) allUnity = false;
+            check(allUnity, "amp: Flat is unity everywhere, so it genuinely changes nothing");
+        }
+
+        // Each shape has to actually have the character its name claims.
+        {
+            const auto punch = makeAmpShape(AmpShapeId::Punch);
+            check(punch.front() > 0.9f && punch.back() < 0.1f,
+                  "amp: Punch starts loud and decays away");
+
+            const auto swell = makeAmpShape(AmpShapeId::Swell);
+            check(swell.front() < 0.1f && swell.back() > 0.9f,
+                  "amp: Swell is the other way round");
+
+            const auto gate = makeAmpShape(AmpShapeId::Gate);
+            check(gate.front() > 0.9f && gate.back() < 0.1f
+                   && gate[(size_t) (ampShapePoints / 4)] > 0.9f,
+                  "amp: Gate holds full level then cuts, rather than decaying");
+
+            const auto pluck = makeAmpShape(AmpShapeId::Pluck);
+            check(pluck.front() < 0.2f && pluck[1] > pluck.front(),
+                  "amp: Pluck has a short attack rather than starting at full");
+        }
+
+        // Reading the curve.
+        {
+            const auto punch = makeAmpShape(AmpShapeId::Punch);
+            check(ampShapeAt(punch, 0.0) > 0.9f && ampShapeAt(punch, 1.0) < 0.1f,
+                  "amp: reading at 0 and 1 gives the ends of the curve");
+            check(ampShapeAt(punch, 0.5) < ampShapeAt(punch, 0.1),
+                  "amp: the curve is read in the right direction");
+
+            // Out of range must CLAMP. Wrapping would jump a voice running slightly past
+            // its end back to the attack, which clicks on every single slice.
+            check(ampShapeAt(punch, -5.0) == ampShapeAt(punch, 0.0)
+                   && ampShapeAt(punch, 5.0) == ampShapeAt(punch, 1.0),
+                  "amp: out-of-range positions clamp rather than wrap");
+        }
+
+        // The dice keeps the shape's character. A random 32-point curve is a stutter, not
+        // an envelope, so "still decays" is the property that matters.
+        {
+            juce::Random rng(7);
+            const auto r = randomAmpShape(AmpShapeId::Punch, rng);
+            check(r.front() > r.back(), "amp: a varied Punch still decays");
+            bool inRange = true;
+            for (auto v : r) if (v < 0.0f || v > 1.0f) inRange = false;
+            check(inRange, "amp: varied values stay in range");
+
+            juce::Random a(3), b(3);
+            check(randomAmpShape(AmpShapeId::Swell, a) == randomAmpShape(AmpShapeId::Swell, b),
+                  "amp: a seed reproduces its shape");
+        }
+
+        // Round trip, and corrupt data falling back to Flat rather than to a half-filled
+        // array that would gate every slice.
+        {
+            const auto punch = makeAmpShape(AmpShapeId::Punch);
+            const auto back = ampShapeFromString(ampShapeToString(punch));
+            bool same = true;
+            for (int i = 0; i < ampShapePoints; ++i)
+                if (std::abs(back[(size_t) i] - punch[(size_t) i]) > 0.01f) same = false;
+            check(same, "amp: a shape survives a save/restore round trip");
+
+            const auto shortStr = ampShapeFromString("1,1,1");
+            bool flat = true;
+            for (auto v : shortStr) if (v != 1.0f) flat = false;
+            check(flat, "amp: a truncated saved shape falls back to Flat, not a partial curve");
+
+            const auto junk = ampShapeFromString("not,a,shape");
+            bool flat2 = true;
+            for (auto v : junk) if (v != 1.0f) flat2 = false;
+            check(flat2, "amp: a corrupt saved shape falls back to Flat");
         }
     }
 

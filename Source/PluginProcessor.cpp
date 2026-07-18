@@ -606,6 +606,8 @@ void Nebula2AudioProcessor::getStateInformation(juce::MemoryBlock& destData)
     // has to travel with the project or a shuffled break comes back in its original order.
     sampleNode.setProperty("sliceOrder", sampleLayer.sliceOrderToString(), nullptr);
     sampleNode.setProperty("sliceFx", sampleLayer.sliceSettingsToString(), nullptr);
+    sampleNode.setProperty("ampShape", Nebula2::ampShapeToString(sampleLayer.getAmpShape()), nullptr);
+    sampleNode.setProperty("ampOn", sampleLayer.isAmpShapeOn(), nullptr);
 
     // The grid is structured data, not a flat parameter — it needs saving explicitly too,
     // or a reopened project comes back with an empty pattern.
@@ -655,6 +657,10 @@ void Nebula2AudioProcessor::setStateInformation(const void* data, int sizeInByte
             // applying it here would restore the arrangement and then immediately wipe it.
             pendingSliceOrder = order;
             pendingSliceFx = fx;
+            // The envelope is not sample-dependent, so it can be applied immediately —
+            // unlike the order and per-slice settings, which a re-slice would wipe.
+            sampleLayer.setAmpShape(Nebula2::ampShapeFromString(sampleNode.getProperty("ampShape").toString()),
+                                    (bool) sampleNode.getProperty("ampOn", false));
             triggerAsyncUpdate();
         }
         else
@@ -662,6 +668,8 @@ void Nebula2AudioProcessor::setStateInformation(const void* data, int sizeInByte
             // Same sample already loaded (or none): nothing will re-slice, so apply now.
             sampleLayer.sliceOrderFromString(order);
             sampleLayer.sliceSettingsFromString(fx);
+            sampleLayer.setAmpShape(Nebula2::ampShapeFromString(sampleNode.getProperty("ampShape").toString()),
+                                    (bool) sampleNode.getProperty("ampOn", false));
         }
     }
 
