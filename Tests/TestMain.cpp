@@ -3978,6 +3978,45 @@ int main()
         // The specific corpse, named so it can't quietly return.
         check(proc.apvts.getParameter("bpm") == nullptr,
               "params: there is no Tempo parameter — the host is the clock, not a dead knob");
+
+        // ---- The REACHABILITY gate ----
+        // The gate above proves DSP reads a parameter. It says nothing about whether the
+        // USER can move it, and that gap shipped: seven lanes (Gate, Reverse, Stutter,
+        // Shatter, Pitch +/-, Resonate) had working, tested DSP and no control anywhere in
+        // the editor. Their panel value therefore sat at its 0 default forever, and since a
+        // cell blends from the lane's neutral TOWARD the panel amount, blend(0, 0, level)
+        // is 0 at every level — paint any of those lanes and you hear precisely nothing.
+        //
+        // "It has a parameter" is not "you can use it". This asks the second question.
+        {
+            const auto& controlled = editorControlledParamIds();
+            auto hasControl = [&controlled](const char* id)
+            {
+                for (auto* c : controlled) if (String(c) == String(id)) return true;
+                return false;
+            };
+
+            StringArray unreachable;
+            for (auto r : gridDisplayOrder())
+            {
+                const char* id = gridRowPanelParamId(r);
+                if (id == nullptr) { unreachable.add(String(gridRowName(r)) + " (no param)"); continue; }
+                if (! hasControl(id)) unreachable.add(String(gridRowName(r)) + " -> " + id);
+            }
+            check(unreachable.isEmpty(),
+                  "params: every displayed grid lane has a control the user can reach"
+                  + (unreachable.isEmpty() ? String()
+                                           : " (unreachable: " + unreachable.joinIntoString(", ") + ")"));
+
+            // ...and every id claimed to have a control must actually be a real parameter,
+            // or the list above could be satisfied with typos.
+            StringArray phantom;
+            for (auto* c : controlled)
+                if (proc.apvts.getParameter(c) == nullptr) phantom.add(c);
+            check(phantom.isEmpty(),
+                  "params: every control in the editor list names a real parameter"
+                  + (phantom.isEmpty() ? String() : " (phantom: " + phantom.joinIntoString(", ") + ")"));
+        }
     }
 
     std::cout << (failures == 0 ? "ALL PASS" : ("FAILURES: " + String(failures)).toStdString())

@@ -110,6 +110,16 @@ private:
     Knob drive, crush, squeeze, tone, width, pump, master;
     Knob revMix, revSize, dlyMix, dlyFb, haunt;
 
+    // The lane knobs (Resonate, Pitch +/-, Reverse, Stutter, Shatter, Gate). Held in a
+    // vector and built by LOOPING Nebula2::extraColourControls(), so the list the
+    // reachability gate checks and the widgets that actually exist are one thing. Named
+    // members would let those drift, which is exactly how these seven lanes shipped
+    // paintable and silent.
+    std::vector<std::unique_ptr<Knob>> laneKnobs;
+    juce::ComboBox resoKeyBox, resoScaleBox;
+    juce::Label resoKeyLabel, resoScaleLabel;
+    std::unique_ptr<APVTS::ComboBoxAttachment> resoKeyAttachment, resoScaleAttachment;
+
     juce::ComboBox charBox, revCharBox, dlySyncBox, dlyModeBox, sliceModeBox, sliceCountBox;
     juce::Label charLabel, revCharLabel, dlySyncLabel, dlyModeLabel, sliceModeLabel, sliceCountLabel;
     std::unique_ptr<APVTS::ComboBoxAttachment> dlyModeAttachment;

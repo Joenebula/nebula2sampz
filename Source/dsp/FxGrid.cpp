@@ -1,4 +1,5 @@
 #include "FxGrid.h"
+#include "../ParameterIDs.h"
 
 #include <cmath>
 
@@ -26,6 +27,67 @@ namespace Nebula2
             case GridRow::Haunt:     return "Haunt";
             default:               return "?";
         }
+    }
+
+    const char* gridRowPanelParamId(GridRow r)
+    {
+        switch (r)
+        {
+            case GridRow::Drive:     return ParamID::drive;
+            case GridRow::Crush:     return ParamID::crush;
+            case GridRow::Squeeze:   return ParamID::squeeze;
+            case GridRow::Tone:      return ParamID::tone;
+            case GridRow::Width:     return ParamID::width;
+            case GridRow::Reverb:    return ParamID::revMix;
+            case GridRow::Delay:     return ParamID::dlyMix;
+            case GridRow::Pump:      return ParamID::pump;
+            case GridRow::Resonate:  return ParamID::resonate;
+            case GridRow::PitchUp:   return ParamID::pitchUp;
+            case GridRow::PitchDown: return ParamID::pitchDown;
+            case GridRow::Reverse:   return ParamID::reverse;
+            case GridRow::Stutter:   return ParamID::stutter;
+            case GridRow::Shatter:   return ParamID::shatter;
+            case GridRow::Gate:      return ParamID::gate;
+            case GridRow::Haunt:     return ParamID::haunt;
+            default:                 return nullptr;
+        }
+    }
+
+    const std::vector<PanelControlSpec>& extraColourControls()
+    {
+        // The lane knobs the Colour page grows beyond the original six. The editor builds
+        // these by LOOPING this table, so "listed here" and "has a control" are one fact
+        // rather than two that can disagree.
+        static const std::vector<PanelControlSpec> extras = {
+            { ParamID::resonate,  "Resonate", " %" },
+            { ParamID::pitchUp,   "Pitch +",  " %" },
+            { ParamID::pitchDown, "Pitch -",  " %" },
+            { ParamID::reverse,   "Reverse",  " %" },
+            { ParamID::stutter,   "Stutter",  " %" },
+            { ParamID::shatter,   "Shatter",  " %" },
+            { ParamID::gate,      "Gate",     " %" },
+        };
+        return extras;
+    }
+
+    const std::vector<const char*>& editorControlledParamIds()
+    {
+        static const std::vector<const char*> ids = [] {
+            std::vector<const char*> v {
+                // Hand-placed in PluginEditor's designed layout.
+                ParamID::drive, ParamID::crush, ParamID::squeeze, ParamID::tone,
+                ParamID::width, ParamID::pump, ParamID::master,
+                ParamID::revMix, ParamID::revSize, ParamID::dlyMix, ParamID::dlyFb,
+                ParamID::haunt,
+                // Choice controls.
+                ParamID::driveChar, ParamID::revChar, ParamID::dlySync, ParamID::dlyMode,
+                ParamID::resoKey, ParamID::resoScale,
+            };
+            // ...plus everything the editor loops over, which therefore cannot fall out of step.
+            for (const auto& e : extraColourControls()) v.push_back(e.paramId);
+            return v;
+        }();
+        return ids;
     }
 
     const std::vector<GridRow>& gridDisplayOrder()

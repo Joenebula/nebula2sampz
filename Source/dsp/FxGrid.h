@@ -34,6 +34,33 @@ namespace Nebula2
 
     const char* gridRowName(GridRow r);
 
+    // The PANEL parameter each lane scales — the knob that sets its ceiling. nullptr if a
+    // lane has none.
+    //
+    // ONE definition, because two callers must never disagree: GridView reads it to find
+    // the ceiling, and the test gate reads it to prove every displayed lane has a control
+    // the user can actually reach. They existed as two separate switches for exactly one
+    // commit, which was long enough to ship seven lanes whose "knob" was an automation
+    // target and nothing else — paintable, lit, and permanently silent, because a lane
+    // blends from its neutral toward a panel amount that defaulted to 0 and could not be
+    // raised from inside the plugin.
+    const char* gridRowPanelParamId(GridRow r);
+
+    // Every parameter the EDITOR gives the user a control for. The gate below compares the
+    // two lists, so a lane can never again be paintable without being reachable.
+    //
+    // What this proves: no displayed lane maps to a parameter that is absent here.
+    // What it does NOT prove: that the editor really built the widget. Nothing links the
+    // GUI into the test binary, so removing a knob from the editor while leaving its id
+    // here would still pass. The extras below are built by ITERATING this list, so they
+    // cannot drift; the older hand-placed knobs are the part taken on trust.
+    const std::vector<const char*>& editorControlledParamIds();
+
+    // The lane controls the editor lays out by looping the table (label + suffix included),
+    // so adding a lane's knob is a one-line edit in one place.
+    struct PanelControlSpec { const char* paramId; const char* label; const char* suffix; };
+    const std::vector<PanelControlSpec>& extraColourControls();
+
     // The lanes the UI actually SHOWS, in the prototype's grouping (Colour, then Space).
     //
     // This lists only lanes whose effect exists. A lane you can paint that drives nothing

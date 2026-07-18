@@ -38,6 +38,22 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     addKnob(dlyFb,   Nebula2::ParamID::dlyFb,   "Feedback", " %");
     addKnob(haunt,   Nebula2::ParamID::haunt,   "Haunt", " %");
 
+    // The lane knobs, built by LOOPING the shared table — see PluginEditor.h. These seven
+    // lanes had working DSP and no way to reach it: the grid blends toward a panel amount
+    // that sat at 0 and could only be moved by DAW automation.
+    for (const auto& spec : Nebula2::extraColourControls())
+    {
+        auto k = std::make_unique<Knob>();
+        addKnob(*k, spec.paramId, spec.label, spec.suffix);
+        laneKnobs.push_back(std::move(k));
+    }
+
+    addCombo(resoKeyBox, resoKeyLabel, Nebula2::ParamID::resoKey, "Key",
+             { "A", "A#", "B", "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#" },
+             resoKeyAttachment);
+    addCombo(resoScaleBox, resoScaleLabel, Nebula2::ParamID::resoScale, "Scale",
+             { "Minor", "Major", "Phrygian", "Fifths" }, resoScaleAttachment);
+
     addCombo(charBox, charLabel, Nebula2::ParamID::driveChar, "Character",
              { "Tube", "Fuzz", "Fold" }, charAttachment);
     addCombo(revCharBox, revCharLabel, Nebula2::ParamID::revChar, "Reverb",
@@ -230,7 +246,7 @@ int Nebula2AudioProcessorEditor::contentHeightFor(Page p) const
 {
     switch (p)
     {
-        case Page::play:  return 648;   // sample + colour + space (reverb/delay split)
+        case Page::play:  return 788;   // sample + colour (two knob rows) + space
         case Page::morph: return 320;
         case Page::grid:  return 210;
         case Page::rack:  return 470;
@@ -473,7 +489,7 @@ void Nebula2AudioProcessorEditor::paintContent(juce::Graphics& g)
         }
 
         body.removeFromTop(10.0f);
-        Nebula2LookAndFeel::drawCard(g, body.removeFromTop(200.0f), "COLOUR");
+        Nebula2LookAndFeel::drawCard(g, body.removeFromTop(340.0f), "COLOUR");
         body.removeFromTop(10.0f);
 
         // SPACE, split into REVERB and DELAY sub-sections (the user's request). One card,
@@ -634,7 +650,7 @@ void Nebula2AudioProcessorEditor::layoutContent()
     body.removeFromTop(8);
 
     // --- Colour panel ---
-    auto colour = body.removeFromTop(200).reduced(10);
+    auto colour = body.removeFromTop(340).reduced(10);
     colour.removeFromTop(12);
     auto knobRow = colour.removeFromTop(120);
     Knob* cKnobs[] = { &drive, &crush, &squeeze, &tone, &width, &pump, &master };
@@ -645,6 +661,31 @@ void Nebula2AudioProcessorEditor::layoutContent()
         k->label.setBounds(cell.removeFromTop(16));
         k->slider.setBounds(cell.reduced(3));
     }
+
+    // Second row: the lane knobs. Same count as the row above (7), so they share the
+    // column width and the two rows line up rather than looking like a bolted-on strip.
+    colour.removeFromTop(8);
+    auto laneRow = colour.removeFromTop(110);
+    if (! laneKnobs.empty())
+    {
+        const int lw = laneRow.getWidth() / (int) laneKnobs.size();
+        for (auto& k : laneKnobs)
+        {
+            auto cell = laneRow.removeFromLeft(lw);
+            k->label.setBounds(cell.removeFromTop(16));
+            k->slider.setBounds(cell.reduced(3));
+        }
+    }
+
+    // Resonate's Key and Scale sit under it — they only mean anything with Resonate up.
+    colour.removeFromTop(6);
+    auto rRow2 = colour.removeFromTop(24);
+    resoKeyLabel.setBounds(rRow2.removeFromLeft(30));
+    resoKeyBox.setBounds(rRow2.removeFromLeft(62).reduced(0, 1));
+    rRow2.removeFromLeft(12);
+    resoScaleLabel.setBounds(rRow2.removeFromLeft(40));
+    resoScaleBox.setBounds(rRow2.removeFromLeft(100).reduced(0, 1));
+
     colour.removeFromTop(8);
     auto cRow = colour.removeFromTop(24);
     charLabel.setBounds(cRow.removeFromLeft(64));

@@ -30,27 +30,10 @@ void GridView::timerCallback()
 float GridView::panelAmountFor(int row) const
 {
     auto& v = processorRef.getValueTreeState();
-    const char* id = nullptr;
-    switch ((Nebula2::GridRow) row)
-    {
-        case Nebula2::GridRow::Drive:   id = Nebula2::ParamID::drive;   break;
-        case Nebula2::GridRow::Crush:   id = Nebula2::ParamID::crush;   break;
-        case Nebula2::GridRow::Squeeze: id = Nebula2::ParamID::squeeze; break;
-        case Nebula2::GridRow::Tone:    id = Nebula2::ParamID::tone;    break;
-        case Nebula2::GridRow::Width:   id = Nebula2::ParamID::width;   break;
-        case Nebula2::GridRow::Reverb:  id = Nebula2::ParamID::revMix;  break;
-        case Nebula2::GridRow::Delay:   id = Nebula2::ParamID::dlyMix;  break;
-        case Nebula2::GridRow::Pump:    id = Nebula2::ParamID::pump;    break;
-        case Nebula2::GridRow::Gate:    id = Nebula2::ParamID::gate;    break;
-        case Nebula2::GridRow::Reverse: id = Nebula2::ParamID::reverse; break;
-        case Nebula2::GridRow::Stutter: id = Nebula2::ParamID::stutter; break;
-        case Nebula2::GridRow::Shatter: id = Nebula2::ParamID::shatter; break;
-        case Nebula2::GridRow::PitchUp: id = Nebula2::ParamID::pitchUp; break;
-        case Nebula2::GridRow::PitchDown: id = Nebula2::ParamID::pitchDown; break;
-        case Nebula2::GridRow::Resonate: id = Nebula2::ParamID::resonate; break;
-        case Nebula2::GridRow::Haunt:   id = Nebula2::ParamID::haunt;   break;
-        default: return 0.0f;
-    }
+    // The mapping lives in FxGrid, not here — see gridRowPanelParamId(). This was a second
+    // copy of that switch, and a lane can only be proved reachable against one list.
+    const char* id = Nebula2::gridRowPanelParamId((Nebula2::GridRow) row);
+    if (id == nullptr) return 0.0f;
     auto* raw = v.getRawParameterValue(id);
     return raw != nullptr ? raw->load() : 0.0f;
 }
