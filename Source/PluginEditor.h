@@ -211,6 +211,7 @@ private:
     juce::ToggleButton rackOnButton { "Rack On" };
     std::unique_ptr<APVTS::ButtonAttachment> rackOnAttachment;
     juce::TextButton rackClearButton { "Clear Patch" };
+    juce::TextButton rackRandButton { "Randomise" };
     // Filter type and LFO shape stay on the panel: they're choices, not dials, and a combo
     // box inside a 100px module box would be unusable. Everything else is on its module.
     juce::ComboBox fltTypeBox, lfoShapeBox;

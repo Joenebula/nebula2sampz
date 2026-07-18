@@ -3644,6 +3644,78 @@ int main()
         }
     }
 
+    // ---- Rack dice ----
+    {
+        using namespace Nebula2;
+
+        // THE property: a rolled patch must always be LIVE. The rack is the one block where
+        // "patched but silent" is a state you can genuinely land in, so a dice that produces
+        // it would be indistinguishable from a broken button. Checked across many seeds,
+        // because one roll of a random process proves nothing.
+        {
+            int dead = 0, empty = 0;
+            for (int t = 0; t < 300; ++t)
+            {
+                RackGraph g;
+                juce::Random rng(4000 + t);
+                randomiseRack(g, rng);
+                if (! g.isLive()) ++dead;
+                if (g.processOrder().empty()) ++empty;
+            }
+            check(dead == 0, "rack dice: every rolled patch is live — " + String(dead) + "/300 dead");
+            check(empty == 0, "rack dice: every rolled patch has something to process");
+        }
+
+        // No module may be left bypassed — a rolled patch whose modules are all switched
+        // off is live on paper and does nothing.
+        {
+            RackGraph g;
+            for (int i = 0; i < numRackModules; ++i) g.setBypassed((ModuleId) i, true);
+            juce::Random rng(5);
+            randomiseRack(g, rng);
+            bool anyBypassed = false;
+            for (int i = 0; i < numRackModules; ++i)
+                if (g.isBypassed((ModuleId) i)) anyBypassed = true;
+            check(! anyBypassed, "rack dice: clears bypasses, so the patch it draws is the patch you hear");
+        }
+
+        // It must actually PATCH something, and vary between rolls.
+        {
+            RackGraph a, b;
+            juce::Random r1(11), r2(11), r3(12);
+            randomiseRack(a, r1);
+            check(a.getCables().size() >= 2,
+                  "rack dice: a roll patches a real chain — " + String((int) a.getCables().size()) + " cables");
+
+            randomiseRack(b, r2);
+            check(a.toString() == b.toString(), "rack dice: a seed reproduces its patch");
+
+            RackGraph c;
+            randomiseRack(c, r3);
+            bool differs = false;
+            for (int t = 0; t < 40 && ! differs; ++t)
+            {
+                RackGraph d;
+                juce::Random rr(9000 + t);
+                randomiseRack(d, rr);
+                if (d.toString() != a.toString()) differs = true;
+            }
+            check(differs, "rack dice: different seeds give different patches");
+        }
+
+        // Rolling over an existing patch must REPLACE it, not pile more cables on top.
+        {
+            RackGraph g;
+            juce::Random r1(21);
+            randomiseRack(g, r1);
+            const auto firstCount = g.getCables().size();
+            juce::Random r2(21);
+            randomiseRack(g, r2);
+            check(g.getCables().size() == firstCount,
+                  "rack dice: rolling again replaces the patch rather than accumulating");
+        }
+    }
+
     // ---- Layer mixer ----
     {
         using namespace Nebula2;

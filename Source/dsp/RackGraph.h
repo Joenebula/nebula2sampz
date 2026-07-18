@@ -87,6 +87,23 @@ namespace Nebula2
     enum class ModuleState { live, noPathOut, idle, off };
     const char* moduleStateText(ModuleState s) noexcept;
 
+    class RackGraph;
+
+    // Build a random patch.
+    //
+    // Guaranteed LIVE: audio always reaches the out. A rack dice that hands back a patch
+    // making no sound is indistinguishable from a broken button — and the rack is the one
+    // block where "patched but silent" is a state you can genuinely land in, so the dice is
+    // not allowed to produce it.
+    //
+    // A CHAIN, not a random tangle: modules in series from the source to the out, with the
+    // LFO sometimes driving one of them. Cables drawn between arbitrary jacks would mostly
+    // be refused (loops, CV into audio) or dead-end, which is a lot of rolling to arrive at
+    // silence.
+    //
+    // RNG by reference so a seed reproduces a patch.
+    void randomiseRack(RackGraph& graph, juce::Random& rng);
+
     class RackGraph
     {
     public:

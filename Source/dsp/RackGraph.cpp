@@ -421,3 +421,55 @@ namespace Nebula2
         return g;
     }
 }
+
+namespace Nebula2
+{
+    void randomiseRack(RackGraph& graph, juce::Random& rng)
+    {
+        graph.clear();
+        for (int i = 0; i < numRackModules; ++i)
+            graph.setBypassed((ModuleId) i, false);   // a dice that leaves modules off is a dud
+
+        // The audio modules that can sit in a chain. src and out are the endpoints; lfo is
+        // CV only and is patched separately.
+        const ModuleId pool[] = { ModuleId::eq,  ModuleId::flt, ModuleId::phs, ModuleId::cho,
+                                  ModuleId::cmb, ModuleId::fld, ModuleId::vow, ModuleId::ech };
+        constexpr int poolSize = (int) (sizeof(pool) / sizeof(pool[0]));
+
+        std::vector<ModuleId> bag(pool, pool + poolSize);
+        const int want = 2 + rng.nextInt(3);      // 2..4 in the chain: enough to hear, not mud
+
+        std::vector<ModuleId> chain;
+        for (int i = 0; i < want && ! bag.empty(); ++i)
+        {
+            const int pick = rng.nextInt((int) bag.size());
+            chain.push_back(bag[(size_t) pick]);
+            bag.erase(bag.begin() + pick);
+        }
+
+        // src -> chain... -> out. Every cable is checked: a refusal here would mean the
+        // chain silently has a hole in it, and the rack would be patched but dead.
+        ModuleId prev = ModuleId::src;
+        for (auto m : chain)
+        {
+            if (graph.addCable({ prev, Jack::out }, { m, Jack::in }) != PatchResult::ok)
+                continue;                          // skip it rather than break the chain
+            prev = m;
+        }
+        graph.addCable({ prev, Jack::out }, { ModuleId::out, Jack::in });
+
+        // Sometimes let the LFO drive something. Only onto a module that HAS a cv jack —
+        // patching to a jack that isn't there is refused, and a silently-dropped cable is
+        // exactly the failure this graph was built to make impossible.
+        if (rng.nextFloat() < 0.6f && ! chain.empty())
+        {
+            std::vector<ModuleId> cvTargets;
+            for (auto m : chain)
+                if (hasJack(m, Jack::cv)) cvTargets.push_back(m);
+
+            if (! cvTargets.empty())
+                graph.addCable({ ModuleId::lfo, Jack::out },
+                               { cvTargets[(size_t) rng.nextInt((int) cvTargets.size())], Jack::cv });
+        }
+    }
+}

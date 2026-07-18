@@ -330,6 +330,25 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     rackClearButton.onClick = [this] { rackView.clearPatch(); };
     content.addAndMakeVisible(rackClearButton);
 
+    // A rolled patch is guaranteed live, and switches the rack on — rolling a patch you
+    // then can't hear because the rack is bypassed reads as a broken button.
+    rackRandButton.onClick = [this]
+    {
+        {
+            const juce::SpinLock::ScopedLockType sl(processorRef.getRackLock());
+            juce::Random rng;
+            Nebula2::randomiseRack(processorRef.getRackGraph(), rng);
+        }
+        if (auto* p = processorRef.getValueTreeState().getParameter(Nebula2::ParamID::rackOn))
+        {
+            p->beginChangeGesture();
+            p->setValueNotifyingHost(1.0f);
+            p->endChangeGesture();
+        }
+        rackView.repaint();
+    };
+    content.addAndMakeVisible(rackRandButton);
+
     // Only the dials you'd reach for while patching are on the panel; the rest are still
     // full host parameters, so nothing here is a control the DAW can't see.
     // The rack's dials live ON its modules now (RackView::buildModuleDials), and their
@@ -694,6 +713,7 @@ void Nebula2AudioProcessorEditor::showPage(Page p)
     rackView.setVisible(rack);
     rackOnButton.setVisible(rack);
     rackClearButton.setVisible(rack);
+    rackRandButton.setVisible(rack);
     fltTypeBox.setVisible(rack);
     fltTypeLabel.setVisible(rack);
     lfoShapeBox.setVisible(rack);
@@ -1024,6 +1044,8 @@ void Nebula2AudioProcessorEditor::layoutContent()
             rackOnButton.setBounds(rRow.removeFromLeft(96));
             rRow.removeFromLeft(8);
             rackClearButton.setBounds(rRow.removeFromLeft(86));
+            rRow.removeFromLeft(8);
+            rackRandButton.setBounds(rRow.removeFromLeft(96));
             rRow.removeFromLeft(12);
             fltTypeLabel.setBounds(rRow.removeFromLeft(38));
             fltTypeBox.setBounds(rRow.removeFromLeft(86));
