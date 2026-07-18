@@ -36,6 +36,15 @@ namespace Nebula2
     // Corner order matches the prototype: A(top-left) B(top-right) C(bottom-left) D(bottom-right)
     enum class MorphCorner { A = 0, B, C, D, Count };
 
+    // Auto-motion: the pad dot moves itself in a shape, tempo-locked. The prototype's
+    // Off/Circle/Fig-8/Square/Drift. When on, the effective pad position is the base
+    // (padX,padY) plus this offset — so the sliders still set the CENTRE the motion orbits.
+    enum class MorphMotion { Off = 0, Circle, Fig8, Square, Drift };
+
+    // The (dx,dy) offset for a motion mode at a cycle phase in [0,1), scaled by `size`
+    // (0..1, the travel radius). Pure and testable. dx/dy are each in roughly [-size, size].
+    void morphMotionOffset(MorphMotion mode, double phase, float size, float& dx, float& dy) noexcept;
+
     // The four scenes the pad ships with: open / dirty / dark-resonant / wide-wet-broken.
     std::array<MorphScene, 4> defaultMorphScenes();
 

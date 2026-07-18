@@ -35,6 +35,10 @@ Nebula2AudioProcessor::Nebula2AudioProcessor()
     padOnParam       = apvts.getRawParameterValue(Nebula2::ParamID::padOn);
     padXParam        = apvts.getRawParameterValue(Nebula2::ParamID::padX);
     padYParam        = apvts.getRawParameterValue(Nebula2::ParamID::padY);
+    morphMotionParam = apvts.getRawParameterValue(Nebula2::ParamID::morphMotion);
+    morphRateParam   = apvts.getRawParameterValue(Nebula2::ParamID::morphRate);
+    morphSizeParam   = apvts.getRawParameterValue(Nebula2::ParamID::morphSize);
+    morphGlideParam  = apvts.getRawParameterValue(Nebula2::ParamID::morphGlide);
 
     rackOnParam = apvts.getRawParameterValue(Nebula2::ParamID::rackOn);
     {
@@ -357,9 +361,40 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
         const bool padOn = padOnParam != nullptr && padOnParam->load() > 0.5f;
         if (padOn)
         {
-            const float x = padXParam != nullptr ? padXParam->load() : 0.5f;
-            const float y = padYParam != nullptr ? padYParam->load() : 0.5f;
-            const auto scene = Nebula2::blendMorph(morphScenes, x, y);
+            const float baseX = padXParam != nullptr ? padXParam->load() : 0.5f;
+            const float baseY = padYParam != nullptr ? padYParam->load() : 0.5f;
+
+            // Auto-motion: the dot orbits the (padX,padY) centre, tempo-locked. Off => the
+            // sliders own the position, exactly as before.
+            const auto motion = (Nebula2::MorphMotion) (morphMotionParam != nullptr
+                                    ? juce::jlimit(0, 4, (int) morphMotionParam->load()) : 0);
+            float tx = baseX, ty = baseY;
+            if (motion != Nebula2::MorphMotion::Off)
+            {
+                static constexpr double barsFor[] = { 1.0, 2.0, 4.0, 8.0 };
+                const int rateIdx = morphRateParam != nullptr ? juce::jlimit(0, 3, (int) morphRateParam->load()) : 1;
+                const double beatsPerCycle = barsFor[rateIdx] * 4.0;
+                double phase = transport.ppq / beatsPerCycle;
+                phase -= std::floor(phase);
+                const float size = (morphSizeParam != nullptr ? morphSizeParam->load() : 40.0f) / 100.0f * 0.5f;
+                float dx = 0.0f, dy = 0.0f;
+                Nebula2::morphMotionOffset(motion, phase, size, dx, dy);
+                tx = juce::jlimit(0.0f, 1.0f, baseX + dx);
+                ty = juce::jlimit(0.0f, 1.0f, baseY + dy);
+            }
+
+            // Glide: smooth the effective position toward the target so motion (and sudden
+            // slider jumps) don't zipper. 0 = instant.
+            const float glide = (morphGlideParam != nullptr ? morphGlideParam->load() : 0.0f) / 100.0f;
+            const float coeff = glide <= 0.0f ? 1.0f
+                              : 1.0f - std::exp(-1.0f / juce::jmax(1.0f, glide * 0.05f * (float) getSampleRate()
+                                                                   / (float) juce::jmax(1, numSamples)));
+            morphEffX += (tx - morphEffX) * coeff;
+            morphEffY += (ty - morphEffY) * coeff;
+            morphDrawX.store(morphEffX);
+            morphDrawY.store(morphEffY);   // so the UI dot follows the motion
+
+            const auto scene = Nebula2::blendMorph(morphScenes, morphEffX, morphEffY);
             morph.process(buffer, scene, transport.bpm, true);
             morphSpaceSend = scene.spc;      // the pad's own space amount
         }

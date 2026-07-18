@@ -69,6 +69,11 @@ public:
     // blend each block). Floats, so a race yields old-or-new for one block — inaudible.
     std::array<Nebula2::MorphScene, 4>& getMorphScenes() noexcept { return morphScenes; }
 
+    // The pad dot's effective position (base + auto-motion), so the UI dot follows the
+    // motion rather than sitting where the sliders are. 0.5,0.5 when the pad's off.
+    float getMorphDrawX() const noexcept { return morphDrawX.load(); }
+    float getMorphDrawY() const noexcept { return morphDrawY.load(); }
+
     // The rack's patch. The editor edits it on the message thread; the audio thread reads
     // it each block. Guarded by a lock the AUDIO thread never waits on: it tries, and if
     // the editor happens to be mid-edit it reuses last block's patch. One block of a stale
@@ -133,6 +138,12 @@ private:
     std::atomic<float>* padOnParam { nullptr };
     std::atomic<float>* padXParam { nullptr };
     std::atomic<float>* padYParam { nullptr };
+    std::atomic<float>* morphMotionParam { nullptr };
+    std::atomic<float>* morphRateParam { nullptr };
+    std::atomic<float>* morphSizeParam { nullptr };
+    std::atomic<float>* morphGlideParam { nullptr };
+    float morphEffX = 0.5f, morphEffY = 0.5f;          // audio thread: glided position
+    std::atomic<float> morphDrawX { 0.5f }, morphDrawY { 0.5f };   // for the UI dot
     Nebula2::MorphEngine morph;
     std::array<Nebula2::MorphScene, 4> morphScenes = Nebula2::defaultMorphScenes();
 

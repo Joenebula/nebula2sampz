@@ -26,6 +26,8 @@ private:
     void timerCallback() override;
     void setFromMouse(const juce::MouseEvent&);
     juce::Point<float> dotPos() const;   // in component space, from the params
+    bool motionActive() const;
+    void effectivePos(float& x, float& y) const;
 
     Nebula2AudioProcessor& processorRef;
     float lastX = -1.0f, lastY = -1.0f;

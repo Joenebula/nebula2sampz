@@ -1866,6 +1866,41 @@ int main()
             check(std::abs(empty[2].res - defaultMorphScenes()[2].res) < 0.01f,
                   "morph state: empty input is safe");
         }
+
+        // --- auto-motion: the dot moves itself, tempo-locked ---
+        {
+            float dx = 9.0f, dy = 9.0f;
+            morphMotionOffset(MorphMotion::Off, 0.3, 0.5f, dx, dy);
+            check(dx == 0.0f && dy == 0.0f, "morph motion: Off produces no offset");
+
+            morphMotionOffset(MorphMotion::Circle, 0.0, 0.4f, dx, dy);
+            check(std::abs(dx) < 1e-5f && std::abs(dy - 0.4f) < 1e-5f,
+                  "morph motion: Circle starts at the top of the circle");
+            morphMotionOffset(MorphMotion::Circle, 0.25, 0.4f, dx, dy);
+            check(std::abs(dx - 0.4f) < 1e-5f && std::abs(dy) < 1e-5f,
+                  "morph motion: Circle is a quarter-turn round at phase 0.25");
+
+            // Every mode stays within +/- size, so effective pos never flies off the pad.
+            bool bounded = true;
+            for (auto m : { MorphMotion::Circle, MorphMotion::Fig8, MorphMotion::Square, MorphMotion::Drift })
+                for (double p = 0.0; p < 1.0; p += 0.017)
+                {
+                    morphMotionOffset(m, p, 0.5f, dx, dy);
+                    if (std::abs(dx) > 0.5f + 1e-4f || std::abs(dy) > 0.5f + 1e-4f) bounded = false;
+                }
+            check(bounded, "morph motion: every shape stays within +/- size (dot won't leave the pad)");
+
+            // Fig-8 crosses its own centre mid-cycle (x back to 0 at phase 0.5).
+            morphMotionOffset(MorphMotion::Fig8, 0.5, 0.5f, dx, dy);
+            check(std::abs(dx) < 1e-4f, "morph motion: Fig-8 returns through the centre");
+
+            // The path actually MOVES: sampled points aren't all identical.
+            morphMotionOffset(MorphMotion::Drift, 0.1, 0.5f, dx, dy);
+            float dx2 = dx, dy2 = dy;
+            morphMotionOffset(MorphMotion::Drift, 0.6, 0.5f, dx2, dy2);
+            check(std::abs(dx - dx2) > 0.01f || std::abs(dy - dy2) > 0.01f,
+                  "morph motion: Drift genuinely wanders (not a fixed point)");
+        }
     }
 
     // ---- Phase 9b: the Morph ENGINE (the pad's picture is only honest if this is) ----
@@ -3317,7 +3352,7 @@ int main()
         const StringArray expected {
             "master", "limiterOn",
             "sliceMode", "sliceCount", "sens",
-            "padOn", "padX", "padY",
+            "padOn", "padX", "padY", "morphMotion", "morphRate", "morphSize", "morphGlide",
             "gridOn", "gridSteps",
             "drive", "char", "crush", "squeeze", "tone", "width", "pump", "fxOn",
             "revMix", "revSize", "dlyMix", "dlyFb", "dlySync", "dlyMode", "haunt", "spaceOn", "revChar",

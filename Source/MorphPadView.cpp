@@ -14,14 +14,35 @@ MorphPadView::MorphPadView(Nebula2AudioProcessor& p) : processorRef(p)
     startTimerHz(30);
 }
 
+bool MorphPadView::motionActive() const
+{
+    auto* m = processorRef.getValueTreeState().getRawParameterValue(Nebula2::ParamID::morphMotion);
+    return m != nullptr && m->load() > 0.5f;   // anything but "Off"
+}
+
+void MorphPadView::effectivePos(float& x, float& y) const
+{
+    if (motionActive())
+    {
+        // Auto-motion: follow the processor's glided position (updates while audio runs).
+        x = processorRef.getMorphDrawX();
+        y = processorRef.getMorphDrawY();
+    }
+    else
+    {
+        // Static: follow the params directly, so the dot tracks the mouse/automation with
+        // no dependence on audio actually running.
+        auto& v = processorRef.getValueTreeState();
+        auto* px = v.getRawParameterValue(Nebula2::ParamID::padX);
+        auto* py = v.getRawParameterValue(Nebula2::ParamID::padY);
+        x = px != nullptr ? px->load() : 0.5f;
+        y = py != nullptr ? py->load() : 0.5f;
+    }
+}
+
 void MorphPadView::timerCallback()
 {
-    // Follow the PARAMETER, so host automation moves the dot exactly as the mouse does.
-    auto& v = processorRef.getValueTreeState();
-    auto* px = v.getRawParameterValue(Nebula2::ParamID::padX);
-    auto* py = v.getRawParameterValue(Nebula2::ParamID::padY);
-    const float x = px != nullptr ? px->load() : 0.5f;
-    const float y = py != nullptr ? py->load() : 0.5f;
+    float x, y; effectivePos(x, y);
     if (std::abs(x - lastX) > 0.0005f || std::abs(y - lastY) > 0.0005f)
     {
         lastX = x; lastY = y;
@@ -31,11 +52,7 @@ void MorphPadView::timerCallback()
 
 juce::Point<float> MorphPadView::dotPos() const
 {
-    auto& v = processorRef.getValueTreeState();
-    auto* px = v.getRawParameterValue(Nebula2::ParamID::padX);
-    auto* py = v.getRawParameterValue(Nebula2::ParamID::padY);
-    const float x = px != nullptr ? px->load() : 0.5f;
-    const float y = py != nullptr ? py->load() : 0.5f;
+    float x, y; effectivePos(x, y);
     return { x * (float) getWidth(), y * (float) getHeight() };
 }
 

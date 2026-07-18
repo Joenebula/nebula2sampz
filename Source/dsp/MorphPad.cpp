@@ -4,6 +4,52 @@
 
 namespace Nebula2
 {
+    void morphMotionOffset(MorphMotion mode, double phase, float size, float& dx, float& dy) noexcept
+    {
+        dx = dy = 0.0f;
+        if (mode == MorphMotion::Off || size <= 0.0f) return;
+
+        const double tau = phase * juce::MathConstants<double>::twoPi;
+        const float  s   = juce::jlimit(0.0f, 1.0f, size);
+
+        switch (mode)
+        {
+            case MorphMotion::Circle:
+                dx = (float) std::sin(tau) * s;
+                dy = (float) std::cos(tau) * s;
+                break;
+
+            case MorphMotion::Fig8:                 // lissajous 1:2 — a figure eight
+                dx = (float) std::sin(tau) * s;
+                dy = (float) std::sin(tau * 2.0) * s;
+                break;
+
+            case MorphMotion::Square:               // trace the square's edge, one side per quarter
+            {
+                const double p = phase - std::floor(phase);
+                const double seg = p * 4.0;
+                const int    e   = (int) seg;        // 0..3
+                const float  f   = (float) (seg - (double) e) * 2.0f - 1.0f;  // -1..1 along the edge
+                switch (e)
+                {
+                    case 0:  dx =  f;   dy = -1.0f; break;   // top edge, L->R
+                    case 1:  dx =  1.0f; dy =  f;   break;   // right edge, T->B
+                    case 2:  dx = -f;   dy =  1.0f; break;   // bottom edge, R->L
+                    default: dx = -1.0f; dy = -f;   break;   // left edge, B->T
+                }
+                dx *= s; dy *= s;
+                break;
+            }
+
+            case MorphMotion::Drift:                // two slow, coprime lobes = a wandering path
+                dx = (float) (std::sin(tau) * 0.6 + std::sin(tau * 0.37 + 1.3) * 0.4) * s;
+                dy = (float) (std::cos(tau * 0.83) * 0.6 + std::sin(tau * 1.29) * 0.4) * s;
+                break;
+
+            default: break;
+        }
+    }
+
     std::array<MorphScene, 4> defaultMorphScenes()
     {
         // Ported from the prototype's padSeedVariations().

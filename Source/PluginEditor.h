@@ -133,6 +133,10 @@ private:
     MorphPadView morphPad { processorRef };
     juce::ToggleButton padOnButton { "Morph On" };
     std::unique_ptr<APVTS::ButtonAttachment> padOnAttachment;
+    juce::ComboBox morphMotionBox, morphRateBox;
+    juce::Label morphMotionLabel, morphRateLabel;
+    std::unique_ptr<APVTS::ComboBoxAttachment> morphMotionAttachment, morphRateAttachment;
+    Knob morphSize, morphGlide;
 
     // Modular rack
     RackView rackView { processorRef };

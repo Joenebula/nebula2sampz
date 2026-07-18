@@ -93,6 +93,14 @@ namespace Nebula2
         layout.add(std::make_unique<APF>(
             PID{ ParamID::padY, version }, "Morph Y",
             juce::NormalisableRange<float>(0.0f, 1.0f, 0.001f), 0.5f));
+        layout.add(std::make_unique<APC>(
+            PID{ ParamID::morphMotion, version }, "Morph Motion",
+            juce::StringArray{ "Off", "Circle", "Fig-8", "Square", "Drift" }, 0));
+        layout.add(std::make_unique<APC>(
+            PID{ ParamID::morphRate, version }, "Morph Rate",
+            juce::StringArray{ "1 bar", "2 bars", "4 bars", "8 bars" }, 1));   // default 2 bars
+        layout.add(std::make_unique<APF>(PID{ ParamID::morphSize,  version }, "Morph Size",  pct(), 40.0f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::morphGlide, version }, "Morph Glide", pct(), 30.0f));
 
         // --- FX grid ---
         layout.add(std::make_unique<APB>(PID{ ParamID::gridOn, version }, "Grid On", false));

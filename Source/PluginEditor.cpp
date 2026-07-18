@@ -105,6 +105,12 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     content.addAndMakeVisible(padOnButton);
     padOnAttachment = std::make_unique<APVTS::ButtonAttachment>(
         processorRef.getValueTreeState(), Nebula2::ParamID::padOn, padOnButton);
+    addCombo(morphMotionBox, morphMotionLabel, Nebula2::ParamID::morphMotion, "Motion",
+             { "Off", "Circle", "Fig-8", "Square", "Drift" }, morphMotionAttachment);
+    addCombo(morphRateBox, morphRateLabel, Nebula2::ParamID::morphRate, "Every",
+             { "1 bar", "2 bars", "4 bars", "8 bars" }, morphRateAttachment);
+    addKnob(morphSize,  Nebula2::ParamID::morphSize,  "Size",  " %");
+    addKnob(morphGlide, Nebula2::ParamID::morphGlide, "Glide", " %");
 
     // --- Modular rack ---
     content.addAndMakeVisible(rackView);
@@ -225,7 +231,7 @@ int Nebula2AudioProcessorEditor::contentHeightFor(Page p) const
     switch (p)
     {
         case Page::play:  return 648;   // sample + colour + space (reverb/delay split)
-        case Page::morph: return 240;
+        case Page::morph: return 320;
         case Page::grid:  return 210;
         case Page::rack:  return 470;
         default:          return 560;
@@ -264,6 +270,9 @@ void Nebula2AudioProcessorEditor::showPage(Page p)
 
     morphPad.setVisible(morph);
     padOnButton.setVisible(morph);
+    morphMotionBox.setVisible(morph); morphMotionLabel.setVisible(morph);
+    morphRateBox.setVisible(morph);   morphRateLabel.setVisible(morph);
+    for (auto* k : { &morphSize, &morphGlide }) { k->slider.setVisible(morph); k->label.setVisible(morph); }
 
     gridView.setVisible(grid);
     gridOnButton.setVisible(grid);
@@ -485,7 +494,7 @@ void Nebula2AudioProcessorEditor::paintContent(juce::Graphics& g)
     }
     else if (page == Page::morph)
     {
-        Nebula2LookAndFeel::drawCard(g, body.removeFromTop(224.0f), "MORPH");
+        Nebula2LookAndFeel::drawCard(g, body.removeFromTop(300.0f), "MORPH");
     }
     else if (page == Page::grid)
     {
@@ -531,10 +540,32 @@ void Nebula2AudioProcessorEditor::layoutContent()
         // --- Morph page ---
         if (page == Page::morph)
         {
-            auto mp = body.removeFromTop(224).reduced(12);
+            auto mp = body.removeFromTop(300).reduced(12);
             mp.removeFromTop(14);
-            padOnButton.setBounds(mp.removeFromTop(22).removeFromLeft(110));
+
+            // Top row: Morph On, then the auto-motion controls (Motion, Every, Size, Glide).
+            auto row = mp.removeFromTop(24);
+            padOnButton.setBounds(row.removeFromLeft(100));
+            row.removeFromLeft(10);
+            morphMotionLabel.setBounds(row.removeFromLeft(44));
+            morphMotionBox.setBounds(row.removeFromLeft(88).reduced(0, 1));
+            row.removeFromLeft(10);
+            morphRateLabel.setBounds(row.removeFromLeft(40));
+            morphRateBox.setBounds(row.removeFromLeft(86).reduced(0, 1));
+
             mp.removeFromTop(6);
+            auto krow = mp.removeFromTop(20);
+            morphSize.label.setBounds(krow.removeFromLeft(36));
+            morphSize.slider.setSliderStyle(juce::Slider::LinearHorizontal);
+            morphSize.slider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 40, 18);
+            morphSize.slider.setBounds(krow.removeFromLeft(160));
+            krow.removeFromLeft(16);
+            morphGlide.label.setBounds(krow.removeFromLeft(40));
+            morphGlide.slider.setSliderStyle(juce::Slider::LinearHorizontal);
+            morphGlide.slider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 40, 18);
+            morphGlide.slider.setBounds(krow.removeFromLeft(160));
+
+            mp.removeFromTop(8);
             morphPad.setBounds(mp);
         }
         // --- Grid page ---

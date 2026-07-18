@@ -28,6 +28,11 @@ namespace Nebula2::ParamID
     inline constexpr auto padOn = "padOn";    // bool
     inline constexpr auto padX  = "padX";     // float 0..1
     inline constexpr auto padY  = "padY";     // float 0..1
+    // Auto-motion: the dot moves itself, tempo-locked, around the (padX,padY) centre.
+    inline constexpr auto morphMotion = "morphMotion";  // choice: Off/Circle/Fig8/Square/Drift
+    inline constexpr auto morphRate   = "morphRate";     // choice: 1/2/4/8 bar
+    inline constexpr auto morphSize   = "morphSize";     // float 0..100 % (travel radius)
+    inline constexpr auto morphGlide  = "morphGlide";    // float 0..100 % (smoothing)
 
     // --- FX grid sequencer ---
     inline constexpr auto gridOn    = "gridOn";     // bool
