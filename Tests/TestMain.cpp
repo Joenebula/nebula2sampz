@@ -527,6 +527,42 @@ int main()
             check(diff > 1.0, "delay warp: the LFO drifts the tail away from a static ping-pong");
         }
 
+        // END-TO-END through SpaceProcessor, processed in real host-sized blocks so the
+        // delay time actually fits and echoes appear. (The user reported "it stayed the
+        // same" — this proves the whole DSP path from Params::mode down truly differs. If
+        // it passes, the fault is upstream: the processor's param->mode read, or a stale
+        // build.)
+        {
+            const int blk = 512;
+            juce::dsp::ProcessSpec sspec; sspec.sampleRate = 48000.0;
+            sspec.maximumBlockSize = (juce::uint32) blk; sspec.numChannels = 2;
+
+            auto spaceTotalEnergyR = [&](DelayMode mode)
+            {
+                SpaceProcessor sp;
+                sp.prepare(sspec);
+                SpaceProcessor::Params p;
+                p.on = true; p.revMix = 0.0f; p.dlyMix = 80.0f; p.dlyFb = 70.0f;
+                p.dlySync = DelaySync::Sixteenth; p.bpm = 200.0; p.mode = mode;  // 1/16 @200 = 3600 smp
+                std::vector<float> captureR;
+                for (int block = 0; block < 60; ++block)   // ~0.6 s, several echoes
+                {
+                    AudioBuffer<float> b(2, blk); b.clear();
+                    if (block == 0)
+                        for (int i = 0; i < 64; ++i) { b.setSample(0, i, 0.6f); b.setSample(1, i, 0.6f); }
+                    sp.process(b, p);
+                    for (int i = 0; i < blk; ++i) captureR.push_back(b.getSample(1, i));
+                }
+                return captureR;
+            };
+            const auto rPing = spaceTotalEnergyR(DelayMode::PingPong);
+            const auto rDub  = spaceTotalEnergyR(DelayMode::Dub);
+            double diff = 0.0;
+            for (size_t i = 0; i < rPing.size(); ++i) diff += std::abs(rPing[i] - rDub[i]);
+            check(diff > 0.5,
+                  "delay: switching mode through SpaceProcessor genuinely changes the output");
+        }
+
         // Convolution reverb engine. (Qualified: juce also has a juce::Reverb, and this
         // scope has `using namespace juce`, so the bare name would be ambiguous.)
         Nebula2::Reverb rev;
