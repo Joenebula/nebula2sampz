@@ -6,6 +6,10 @@ Read [`CLAUDE.md`](CLAUDE.md) and [`docs/VST_WORKFLOW.md`](docs/VST_WORKFLOW.md)
 making changes — they carry the working agreement and the phased roadmap this project
 follows.
 
+Handing a build to testers? Give them [`docs/BETA_TESTERS.md`](docs/BETA_TESTERS.md) —
+note map, what each page does, and the two things they need to know before they start
+(the release identity isn't set, and there is one known crash).
+
 ## Build
 
 Requires CMake 3.22+ and a C++17 compiler (Visual Studio 2022 Build Tools on Windows).
