@@ -33,8 +33,8 @@ you did.
 
 | Notes | What they play |
 |---|---|
-| **C3** (48) | the whole loop — the root, and the one you reach for first |
-| **C#3** (49) and up | slice 1, 2, 3… |
+| **C3** (MIDI 60) | the whole loop — the root, and the one you reach for first |
+| **C#3** (MIDI 61) and up | slice 1, 2, 3… |
 | any other key | wraps round, so every key plays something |
 
 You can draw a note anywhere on the piano roll and hear it. It didn't used to work that way:

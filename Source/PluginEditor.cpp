@@ -863,6 +863,20 @@ void Nebula2AudioProcessorEditor::loadSampleFile(const juce::File& f)
     waveform.sampleChanged();   // the picture depends on the sample — invalidate the cache
 }
 
+// The note map, named from the constants that define it. Both the header strip and the
+// sample info line call this. They used to spell the notes out by hand, which is why the
+// info line still claimed "B4 = whole break, C5+ = slices" two note maps after that stopped
+// being true — the same fact written twice, and the copy nobody edited was the one on screen.
+static juce::String noteMapBlurb (bool withArrow)
+{
+    using SL = Nebula2::SampleLayer;
+    const auto name = [] (int n) {
+        return juce::MidiMessage::getMidiNoteName (n, true, true, SL::octaveNumForMiddleC);
+    };
+    return name (SL::wholeSampleNote) + (withArrow ? " = the loop   |   " : " = whole break, ")
+         + name (SL::baseNote) + (withArrow ? "+ = slices   |   any key plays" : "+ = slices");
+}
+
 void Nebula2AudioProcessorEditor::refreshSampleInfo()
 {
     auto& layer = processorRef.getSampleLayer();
@@ -875,7 +889,7 @@ void Nebula2AudioProcessorEditor::refreshSampleInfo()
     const auto bpm = layer.getDetectedBpm();
     juce::String t = layer.getSampleName() + "  -  " + juce::String(layer.getNumSlices()) + " slices";
     if (bpm > 0.0) t += "  -  " + juce::String(bpm, 1) + " BPM";
-    t += "   (B4 = whole break, C5+ = slices)";
+    t += "   (" + noteMapBlurb (false) + ")";
     sampleInfo.setText(t, juce::dontSendNotification);
 }
 
@@ -961,7 +975,7 @@ void Nebula2AudioProcessorEditor::paint(juce::Graphics& g)
     g.setFont(Theme::mono(10.0f));
     // No drum-note range here any more: the synth-drum layer is gone, so advertising
     // "drums 36-46" would be the header promising a sound the plugin no longer makes.
-    g.drawFittedText("C3 = the loop   |   C#3+ = slices   |   any key plays",
+    g.drawFittedText(noteMapBlurb (true),
                      title, juce::Justification::centredLeft, 1);
 
     g.setColour(Theme::line);

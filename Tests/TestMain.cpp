@@ -1304,6 +1304,29 @@ int main()
             check(layer.activeVoiceCount() > 0, "sample: the root plays slice 1");
         }
 
+        // The note map is ABSOLUTE, not relative. Every other test here drives
+        // SampleLayer::baseNote, so they all passed happily while the constant itself was an
+        // octave out and the user's C3 played slice 12. A test written in terms of the thing
+        // under test cannot detect that the thing is wrong: this one names the note.
+        //
+        // 60, because Cubase/Ableton/Logic all call MIDI 60 "C3". If a future change moves
+        // the map, this fails and forces the DAW-facing question to be asked out loud.
+        {
+            check(SampleLayer::wholeSampleNote == 60,
+                  "sample: the whole break sits on MIDI 60 - what DAWs name C3");
+            check(juce::MidiMessage::getMidiNoteName(SampleLayer::wholeSampleNote, true, true,
+                                                     SampleLayer::octaveNumForMiddleC) == "C3",
+                  "sample: the root note names as C3");
+            check(juce::MidiMessage::getMidiNoteName(SampleLayer::baseNote, true, true,
+                                                     SampleLayer::octaveNumForMiddleC) == "C#3",
+                  "sample: slice 1 names as C#3");
+
+            // ...and the note the user actually pressed does what the header claims.
+            layer.reset();
+            layer.noteOn(60, 1.0f);
+            check(layer.activeVoiceCount() > 0, "sample: MIDI 60 sounds");
+        }
+
         // B4 plays the WHOLE break, not a slice — it must run far longer than one chop and
         // sweep the entire file.
         {

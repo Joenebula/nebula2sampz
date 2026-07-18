@@ -17,8 +17,12 @@ namespace Nebula2
     // thread only ever reads that pointer. Superseded data is retained (never freed while
     // the audio thread might still be reading it).
     //
-    // Note map: C3 (48) plays the WHOLE break (the loop); C#3 (49) upward plays slice 1, 2,
+    // Note map: C3 (60) plays the WHOLE break (the loop); C#3 (61) upward plays slice 1, 2,
     // 3... C3 is the root because the loop is what you reach for first.
+    //
+    // 60 is C3 in Cubase, Ableton and Logic. Note NAMES are a naming convention, not part of
+    // MIDI, and the other one calls 60 "C4" — so "C3" alone doesn't specify a note. Getting
+    // that backwards is what put the loop an octave below the key the user pressed.
     //
     // EVERY OTHER KEY PLAYS SOMETHING. Notes outside the slice range wrap, so there are no
     // dead keys — you can draw a note anywhere on the piano roll and hear a chop.
@@ -40,8 +44,17 @@ namespace Nebula2
         // C3 is the LOOP — the whole break — because that is the thing you reach for first.
         // The slices climb from just above it, so the root and its chops sit together
         // rather than the loop hiding a semitone below where you would look for it.
-        static constexpr int wholeSampleNote = 48;                 // C3 = the WHOLE break
+        //
+        // 60, not 48. Cubase, Ableton and Logic all name MIDI note 60 "C3" (middle C = C3).
+        // The other convention calls 60 "C4", and taking it put the loop an octave below
+        // where the user's own DAW said C3 was: playing C3 in Cubase sent note 60, which
+        // fell past the whole-break note and wrapped onto slice 12.
+        static constexpr int wholeSampleNote = 60;                 // C3 = the WHOLE break
         static constexpr int baseNote = wholeSampleNote + 1;       // C#3 = slice 1, upward
+
+        // The octave number that makes wholeSampleNote read as "C3". Any UI text naming
+        // these notes derives from here, so a label can never drift from the map again.
+        static constexpr int octaveNumForMiddleC = 3;
         static constexpr int maxVoices = 8;
 
         SampleLayer();
