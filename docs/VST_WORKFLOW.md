@@ -229,11 +229,16 @@ feedback path only. Ping-Pong therefore sounds different (wider) than the old sy
 version — that's D7, approved. `dlyMode` param + DELAY-section dropdown. RT-safe across mode
 changes. So D6 and D7 are now both resolved.
 
-**Remaining prototype feature omissions (still open, in rough priority):** the rack module
-visual screens (EQ curve / vowel formants / fold curve / scope — modules have dials but no
-meters); the "haunt" drone; and the movable-band EQ (needs a drag-band UI). The first and
-third are UI-heavy — verifiable only via the user's screenshots (see
-[[self-checking-verifiers]]).
+**2026-07-18 — Haunt drone done.** Picks the longest slice, loops it two octaves down
+through a 1400 Hz lowpass, swells in, routed into Space so the reverb/delay make a pad. In
+SampleLayer, RT-safe, `haunt` param + DELAY-section knob. This clears the last DSP-only
+omission.
+
+**Remaining prototype omissions — ALL UI now, so blocked on the user's screenshots to
+verify (see [[self-checking-verifiers]]):** the rack module visual screens (EQ curve /
+vowel formants / fold curve / scope — modules have dials but no meters); and the
+movable-band EQ (needs a drag-band editor). Plus the still-open **macOS crash** (needs a
+backtrace) and **release identity** (needs the user's company name / code).
 
 Everything below this point is the **original planning document**, written before the
 above decisions, and is being updated in place as phases complete. Part B's recommendation
