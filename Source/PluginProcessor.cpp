@@ -21,6 +21,8 @@ Nebula2AudioProcessor::Nebula2AudioProcessor()
     reverseParam   = apvts.getRawParameterValue(Nebula2::ParamID::reverse);
     stutterParam   = apvts.getRawParameterValue(Nebula2::ParamID::stutter);
     shatterParam   = apvts.getRawParameterValue(Nebula2::ParamID::shatter);
+    pitchUpParam   = apvts.getRawParameterValue(Nebula2::ParamID::pitchUp);
+    pitchDownParam = apvts.getRawParameterValue(Nebula2::ParamID::pitchDown);
     fxOnParam      = apvts.getRawParameterValue(Nebula2::ParamID::fxOn);
     revMixParam    = apvts.getRawParameterValue(Nebula2::ParamID::revMix);
     revCharParam   = apvts.getRawParameterValue(Nebula2::ParamID::revChar);
@@ -278,7 +280,41 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
         }
     }
 
+    // --- FX grid ---
+    // The grid does NOT write parameters (that was the prototype's slider-killing bug).
+    // It reads the knobs and produces the amount for THIS step; the knob stays the single
+    // source of truth and always sets the ceiling.
+    //
+    // This is resolved BEFORE the layers render because the Pitch +/- lanes act at
+    // note-on: the transpose has to be in place before the chop for this step starts,
+    // not a block later.
+    const bool gridOn = gridOnParam != nullptr && gridOnParam->load() > 0.5f;
+    int step = -1;
+    if (gridOn)
+    {
+        const int steps = gridStepsFromChoice(gridStepsParam != nullptr ? (int) gridStepsParam->load() : 1);
+        grid.setNumSteps(steps);
+        step = Nebula2::FxGrid::stepAtPpq(transport.ppq, steps, 0.25);   // 1/16-note steps
+    }
+    currentGridStep.store(step);
+
+    // Reads a knob, then lets the grid gate it for this step (pass-through when off).
+    const auto amt = [this, gridOn, step](std::atomic<float>* p, Nebula2::GridRow row, float fallback)
+    {
+        const float panel = p != nullptr ? p->load() : fallback;
+        return gridOn ? grid.amountFor(row, panel, step) : panel;
+    };
+
     sampleLayer.setHostBpm(transport.bpm);
+
+    // PITCH +/-: two lanes, one transpose. Full on a lane is an octave (the prototype's
+    // ±12 at level 3). They oppose rather than fight — paint both and they cancel, which
+    // is the only reading that isn't arbitrary.
+    {
+        const float up   = amt(pitchUpParam,   Nebula2::GridRow::PitchUp,   0.0f);
+        const float down = amt(pitchDownParam, Nebula2::GridRow::PitchDown, 0.0f);
+        sampleLayer.setPitchOffsetSemitones((up - down) * 0.12f);   // 100% -> 12 semitones
+    }
 
     // Both layers render in sub-blocks split at MIDI event positions, so hits land
     // sample-accurately rather than snapping to the block grid. Notes route by range:
@@ -321,27 +357,6 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
         buffer.addFrom(c, 0, sampleBus, c, 0, numSamples);
         buffer.addFrom(c, 0, drumBus,   c, 0, numSamples);
     }
-
-    // --- FX grid ---
-    // The grid does NOT write parameters (that was the prototype's slider-killing bug).
-    // It reads the knobs and produces the amount for THIS step; the knob stays the single
-    // source of truth and always sets the ceiling.
-    const bool gridOn = gridOnParam != nullptr && gridOnParam->load() > 0.5f;
-    int step = -1;
-    if (gridOn)
-    {
-        const int steps = gridStepsFromChoice(gridStepsParam != nullptr ? (int) gridStepsParam->load() : 1);
-        grid.setNumSteps(steps);
-        step = Nebula2::FxGrid::stepAtPpq(transport.ppq, steps, 0.25);   // 1/16-note steps
-    }
-    currentGridStep.store(step);
-
-    // Reads a knob, then lets the grid gate it for this step (pass-through when off).
-    const auto amt = [this, gridOn, step](std::atomic<float>* p, Nebula2::GridRow row, float fallback)
-    {
-        const float panel = p != nullptr ? p->load() : fallback;
-        return gridOn ? grid.amountFor(row, panel, step) : panel;
-    };
 
     // Colour: drive -> crush/width -> squeeze -> tone, on the summed layers.
     {

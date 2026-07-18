@@ -3473,6 +3473,150 @@ int main()
         }
     }
 
+    // ---- SampleLayer transpose (the grid's Pitch +/- lanes) ----
+    {
+        using namespace Nebula2;
+        const double pSr = 48000.0;
+
+        // A one-second 200 Hz sine as the "break". A sine, because pitch is the thing under
+        // test and a sine has exactly one frequency to measure.
+        auto makeTone = [pSr](double freq)
+        {
+            AudioBuffer<float> a(2, (int) pSr);
+            for (int i = 0; i < a.getNumSamples(); ++i)
+            {
+                const float v = 0.5f * std::sin(MathConstants<float>::twoPi * (float) freq
+                                                * (float) i / (float) pSr);
+                a.setSample(0, i, v); a.setSample(1, i, v);
+            }
+            return a;
+        };
+
+        // Zero crossings over a window: a crude but honest frequency estimate, no FFT needed.
+        auto crossings = [](const AudioBuffer<float>& b, int from, int to)
+        {
+            int n = 0;
+            for (int i = jmax(1, from); i < jmin(to, b.getNumSamples()); ++i)
+                if ((b.getSample(0, i - 1) < 0.0f) != (b.getSample(0, i) < 0.0f)) ++n;
+            return n;
+        };
+
+        auto renderAt = [&](float semis, bool setIt)
+        {
+            SampleLayer sl;
+            sl.prepare(pSr, 512);
+            auto tone = makeTone(200.0);
+            sl.loadBuffer(std::move(tone), pSr, "tone");
+            sl.setStretchEnabled(false);
+            if (setIt) sl.setPitchOffsetSemitones(semis);
+            sl.noteOn(SampleLayer::wholeSampleNote, 1.0f);
+            AudioBuffer<float> out(2, 12000);
+            out.clear();
+            sl.render(out, 0, 12000);
+            return out;
+        };
+
+        const auto flat = renderAt(0.0f, true);
+        const auto up   = renderAt(12.0f, true);
+        const auto down = renderAt(-12.0f, true);
+
+        // Measure past the first grain so the OLA is in steady state.
+        const int a0 = 2000, a1 = 11000;
+        const int cFlat = crossings(flat, a0, a1);
+        const int cUp   = crossings(up,   a0, a1);
+        const int cDown = crossings(down, a0, a1);
+
+        check(cFlat > 50, "pitch: the reference render actually produced a tone — "
+                          + String(cFlat) + " crossings");
+        check(cUp > (int) (cFlat * 1.7) && cUp < (int) (cFlat * 2.3),
+              "pitch: +12 semitones doubles the frequency — " + String(cFlat)
+              + " -> " + String(cUp));
+        check(cDown < (int) (cFlat * 0.65) && cDown > (int) (cFlat * 0.35),
+              "pitch: -12 semitones halves the frequency — " + String(cFlat)
+              + " -> " + String(cDown));
+
+        // The whole point of the divergence: transposing must NOT change how long the chop
+        // lasts, or a painted step knocks the pattern out of time.
+        //
+        // Measured WITHIN each render, not across them. Comparing absolute levels between a
+        // transposed and an untransposed render tests the wrong thing: granular transposition
+        // makes adjacent grains phase-incoherent, so a pure sine partially cancels and the
+        // level drops (~-7 dB here) with the length completely unchanged. That is a timbre
+        // property of the method, not a duration change. What "same length" actually means
+        // is that the envelope has the same SHAPE — still sounding at the same point through
+        // the chop — which is a tail-to-middle ratio inside one render.
+        // ...measured with a LANDMARK, not an envelope. A silent source with one short
+        // burst at a known input position: time-preserving transposition puts the burst out
+        // at the same time it went in, a repitch moves it (an octave down lands it twice as
+        // late). An energy-shape test does NOT discriminate here — it passed a deliberate
+        // repitch mutant — because the voice's outDur is set independently of the read rate.
+        auto burstPeak = [&](float semis)
+        {
+            AudioBuffer<float> a(2, (int) pSr);
+            a.clear();
+            for (int i = 6000; i < 6600; ++i)      // 12.5 ms burst at input sample 6000
+            {
+                a.setSample(0, i, 0.9f); a.setSample(1, i, 0.9f);
+            }
+            SampleLayer sl;
+            sl.prepare(pSr, 512);
+            sl.loadBuffer(std::move(a), pSr, "burst");
+            sl.setStretchEnabled(false);
+            sl.setPitchOffsetSemitones(semis);
+            sl.noteOn(SampleLayer::wholeSampleNote, 1.0f);
+            AudioBuffer<float> out(2, 24000);
+            out.clear();
+            sl.render(out, 0, 24000);
+
+            int best = -1; float bestV = 0.02f;    // above the OLA's noise floor
+            for (int i = 0; i < 24000; ++i)
+            {
+                const float v = std::abs(out.getSample(0, i));
+                if (v > bestV) { bestV = v; best = i; }
+            }
+            return best;
+        };
+        const int pFlat = burstPeak(0.0f), pUp = burstPeak(12.0f), pDown = burstPeak(-12.0f);
+        check(pFlat > 5000 && pFlat < 7500,
+              "pitch: the landmark burst lands where it went in — " + String(pFlat));
+        check(std::abs(pUp - pFlat) < 1200 && std::abs(pDown - pFlat) < 1200,
+              "pitch: transposing does NOT move the chop in time (no repitch smear)"
+              " — flat " + String(pFlat) + ", +12 " + String(pUp)
+              + ", -12 " + String(pDown));
+
+        // Zero must mean zero: bit-exact against a layer never told about pitch at all.
+        {
+            const auto untouched = renderAt(0.0f, false);
+            bool same = true;
+            for (int i = 0; i < 12000; ++i)
+                if (untouched.getSample(0, i) != flat.getSample(0, i)) same = false;
+            check(same, "pitch: an offset of 0 is bit-exact — the lane costs nothing unpainted");
+        }
+
+        // Real-time safety: setting the transpose and rendering must not touch the heap.
+        {
+            SampleLayer sl;
+            sl.prepare(pSr, 512);
+            auto tone = makeTone(200.0);
+            sl.loadBuffer(std::move(tone), pSr, "tone");
+            AudioBuffer<float> out(2, 512);
+            sl.setPitchOffsetSemitones(7.0f);
+            sl.noteOn(SampleLayer::wholeSampleNote, 1.0f);
+            out.clear(); sl.render(out, 0, 512);          // warm up outside the watch
+
+            rtcheck::Scope watch;
+            for (int i = 0; i < 20; ++i)
+            {
+                sl.setPitchOffsetSemitones(i % 2 == 0 ? 12.0f : -12.0f);
+                out.clear();
+                sl.render(out, 0, 512);
+            }
+            const int n = watch.count();
+            check(n == 0, "rt: SampleLayer transpose allocates nothing"
+                          + (n == 0 ? String() : " — got " + String(n)));
+        }
+    }
+
     // ---- Grid lanes: 16 storage rows, only the implemented ones shown ----
     {
         using namespace Nebula2;
@@ -3505,7 +3649,7 @@ int main()
         // The lanes whose effects DON'T exist yet must NOT be shown. Shrink this list as
         // each effect lands — it failing after you build one is the test doing its job.
         bool hidesUnbuilt = true;
-        for (auto r : { GridRow::Resonate, GridRow::PitchUp, GridRow::PitchDown })
+        for (auto r : { GridRow::Resonate })
             for (auto shown : order)
                 if (shown == r) hidesUnbuilt = false;
         check(hidesUnbuilt,
@@ -3558,7 +3702,7 @@ int main()
             "padOn", "padX", "padY", "morphMotion", "morphRate", "morphSize", "morphGlide",
             "gridOn", "gridSteps",
             "drive", "char", "crush", "squeeze", "tone", "width", "pump", "gate",
-            "reverse", "stutter", "shatter", "fxOn",
+            "reverse", "stutter", "shatter", "pitchUp", "pitchDown", "fxOn",
             "revMix", "revSize", "dlyMix", "dlyFb", "dlySync", "dlyMode", "haunt", "spaceOn", "revChar",
             "rackOn",
             "flt.cut", "flt.res", "flt.type",

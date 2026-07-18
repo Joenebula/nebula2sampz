@@ -359,7 +359,16 @@ namespace Nebula2
         v.releaseLen = juce::jmax(1.0, 0.005 * hostRate);   // 5 ms
 
         // Native pitch: 1 output sample advances the source by sourceSR/hostSR.
-        v.pitchRate = s->sourceSampleRate / hostRate;
+        const double nativeRate = s->sourceSampleRate / hostRate;
+
+        // Transpose (grid Pitch +/-). Only the grain READ speed moves; hopIn below is
+        // computed from nativeRate, so the chop's LENGTH is untouched. Exactly 1.0 when
+        // the offset is 0, so an unpainted lane is bit-for-bit the old behaviour.
+        const double transpose = pitchOffsetSemis == 0.0f
+                               ? 1.0
+                               : std::pow(2.0, (double) pitchOffsetSemis / 12.0);
+        v.nativeRate = nativeRate;
+        v.pitchRate  = nativeRate * transpose;
 
         const double inSamples = juce::jmax(1.0, v.sliceEnd - v.sliceStart);
         const double inSeconds = inSamples / s->sourceSampleRate;
@@ -379,7 +388,7 @@ namespace Nebula2
         v.hopOut   = v.grainOut * 0.5;
         // Input hop: how far through the source each successive grain starts. This is the
         // only thing that changes with stretch — the grains themselves stay at native pitch.
-        v.hopIn    = v.hopOut * v.pitchRate / juce::jmax(1.0e-6, stretch);
+        v.hopIn    = v.hopOut * nativeRate / juce::jmax(1.0e-6, stretch);
 
         v.active = true;
     }
@@ -457,7 +466,16 @@ namespace Nebula2
                     // what should follow. Wrapping instead jumped mid-grain back to the
                     // chop's beginning, so the last chunk of every slice never played.
                     // readAt() returns 0 outside the buffer, so the end is safe.
-                    const double read = v.sliceStart + (double) k * v.hopIn + localT * v.pitchRate;
+                    //
+                    // Anchored at the grain's CENTRE, not its start. Reading a transposed
+                    // grain from its start drifts the whole grain forward by up to its own
+                    // length (~45 ms), which moves the chop in time — a landmark burst came
+                    // out 35 ms early at +12. Pivoting about the centre makes that error
+                    // symmetric within the grain so it cancels across the overlap, and the
+                    // chop stays put. Identical to reading from the start when pitchRate ==
+                    // nativeRate, so an untransposed voice is bit-for-bit unchanged.
+                    const double read = v.sliceStart + (double) k * v.hopIn
+                                      + half * v.nativeRate + (localT - half) * v.pitchRate;
 
                     for (int c = 0; c < busChs && c < 2; ++c)
                         acc[c] += readAt(c, read) * w;

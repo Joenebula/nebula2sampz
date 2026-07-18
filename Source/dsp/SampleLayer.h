@@ -69,6 +69,22 @@ namespace Nebula2
         void renderHaunt(juce::AudioBuffer<float>& bus, int startSample, int numSamples,
                          float hauntAmt) noexcept;
 
+        // Transpose, in semitones. The grid's Pitch +/- lanes drive this: it applies to
+        // voices started AFTER it's set, so a painted step transposes the chop that lands
+        // on it and leaves whatever is already sounding alone.
+        //
+        // DIVERGENCE from the prototype, deliberate: the prototype changes playbackRate,
+        // so a slice dropped an octave also takes twice as long and smears over the next
+        // step. Here only the grain READ speed is transposed — the grain SPACING stays
+        // native, so the chop keeps its length and still lands on the beat. On a grid lane
+        // that is the point: a step effect that knocks the pattern out of time is a bug
+        // wearing a feature's coat.
+        void setPitchOffsetSemitones(float semitones) noexcept
+        {
+            pitchOffsetSemis = juce::jlimit(-24.0f, 24.0f, semitones);
+        }
+        float getPitchOffsetSemitones() const noexcept { return pitchOffsetSemis; }
+
         // Host tempo, so slices can be stretched to fit the grid. 0 = unknown (no stretch).
         void setHostBpm(double bpm) noexcept { hostBpm = bpm; }
 
@@ -148,7 +164,8 @@ namespace Nebula2
             double grainOut = 0.0;      // grain length, in OUTPUT samples
             double hopOut = 0.0;        // grain spacing out (= grainOut/2, 50% overlap)
             double hopIn = 0.0;         // grain spacing in INPUT samples
-            double pitchRate = 1.0;     // input samples per output sample (native pitch)
+            double pitchRate = 1.0;     // input samples per output sample (transposed)
+            double nativeRate = 1.0;    // ...and the untransposed rate, to anchor grain centres
 
             // Short fade on note-off so gating a chop doesn't click.
             double release = -1.0;      // samples remaining; < 0 = not releasing
@@ -190,6 +207,7 @@ namespace Nebula2
         std::array<Voice, maxVoices> voices;
         double hostRate = 44100.0;
         double hostBpm = 0.0;
+        float pitchOffsetSemis = 0.0f;    // grid Pitch +/-; read at note-on
         bool stretchEnabled = true;
         SliceSettings slicing;
         juce::String sourcePath;

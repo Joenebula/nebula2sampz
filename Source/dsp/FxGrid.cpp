@@ -35,9 +35,10 @@ namespace Nebula2
         static const std::vector<GridRow> order = {
             GridRow::Tone,      // the prototype labels this lane "Filter"
             GridRow::Drive, GridRow::Crush, GridRow::Squeeze, GridRow::Pump, GridRow::Width,
+            GridRow::PitchUp, GridRow::PitchDown,
             GridRow::Reverse, GridRow::Stutter, GridRow::Shatter, GridRow::Gate,
             GridRow::Reverb, GridRow::Delay, GridRow::Haunt
-            // Still to come (effects not built yet): Resonate, PitchUp, PitchDown.
+            // Still to come (effects not built yet): Resonate.
         };
         return order;
     }

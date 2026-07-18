@@ -50,6 +50,8 @@ namespace Nebula2::ParamID
     inline constexpr auto reverse   = "reverse";   // float 0..100  % (play the step backwards)
     inline constexpr auto stutter   = "stutter";   // float 0..100  % (repeat a chunk of the step)
     inline constexpr auto shatter   = "shatter";   // float 0..100  % (tempo-locked 1/16 gate)
+    inline constexpr auto pitchUp   = "pitchUp";   // float 0..100  % (transpose the chop up, to +12 st)
+    inline constexpr auto pitchDown = "pitchDown"; // float 0..100  % (transpose the chop down, to -12 st)
     inline constexpr auto fxOn      = "fxOn";      // bool
 
     // --- Space (live: parallel reverb + tempo-synced delay send) ---
