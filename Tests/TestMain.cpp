@@ -3475,6 +3475,141 @@ int main()
         }
     }
 
+    // ---- Slice order: rearranging the break ----
+    {
+        using namespace Nebula2;
+
+        // A shuffle must be a PERMUTATION. n independent picks would let one slice play
+        // twice while another never played at all — audibly a different thing from "the
+        // same break rearranged", and not what the button claims to do.
+        for (int count : { 4, 8, 16, 32, 64 })
+        {
+            juce::Random rng(count * 31 + 7);
+            const auto order = shuffledSliceOrder(count, rng);
+            check((int) order.size() == count,
+                  "slice order: shuffling " + String(count) + " gives " + String(count) + " entries");
+
+            std::vector<bool> seen((size_t) count, false);
+            bool inRange = true, dupe = false;
+            for (int v : order)
+            {
+                if (v < 0 || v >= count) { inRange = false; continue; }
+                if (seen[(size_t) v]) dupe = true;
+                seen[(size_t) v] = true;
+            }
+            bool all = true;
+            for (bool b : seen) if (! b) all = false;
+            check(inRange && ! dupe && all,
+                  "slice order: " + String(count) + " slices shuffle to a true permutation"
+                  " (every slice once, none lost)");
+        }
+
+        // It has to actually MOVE something, or "shuffle" is a button that does nothing.
+        {
+            juce::Random rng(5);
+            const auto order = shuffledSliceOrder(16, rng);
+            int moved = 0;
+            for (int i = 0; i < 16; ++i) if (order[(size_t) i] != i) ++moved;
+            check(moved >= 8, "slice order: a shuffle genuinely rearranges — " + String(moved) + "/16 moved");
+        }
+
+        {
+            juce::Random rng(1);
+            check(shuffledSliceOrder(0, rng).empty(),
+                  "slice order: zero slices gives an empty order, not a crash");
+            check(shuffledSliceOrder(1, rng).size() == 1, "slice order: one slice is a no-op, not a crash");
+            check(shuffledSliceOrder(1000, rng).size() == (size_t) SampleLayer::maxSlices,
+                  "slice order: a silly count clamps to maxSlices");
+        }
+
+        // --- the map on the layer itself ---
+        {
+            SampleLayer sl;
+            check(sl.sliceForPad(0) == 0 && sl.sliceForPad(7) == 7,
+                  "slice order: identity by default — an untouched break plays in its own order");
+
+            sl.setSliceOrder({ 3, 2, 1, 0 });
+            check(sl.sliceForPad(0) == 3 && sl.sliceForPad(3) == 0,
+                  "slice order: a set order is what the pads play");
+            check(sl.sliceForPad(9) == 9,
+                  "slice order: pads beyond the given order fall back to identity");
+
+            // A corrupt entry must degrade to "plays itself", NOT to slice 0 — otherwise a
+            // stale map turns the whole break into one repeated chop.
+            sl.setSliceOrder({ -5, 9999, 2 });
+            check(sl.sliceForPad(0) == 0 && sl.sliceForPad(1) == 1 && sl.sliceForPad(2) == 2,
+                  "slice order: out-of-range entries fall back to identity, not to slice 0");
+
+            sl.setSliceOrder({ 3, 2, 1, 0 });
+            sl.resetSliceOrder();
+            check(sl.sliceForPad(0) == 0 && sl.sliceForPad(3) == 3,
+                  "slice order: reset puts the original arrangement back");
+        }
+
+        // Round trip: the arrangement has to survive a save, or a shuffled break comes back
+        // in its original order and the work is silently lost.
+        {
+            SampleLayer a, b;
+            juce::Random rng(77);
+            a.setSliceOrder(shuffledSliceOrder(32, rng));
+            b.sliceOrderFromString(a.sliceOrderToString());
+            bool same = true;
+            for (int i = 0; i < SampleLayer::maxSlices; ++i)
+                if (a.sliceForPad(i) != b.sliceForPad(i)) same = false;
+            check(same, "slice order: survives a save/restore round trip");
+
+            SampleLayer c;
+            c.setSliceOrder({ 5, 4, 3 });
+            c.sliceOrderFromString("");
+            check(c.sliceForPad(0) == 0, "slice order: an empty saved order restores identity");
+            c.sliceOrderFromString("garbage,,,,");
+            check(c.sliceForPad(1) == 1, "slice order: a corrupt saved order degrades to identity");
+        }
+
+        // And it must reach the AUDIO — a map nothing reads is decoration. Build a break
+        // whose slices are distinguishable by level, then check the pad plays the mapped one.
+        {
+            const double sr = 48000.0;
+            const int sliceLen = 4800;                 // 0.1 s each
+            AudioBuffer<float> audio(2, sliceLen * 4);
+            for (int s = 0; s < 4; ++s)
+                for (int i = 0; i < sliceLen; ++i)
+                {
+                    const float v = 0.2f * (float) (s + 1);   // slice s has level (s+1)*0.2
+                    audio.setSample(0, s * sliceLen + i, v);
+                    audio.setSample(1, s * sliceLen + i, v);
+                }
+
+            auto levelForPad = [&](const std::vector<int>& order, int pad)
+            {
+                SampleLayer sl;
+                sl.prepare(sr, 512);
+                auto copy = audio;
+                sl.loadBuffer(std::move(copy), sr, "steps");
+                SampleLayer::SliceSettings ss; ss.count = 4; ss.transient = false;
+                sl.setSliceSettings(ss);
+                sl.setStretchEnabled(false);
+                if (! order.empty()) sl.setSliceOrder(order);
+                sl.noteOn(SampleLayer::baseNote + pad, 1.0f);
+
+                AudioBuffer<float> out(2, 2048);
+                out.clear();
+                sl.render(out, 0, 2048);
+                double sum = 0.0;
+                for (int i = 500; i < 2000; ++i) sum += std::abs(out.getSample(0, i));
+                return sum / 1500.0;
+            };
+
+            const double plain = levelForPad({}, 0);              // pad 0 -> slice 0 (0.2)
+            const double mapped = levelForPad({ 3, 2, 1, 0 }, 0); // pad 0 -> slice 3 (0.8)
+            check(plain > 0.05, "slice order: the reference pad actually sounded — "
+                                + String(plain, 3));
+            check(mapped > plain * 2.0,
+                  "slice order: the map reaches the audio — pad 0 played a different slice ("
+                  + String(plain, 3) + " -> " + String(mapped, 3) + ")");
+        }
+    }
+
     // ---- Grid presets: built-ins, and user patterns on disk ----
     {
         using namespace Nebula2;

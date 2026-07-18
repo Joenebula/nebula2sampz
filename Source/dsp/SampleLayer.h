@@ -19,6 +19,11 @@ namespace Nebula2
     // All clear of the GM drum notes (36-46, 75), so the two layers can't fight over a key.
     // Both are gated by note length and both follow the host tempo, so hitting B4 in a
     // 174 BPM session plays a 140 BPM break in time.
+    // A shuffled pad->slice map for `count` slices: a permutation, so every slice still
+    // plays exactly once and nothing is lost or doubled. Free function and RNG-by-reference
+    // so a seed reproduces an arrangement, which is the only way to test a shuffle.
+    std::vector<int> shuffledSliceOrder(int count, juce::Random& rng);
+
     class SampleLayer
     {
     public:
@@ -52,7 +57,30 @@ namespace Nebula2
         void setSliceSettings(const SliceSettings& s);
         SliceSettings getSliceSettings() const noexcept { return slicing; }
 
+        // The most slices the UI offers (the 4/8/16/32/64 list tops out here).
+        static constexpr int maxSlices = 64;
+
         void noteOn(int midiNoteNumber, float velocity) noexcept;
+
+        // --- slice ORDER ---
+        //
+        // A pad plays order[pad], not slice `pad`. Without this indirection the note map is
+        // the arrangement, so there is no way to rearrange a break at all — every beat
+        // randomiser needs it first.
+        //
+        // Identity by default, so an untouched instrument behaves exactly as before.
+        // Written on the message thread, read on the audio thread: entries are atomic ints,
+        // and a read racing a write yields the old or the new slice for one note. That's a
+        // different chop, once — not a crash, and far cheaper than locking the audio thread.
+        void resetSliceOrder() noexcept;
+        void setSliceOrder(const std::vector<int>& order) noexcept;
+        std::vector<int> getSliceOrder() const;
+
+        // Which slice pad `pad` plays. Clamped, and identity for out-of-range pads.
+        int sliceForPad(int pad) const noexcept;
+
+        juce::String sliceOrderToString() const;
+        void sliceOrderFromString(const juce::String& s) noexcept;
 
         // Gates the chop to the note, like a slicer should: hold a 16th, get a 16th-long
         // chop. Without this, every slice runs its full length and a fast pattern turns
@@ -202,6 +230,9 @@ namespace Nebula2
         std::vector<Retired> retained;              // message thread only
         std::atomic<std::uint32_t> renderCount { 0 };
         void reclaimRetired();                      // message thread only
+
+        // pad -> slice. See setSliceOrder for the threading argument.
+        std::array<std::atomic<int>, (size_t) maxSlices> sliceOrder;
 
         std::atomic<SampleData*> current { nullptr };
         std::array<Voice, maxVoices> voices;

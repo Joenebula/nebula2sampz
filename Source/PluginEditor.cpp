@@ -87,6 +87,27 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     };
     content.addAndMakeVisible(loadButton);
 
+    // Rearrange the break. The slice COUNT (4/8/16/32/64) decides how many pieces there are
+    // to shuffle, and the permutation stays inside the slice boundaries — so the beat is
+    // rearranged at the cue points rather than chopped somewhere arbitrary.
+    shuffleButton.onClick = [this]
+    {
+        auto& layer = processorRef.getSampleLayer();
+        const int count = layer.getNumSlices();
+        if (count <= 1) return;      // nothing to rearrange
+        juce::Random rng;
+        layer.setSliceOrder(Nebula2::shuffledSliceOrder(count, rng));
+        waveform.repaint();
+    };
+    content.addAndMakeVisible(shuffleButton);
+
+    resetOrderButton.onClick = [this]
+    {
+        processorRef.getSampleLayer().resetSliceOrder();
+        waveform.repaint();
+    };
+    content.addAndMakeVisible(resetOrderButton);
+
     sampleInfo.setColour(juce::Label::textColourId, kSub);
     sampleInfo.setJustificationType(juce::Justification::centredLeft);
     content.addAndMakeVisible(sampleInfo);
@@ -459,7 +480,7 @@ void Nebula2AudioProcessorEditor::showPage(Page p)
     const bool rack  = p == Page::rack;
 
     juce::Component* playChildren[] = {
-        &loadButton, &sampleInfo, &waveform,
+        &loadButton, &shuffleButton, &resetOrderButton, &sampleInfo, &waveform,
         &sliceModeBox, &sliceCountBox, &sliceModeLabel, &sliceCountLabel,
         &charBox, &charLabel, &revCharBox, &revCharLabel,
         &dlySyncBox, &dlySyncLabel, &dlyModeBox, &dlyModeLabel, &fxOnButton, &limiterButton, &spaceOnButton,
@@ -856,6 +877,10 @@ void Nebula2AudioProcessorEditor::layoutContent()
     sampleArea.removeFromTop(12);
     auto sRow2 = sampleArea.removeFromTop(26);
     loadButton.setBounds(sRow2.removeFromLeft(120));
+    sRow2.removeFromLeft(10);
+    shuffleButton.setBounds(sRow2.removeFromLeft(72));
+    sRow2.removeFromLeft(4);
+    resetOrderButton.setBounds(sRow2.removeFromLeft(86));
     sRow2.removeFromLeft(12);
     sampleInfo.setBounds(sRow2);
 

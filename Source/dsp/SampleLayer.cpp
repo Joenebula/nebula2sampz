@@ -7,9 +7,93 @@
 
 namespace Nebula2
 {
+    std::vector<int> shuffledSliceOrder(int count, juce::Random& rng)
+    {
+        const int n = juce::jlimit(0, SampleLayer::maxSlices, count);
+        std::vector<int> order((size_t) n);
+        for (int i = 0; i < n; ++i) order[(size_t) i] = i;
+
+        // Fisher-Yates: a PERMUTATION, not n independent picks. Picking independently would
+        // let one slice play twice while another never played at all — a different sound
+        // from "the same break rearranged", and not what anybody means by shuffle.
+        for (int i = n - 1; i > 0; --i)
+            std::swap(order[(size_t) i], order[(size_t) rng.nextInt(i + 1)]);
+
+        return order;
+    }
+
     SampleLayer::SampleLayer()
     {
         formats.registerBasicFormats();
+        resetSliceOrder();
+    }
+
+    void SampleLayer::resetSliceOrder() noexcept
+    {
+        for (int i = 0; i < maxSlices; ++i) sliceOrder[(size_t) i].store(i);
+    }
+
+    void SampleLayer::setSliceOrder(const std::vector<int>& order) noexcept
+    {
+        for (int i = 0; i < maxSlices; ++i)
+        {
+            const int v = i < (int) order.size() ? order[(size_t) i] : i;
+            // An out-of-range entry falls back to IDENTITY, not to 0: a corrupt or stale
+            // map should degrade to "this pad plays itself", not "everything plays slice 0".
+            sliceOrder[(size_t) i].store((v >= 0 && v < maxSlices) ? v : i);
+        }
+    }
+
+    std::vector<int> SampleLayer::getSliceOrder() const
+    {
+        std::vector<int> out((size_t) maxSlices);
+        for (int i = 0; i < maxSlices; ++i) out[(size_t) i] = sliceOrder[(size_t) i].load();
+        return out;
+    }
+
+    int SampleLayer::sliceForPad(int pad) const noexcept
+    {
+        if (pad < 0 || pad >= maxSlices) return pad;
+        return sliceOrder[(size_t) pad].load();
+    }
+
+    juce::String SampleLayer::sliceOrderToString() const
+    {
+        juce::String out;
+        for (int i = 0; i < maxSlices; ++i)
+        {
+            if (i > 0) out << ",";
+            out << sliceOrder[(size_t) i].load();
+        }
+        return out;
+    }
+
+    void SampleLayer::sliceOrderFromString(const juce::String& s) noexcept
+    {
+        if (s.isEmpty()) { resetSliceOrder(); return; }
+
+        auto toks = juce::StringArray::fromTokens(s, ",", "");
+        std::vector<int> order;
+        order.reserve((size_t) toks.size());
+
+        for (const auto& t : toks)
+        {
+            // Reject the WHOLE string if any entry isn't a number, rather than taking
+            // getIntValue()'s silent 0. Non-numeric text scores 0, which is in range, so it
+            // sails past the identity fallback in setSliceOrder and quietly turns the break
+            // into slice 0 played over and over — the exact failure that fallback exists to
+            // stop, arriving by a different road. Corrupt data means "I don't know the
+            // arrangement", and the honest answer to that is the original order.
+            const auto trimmed = t.trim();
+            if (trimmed.isEmpty() || ! trimmed.containsOnly("-0123456789"))
+            {
+                resetSliceOrder();
+                return;
+            }
+            order.push_back(trimmed.getIntValue());
+        }
+
+        setSliceOrder(order);
     }
 
     void SampleLayer::prepare(double sr, int)
@@ -333,9 +417,18 @@ namespace Nebula2
         if (s == nullptr) return;
 
         const int numSlices = (int) s->sliceStarts.size() - 1;
-        const int slice = note - baseNote;
         const bool whole = (note == wholeSampleNote);
-        if (! whole && (slice < 0 || slice >= numSlices)) return;
+
+        // The note picks a PAD; the pad's order entry picks the slice. Identity unless the
+        // break has been rearranged, so an untouched instrument plays exactly as before.
+        const int pad = note - baseNote;
+        if (! whole && (pad < 0 || pad >= numSlices)) return;
+
+        int slice = whole ? 0 : sliceForPad(pad);
+        // The order map is `maxSlices` long regardless of how many slices the break
+        // currently has, so an entry can point past the end after a re-slice to a smaller
+        // count. Fall back to the pad rather than dropping the note.
+        if (! whole && (slice < 0 || slice >= numSlices)) slice = pad;
 
         // Free voice, else steal the most-advanced one.
         int slot = -1;

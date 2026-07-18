@@ -199,6 +199,10 @@ private:
     // Sample layer
     WaveformView waveform { processorRef.getSampleLayer() };
     juce::TextButton loadButton { "Load Sample..." };
+    // Rearranging the break. Shuffle permutes which slice each pad plays; Reset puts the
+    // original order back, which matters because a shuffle is otherwise irreversible.
+    juce::TextButton shuffleButton { "Shuffle" };
+    juce::TextButton resetOrderButton { "Reset Order" };
     juce::Label sampleInfo;
     std::unique_ptr<juce::FileChooser> chooser;
     bool dragHighlight = false;
