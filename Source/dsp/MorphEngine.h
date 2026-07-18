@@ -2,6 +2,7 @@
 
 #include <juce_dsp/juce_dsp.h>
 #include "MorphPad.h"
+#include "StepFx.h"      // shatterGainAt — the gate shape, defined once
 
 namespace Nebula2
 {

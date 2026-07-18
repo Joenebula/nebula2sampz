@@ -3359,7 +3359,7 @@ int main()
             StepFx fx; fx.prepare(sfxSpec); fx.reset();
             auto b = ramp(0.0f);
             const auto ref = b;
-            fx.process(b, stepLen, -1, 0.0f, 0.0f);
+            fx.process(b, stepLen, -1, 0.0f, 0.0f, 0.0f);
             bool same = true;
             for (int i = 0; i < sfxBlock; ++i)
                 if (b.getSample(0, i) != ref.getSample(0, i)) same = false;
@@ -3369,10 +3369,10 @@ int main()
         // Reverse must genuinely alter the signal once there's history to read backwards.
         {
             StepFx fx; fx.prepare(sfxSpec); fx.reset();
-            for (int n = 0; n < 20; ++n) { auto b = ramp((float) n); fx.process(b, stepLen, -1, 0.0f, 0.0f); }
+            for (int n = 0; n < 20; ++n) { auto b = ramp((float) n); fx.process(b, stepLen, -1, 0.0f, 0.0f, 0.0f); }
             auto dryRef = ramp(50.0f);
             auto wet = ramp(50.0f);
-            fx.process(wet, stepLen, -1, 1.0f, 0.0f);
+            fx.process(wet, stepLen, -1, 1.0f, 0.0f, 0.0f);
             double diff = 0.0;
             for (int i = 0; i < sfxBlock; ++i) diff += std::abs(wet.getSample(0, i) - dryRef.getSample(0, i));
             check(diff > 1.0, "stepfx: reverse genuinely changes the signal (reads history backwards)");
@@ -3381,10 +3381,10 @@ int main()
         // Stutter likewise, by repeating an earlier chunk.
         {
             StepFx fx; fx.prepare(sfxSpec); fx.reset();
-            for (int n = 0; n < 20; ++n) { auto b = ramp((float) n); fx.process(b, stepLen, -1, 0.0f, 0.0f); }
+            for (int n = 0; n < 20; ++n) { auto b = ramp((float) n); fx.process(b, stepLen, -1, 0.0f, 0.0f, 0.0f); }
             auto dryRef = ramp(50.0f);
             auto wet = ramp(50.0f);
-            fx.process(wet, stepLen, -1, 0.0f, 1.0f);
+            fx.process(wet, stepLen, -1, 0.0f, 1.0f, 0.0f);
             double diff = 0.0;
             for (int i = 0; i < sfxBlock; ++i) diff += std::abs(wet.getSample(0, i) - dryRef.getSample(0, i));
             check(diff > 1.0, "stepfx: stutter genuinely changes the signal (repeats a chunk)");
@@ -3402,20 +3402,71 @@ int main()
                     const float v = 0.7f * std::sin((float) (n * sfxBlock + i) * 0.01f);
                     b.setSample(0, i, v); b.setSample(1, i, v);
                 }
-                fx.process(b, stepLen, n % 16, 1.0f, 1.0f);
+                fx.process(b, stepLen, n % 16, 1.0f, 1.0f, 0.0f);
                 for (int i = 0; i < sfxBlock; ++i)
                     if (! std::isfinite(b.getSample(0, i)) || std::abs(b.getSample(0, i)) > 2.0f) ok = false;
             }
             check(ok, "stepfx: reverse+stutter together stay finite and bounded");
         }
 
+        // SHATTER: the gate shape itself — open for the first half of the step, cut by
+        // `amount` for the second. Zero must mean zero.
+        {
+            check(std::abs(shatterGainAt(0.25, 1.0f) - 1.0f) < 1.0e-6f
+                   && std::abs(shatterGainAt(0.75, 1.0f) - 0.0f) < 1.0e-6f,
+                  "stepfx: shatter at full opens the first half, closes the second");
+            check(std::abs(shatterGainAt(0.75, 0.5f) - 0.5f) < 1.0e-6f,
+                  "stepfx: shatter is proportional — half amount, half the cut");
+            check(shatterGainAt(0.25, 0.0f) == 1.0f && shatterGainAt(0.75, 0.0f) == 1.0f,
+                  "stepfx: shatter at 0 is unity across the whole step");
+        }
+
+        // ...and that shape must actually reach the audio. Run one whole step of DC and
+        // compare the halves. Reverse/stutter stay at 0, so only shatter can be the cause.
+        {
+            const int stepSamples = (int) stepLen;
+            auto runStep = [&](float shat)
+            {
+                StepFx fx; fx.prepare(sfxSpec); fx.reset();
+                std::vector<float> out;
+                out.reserve((size_t) stepSamples + 1);
+                int done = 0;
+                while (done < stepSamples)
+                {
+                    const int n = jmin(sfxBlock, stepSamples - done);
+                    AudioBuffer<float> b(2, n);
+                    for (int i = 0; i < n; ++i) { b.setSample(0, i, 1.0f); b.setSample(1, i, 1.0f); }
+                    fx.process(b, stepLen, 0, 0.0f, 0.0f, shat);
+                    for (int i = 0; i < n; ++i) out.push_back(b.getSample(0, i));
+                    done += n;
+                }
+                return out;
+            };
+
+            auto o = runStep(1.0f);
+            const int guard = (int) (0.006 * sfxSr);   // skip the ~2 ms smoothing ramp
+            double firstSum = 0.0, lastSum = 0.0; int firstN = 0, lastN = 0;
+            for (int i = guard; i < stepSamples / 2; ++i) { firstSum += std::abs(o[(size_t) i]); ++firstN; }
+            for (int i = stepSamples / 2 + guard; i < stepSamples; ++i) { lastSum += std::abs(o[(size_t) i]); ++lastN; }
+            const double firstAvg = firstN > 0 ? firstSum / firstN : 0.0;
+            const double lastAvg  = lastN  > 0 ? lastSum  / lastN  : 0.0;
+            check(firstAvg > 0.99 && lastAvg < 0.02,
+                  "stepfx: shatter gates the second half of the step in the audio"
+                  " — first " + String(firstAvg, 3) + ", second " + String(lastAvg, 3));
+
+            auto z = runStep(0.0f);
+            bool flat = true;
+            for (auto v : z) if (v != 1.0f) flat = false;
+            check(flat, "stepfx: shatter at 0 is a bit-exact pass-through");
+        }
+
         // The ring is preallocated, so processing must not touch the heap.
         {
             StepFx fx; fx.prepare(sfxSpec); fx.reset();
-            { auto b = ramp(0.0f); fx.process(b, stepLen, 0, 1.0f, 1.0f); }
+            { auto b = ramp(0.0f); fx.process(b, stepLen, 0, 1.0f, 1.0f, 1.0f); }
             auto b = ramp(1.0f);
             rtcheck::Scope watch;
-            for (int i = 0; i < 20; ++i) fx.process(b, stepLen, i % 16, 1.0f, 1.0f);
+            for (int i = 0; i < 20; ++i) fx.process(b, stepLen, i % 16, 1.0f, 1.0f, 1.0f);
             const int n = watch.count();
             check(n == 0, "rt: StepFx allocates nothing"
                           + (n == 0 ? String() : " — got " + String(n)));
@@ -3454,7 +3505,7 @@ int main()
         // The lanes whose effects DON'T exist yet must NOT be shown. Shrink this list as
         // each effect lands — it failing after you build one is the test doing its job.
         bool hidesUnbuilt = true;
-        for (auto r : { GridRow::Resonate, GridRow::PitchUp, GridRow::PitchDown, GridRow::Shatter })
+        for (auto r : { GridRow::Resonate, GridRow::PitchUp, GridRow::PitchDown })
             for (auto shown : order)
                 if (shown == r) hidesUnbuilt = false;
         check(hidesUnbuilt,
@@ -3507,7 +3558,7 @@ int main()
             "padOn", "padX", "padY", "morphMotion", "morphRate", "morphSize", "morphGlide",
             "gridOn", "gridSteps",
             "drive", "char", "crush", "squeeze", "tone", "width", "pump", "gate",
-            "reverse", "stutter", "fxOn",
+            "reverse", "stutter", "shatter", "fxOn",
             "revMix", "revSize", "dlyMix", "dlyFb", "dlySync", "dlyMode", "haunt", "spaceOn", "revChar",
             "rackOn",
             "flt.cut", "flt.res", "flt.type",

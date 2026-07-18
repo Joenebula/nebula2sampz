@@ -20,6 +20,7 @@ Nebula2AudioProcessor::Nebula2AudioProcessor()
     gateParam      = apvts.getRawParameterValue(Nebula2::ParamID::gate);
     reverseParam   = apvts.getRawParameterValue(Nebula2::ParamID::reverse);
     stutterParam   = apvts.getRawParameterValue(Nebula2::ParamID::stutter);
+    shatterParam   = apvts.getRawParameterValue(Nebula2::ParamID::shatter);
     fxOnParam      = apvts.getRawParameterValue(Nebula2::ParamID::fxOn);
     revMixParam    = apvts.getRawParameterValue(Nebula2::ParamID::revMix);
     revCharParam   = apvts.getRawParameterValue(Nebula2::ParamID::revChar);
@@ -369,8 +370,10 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
         const float stutAmt = juce::jlimit(0.0f, 1.0f,
                                   amt(stutterParam, Nebula2::GridRow::Stutter, 0.0f) / 100.0f);
         const double bpm = transport.bpm > 0.0 ? transport.bpm : 120.0;
+        const float shatAmt = juce::jlimit(0.0f, 1.0f,
+                                  amt(shatterParam, Nebula2::GridRow::Shatter, 0.0f) / 100.0f);
         const double stepLen = 0.25 * (60.0 / bpm) * getSampleRate();   // one 1/16 note
-        stepFx.process(buffer, stepLen, step, revAmt, stutAmt);
+        stepFx.process(buffer, stepLen, step, revAmt, stutAmt, shatAmt);
     }
 
     // Morph: blend the four scenes at the pad's position and run the multi-effect.

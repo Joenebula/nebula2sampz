@@ -98,9 +98,9 @@ namespace Nebula2
 
             for (int i = 0; i < numSamples; ++i)
             {
-                // Open for the first half of each 1/16, ducked for the second.
-                const float target = (shatterPhase < 0.5) ? 1.0f : (1.0f - sht);
-                shatterGain.setTargetValue(target);
+                // Open for the first half of each 1/16, ducked for the second — the shape
+                // is defined once in StepFx.h and shared with the Colour-block Shatter.
+                shatterGain.setTargetValue(shatterGainAt(shatterPhase, sht));
                 const float gn = shatterGain.getNextValue();
 
                 for (int c = 0; c < numChannels; ++c)

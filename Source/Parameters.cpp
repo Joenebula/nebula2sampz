@@ -135,6 +135,7 @@ namespace Nebula2
         layout.add(std::make_unique<APF>(PID{ ParamID::gate, version }, "Gate", pct(), 0.0f));
         layout.add(std::make_unique<APF>(PID{ ParamID::reverse, version }, "Reverse", pct(), 0.0f));
         layout.add(std::make_unique<APF>(PID{ ParamID::stutter, version }, "Stutter", pct(), 0.0f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::shatter, version }, "Shatter", pct(), 0.0f));
         layout.add(std::make_unique<APB>(PID{ ParamID::fxOn, version }, "FX On", true));
 
         // --- Space (live) ---
