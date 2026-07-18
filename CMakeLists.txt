@@ -49,6 +49,8 @@ target_sources(Nebula2 PRIVATE
     Source/Parameters.cpp
     Source/Parameters.h
     Source/ParameterIDs.h
+    Source/GridPresets.cpp
+    Source/GridPresets.h
     Source/Presets.cpp
     Source/Presets.h
     Source/MasterProcessor.cpp
@@ -134,6 +136,8 @@ target_sources(Nebula2Tests PRIVATE
     Source/Parameters.cpp
     Source/Parameters.h
     Source/ParameterIDs.h
+    Source/GridPresets.cpp
+    Source/GridPresets.h
     Source/Presets.cpp
     Source/Presets.h
     Source/MasterProcessor.cpp

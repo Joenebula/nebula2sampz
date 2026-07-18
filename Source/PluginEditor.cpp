@@ -1,5 +1,6 @@
 #include "PluginEditor.h"
 #include "ParameterIDs.h"
+#include "GridPresets.h"
 
 namespace
 {
@@ -127,6 +128,36 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
 
     gridDiceButton.onClick = [this] { rollGrid(); };
     content.addAndMakeVisible(gridDiceButton);
+
+    // Pattern menu: the factory patterns, then anything you've saved.
+    gridPatternLabel.setText("Pattern", juce::dontSendNotification);
+    gridPatternLabel.setColour(juce::Label::textColourId, kSub);
+    content.addAndMakeVisible(gridPatternLabel);
+    content.addAndMakeVisible(gridPatternBox);
+    refreshGridPatternMenu();
+    gridPatternBox.onChange = [this]
+    {
+        const auto name = gridPatternBox.getText();
+        if (name.isEmpty()) return;
+        auto& grid = processorRef.getGrid();
+        // A saved pattern wins over a factory one of the same name — it's the one YOU made.
+        if (! Nebula2::loadGridPreset(name, grid))
+            Nebula2::applyBuiltInGridPattern(name, grid);
+        gridView.repaint();
+    };
+
+    gridSaveButton.onClick  = [this] { saveGridPatternAs(); };
+    gridDeleteButton.onClick = [this]
+    {
+        const auto name = gridPatternBox.getText();
+        // Only your own patterns can be deleted — the factory ones are code, not files, so
+        // "delete" on one would silently do nothing.
+        if (name.isEmpty() || ! Nebula2::listGridPresets().contains(name)) return;
+        Nebula2::deleteGridPreset(name);
+        refreshGridPatternMenu();
+    };
+    content.addAndMakeVisible(gridSaveButton);
+    content.addAndMakeVisible(gridDeleteButton);
 
     // --- Morph pad ---
     content.addAndMakeVisible(morphPad);
@@ -264,6 +295,83 @@ Nebula2AudioProcessorEditor::~Nebula2AudioProcessorEditor()
 // collided into a smear.
 //   panel = 14 title + 24 controls + 8 gap + lanes, plus 24 for the panel's own inset
 //   page  = panel + 16 for the body inset
+void Nebula2AudioProcessorEditor::refreshGridPatternMenu()
+{
+    const auto keep = gridPatternBox.getText();
+    gridPatternBox.clear(juce::dontSendNotification);
+
+    // Yours first, under a heading, because they're the ones you'll be looking for.
+    const auto mine = Nebula2::listGridPresets();
+    int id = 1;
+    if (! mine.isEmpty())
+    {
+        gridPatternBox.addSectionHeading("Saved");
+        for (const auto& n : mine) gridPatternBox.addItem(n, id++);
+    }
+    gridPatternBox.addSectionHeading("Factory");
+    for (const auto& n : Nebula2::builtInGridPatternNames()) gridPatternBox.addItem(n, id++);
+
+    // Keep the selection across a refresh if it still exists.
+    for (int i = 0; i < gridPatternBox.getNumItems(); ++i)
+        if (gridPatternBox.getItemText(i) == keep)
+        {
+            gridPatternBox.setSelectedItemIndex(i, juce::dontSendNotification);
+            return;
+        }
+    gridPatternBox.setText({}, juce::dontSendNotification);
+}
+
+void Nebula2AudioProcessorEditor::saveGridPatternAs()
+{
+    auto* aw = new juce::AlertWindow("Save grid pattern",
+                                     "Saved to your Nebula2 folder, so it's there in every "
+                                     "project — not just this one.",
+                                     juce::MessageBoxIconType::NoIcon);
+    aw->addTextEditor("name", gridPatternBox.getText(), "Name");
+    aw->addButton("Save",   1, juce::KeyPress(juce::KeyPress::returnKey));
+    aw->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
+
+    aw->enterModalState(true, juce::ModalCallbackFunction::create(
+        [this, aw](int result)
+        {
+            std::unique_ptr<juce::AlertWindow> owned(aw);
+            if (result != 1) return;
+
+            const auto typed = owned->getTextEditorContents("name");
+            const auto safe  = Nebula2::sanitiseGridPresetName(typed);
+            if (safe.isEmpty())
+            {
+                juce::NativeMessageBox::showAsync(
+                    juce::MessageBoxOptions()
+                        .withIconType(juce::MessageBoxIconType::WarningIcon)
+                        .withTitle("That name won't work")
+                        .withMessage("A pattern name has to survive becoming a filename. "
+                                     "Try letters and numbers."),
+                    nullptr);
+                return;
+            }
+
+            if (! Nebula2::saveGridPreset(safe, processorRef.getGrid()))
+            {
+                // Say it failed. A save button that silently does nothing is how you lose
+                // work and only find out later.
+                juce::NativeMessageBox::showAsync(
+                    juce::MessageBoxOptions()
+                        .withIconType(juce::MessageBoxIconType::WarningIcon)
+                        .withTitle("Couldn't save")
+                        .withMessage("Writing to " + Nebula2::gridPresetDirectory().getFullPathName()
+                                     + " failed."),
+                    nullptr);
+                return;
+            }
+
+            refreshGridPatternMenu();
+            for (int i = 0; i < gridPatternBox.getNumItems(); ++i)
+                if (gridPatternBox.getItemText(i) == safe)
+                    gridPatternBox.setSelectedItemIndex(i, juce::dontSendNotification);
+        }), false);
+}
+
 void Nebula2AudioProcessorEditor::rollGrid()
 {
     // Only offer the dice lanes that can actually SOUND. A lane sitting on its neutral
@@ -316,7 +424,9 @@ void Nebula2AudioProcessorEditor::rollGrid()
 
 int Nebula2AudioProcessorEditor::gridPageHeight()
 {
-    return GridView::preferredHeight() + 14 + 24 + 8 + 24 + 16;
+    // 14 title + 24 controls row 1 + 6 + 24 controls row 2 + 8 gap + lanes, + 24 panel
+    // inset + 16 body inset.
+    return GridView::preferredHeight() + 14 + 24 + 6 + 24 + 8 + 24 + 16;
 }
 
 int Nebula2AudioProcessorEditor::contentHeightFor(Page p) const
@@ -389,6 +499,10 @@ void Nebula2AudioProcessorEditor::showPage(Page p)
     gridDiceButton.setVisible(grid);
     gridDiceBox.setVisible(grid);
     gridDiceLabel.setVisible(grid);
+    gridPatternBox.setVisible(grid);
+    gridPatternLabel.setVisible(grid);
+    gridSaveButton.setVisible(grid);
+    gridDeleteButton.setVisible(grid);
 
     rackView.setVisible(rack);
     rackOnButton.setVisible(rack);
@@ -690,11 +804,25 @@ void Nebula2AudioProcessorEditor::layoutContent()
             gridStepsBox.setBounds(gRow.removeFromLeft(66));
             gRow.removeFromLeft(12);
             gridClearButton.setBounds(gRow.removeFromLeft(62));
-            gRow.removeFromLeft(14);
-            gridDiceButton.setBounds(gRow.removeFromLeft(84));
-            gRow.removeFromLeft(8);
-            gridDiceLabel.setBounds(gRow.removeFromLeft(52));
-            gridDiceBox.setBounds(gRow.removeFromLeft(70));
+
+            // Second row. Eight controls do not fit on one line at this width, and
+            // removeFromLeft silently hands back whatever is left rather than failing — so
+            // an overflowing row doesn't error, it just draws a squashed control you can't
+            // read. (That's how "Space On" came out truncated once already.)
+            gp.removeFromTop(6);
+            auto gRow2 = gp.removeFromTop(24);
+            gridDiceButton.setBounds(gRow2.removeFromLeft(84));
+            gRow2.removeFromLeft(6);
+            gridDiceLabel.setBounds(gRow2.removeFromLeft(50));
+            gridDiceBox.setBounds(gRow2.removeFromLeft(66));
+            gRow2.removeFromLeft(14);
+            gridPatternLabel.setBounds(gRow2.removeFromLeft(48));
+            gridPatternBox.setBounds(gRow2.removeFromLeft(140));
+            gRow2.removeFromLeft(6);
+            gridSaveButton.setBounds(gRow2.removeFromLeft(54));
+            gRow2.removeFromLeft(4);
+            gridDeleteButton.setBounds(gRow2.removeFromLeft(60));
+
             gp.removeFromTop(8);
             gridView.setBounds(gp);
         }

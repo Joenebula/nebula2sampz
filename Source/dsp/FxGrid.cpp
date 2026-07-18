@@ -129,7 +129,7 @@ namespace Nebula2
 
         const int steps = grid.getNumSteps();
         if (steps <= 0) return;
-        const int q = juce::jmax(1, steps / 4);      // steps per beat
+        const int q = gridStepsPerBeat;
 
         // How many lanes join in, and how hard they play. Those two ARE what Low/Mid/High
         // means — the prototype rolled the cast size at random (2..6), which is the same

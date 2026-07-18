@@ -169,6 +169,12 @@ private:
     juce::TextButton gridDiceButton { "Randomise" };
     juce::ComboBox gridDiceBox;          // Low / Mid / High — NOT a parameter (see processor)
     juce::Label gridDiceLabel;
+    juce::ComboBox gridPatternBox;       // built-ins + your saved patterns
+    juce::Label gridPatternLabel;
+    juce::TextButton gridSaveButton { "Save" };
+    juce::TextButton gridDeleteButton { "Delete" };
+    void refreshGridPatternMenu();
+    void saveGridPatternAs();
 
     // Morph pad
     MorphPadView morphPad { processorRef };

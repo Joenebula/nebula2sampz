@@ -97,6 +97,16 @@ namespace Nebula2
         return std::abs(panelAmount - gridRowNeutral(r)) < 0.05f;
     }
 
+    // Steps per beat. A CONSTANT, not numSteps/4: the sequencer clocks a step every 0.25
+    // beats (see the stepAtPpq call site), so a step is always a 1/16 and a beat is always
+    // four of them. Changing the step COUNT changes how many bars the pattern spans, not
+    // how fast it runs — 32 steps is two bars, not a bar of 32nds.
+    //
+    // Both the dice and the factory patterns derived this as numSteps/4, which is only
+    // right at 16. At 32 it put "on the beat" every half bar, and any pattern keyed to bar
+    // boundaries (q*4) could never reach the second bar, so it painted nothing at all.
+    constexpr int gridStepsPerBeat = 4;
+
     // How busy the dice should be. Three settings, because "more random" is not a thing you
     // can ask for — what actually varies is how many lanes join in and how often they fire.
     enum class RandomDensity { Low = 0, Mid, High, Count };

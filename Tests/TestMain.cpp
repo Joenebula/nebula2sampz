@@ -26,6 +26,7 @@
 #include "../Source/dsp/FxGrid.h"
 #include "../Source/dsp/StepFx.h"
 #include "../Source/dsp/Resonator.h"
+#include "../Source/GridPresets.h"
 #include "../Source/dsp/MorphPad.h"
 #include "../Source/dsp/MorphEngine.h"
 #include "../Source/dsp/RackGraph.h"
@@ -3472,6 +3473,145 @@ int main()
             check(n == 0, "rt: StepFx allocates nothing"
                           + (n == 0 ? String() : " — got " + String(n)));
         }
+    }
+
+    // ---- Grid presets: built-ins, and user patterns on disk ----
+    {
+        using namespace Nebula2;
+
+        // Point the preset folder at a scratch directory — a test that writes into the
+        // user's real Documents folder is a test that leaves a mess on their machine.
+        const auto scratch = File::getSpecialLocation(File::tempDirectory)
+                                 .getChildFile("nebula2-gridpreset-test");
+        scratch.deleteRecursively();
+        setGridPresetDirectoryForTesting(scratch);
+
+        // --- names have to survive becoming filenames ---
+        check(sanitiseGridPresetName("Half Time") == "Half Time",
+              "grid presets: an ordinary name is left alone");
+        check(sanitiseGridPresetName("1/2 time: *hard*") == "12 time hard",
+              "grid presets: illegal filename characters are stripped — got \""
+              + sanitiseGridPresetName("1/2 time: *hard*") + "\"");
+
+        // The one that matters: a name must not be able to write outside the folder.
+        for (const auto* nasty : { "../escape", "..\\escape", "/etc/passwd", "C:\\Windows\\evil" })
+        {
+            const auto safe = sanitiseGridPresetName(nasty);
+            check(! safe.contains("/") && ! safe.contains("\\") && ! safe.contains(":"),
+                  String("grid presets: \"") + nasty + "\" can't traverse out of the folder — got \""
+                  + safe + "\"");
+        }
+        check(sanitiseGridPresetName("   ").isEmpty() && sanitiseGridPresetName("").isEmpty(),
+              "grid presets: a name with nothing usable in it is rejected");
+        check(sanitiseGridPresetName("Foo.") == "Foo" && sanitiseGridPresetName(".hidden") == "hidden",
+              "grid presets: leading/trailing dots are stripped (Windows drops them silently,"
+              " so \"Foo.\" and \"Foo\" would collide)");
+
+        // --- save / load round trip ---
+        {
+            FxGrid a; a.setNumSteps(16);
+            a.setCell((int) GridRow::Stutter, 3, 2);
+            a.setCell((int) GridRow::Reverb, 12, 3);
+            check(saveGridPreset("Round Trip", a), "grid presets: saves");
+
+            FxGrid b;
+            check(loadGridPreset("Round Trip", b), "grid presets: loads");
+            check(b.toString() == a.toString(), "grid presets: a saved pattern comes back identical");
+            check(b.getCell((int) GridRow::Stutter, 3) == 2
+                   && b.getCell((int) GridRow::Reverb, 12) == 3,
+                  "grid presets: individual cells survive the round trip");
+        }
+
+        // Saved patterns are FILES, so they outlive the session that made them — that's the
+        // whole point of saving them separately.
+        check(listGridPresets().contains("Round Trip"),
+              "grid presets: a saved pattern appears in the list");
+
+        // A failed load must not damage what you already had.
+        {
+            FxGrid g; g.setNumSteps(16);
+            g.setCell((int) GridRow::Drive, 5, 3);
+            const auto before = g.toString();
+            check(! loadGridPreset("No Such Pattern", g), "grid presets: a missing name fails");
+            check(g.toString() == before, "grid presets: a failed load leaves the grid untouched");
+
+            // ...including when the file exists but is rubbish.
+            gridPresetFileFor("Corrupt").replaceWithText("not a grid at all");
+            check(! loadGridPreset("Corrupt", g), "grid presets: a corrupt file fails");
+            check(g.toString() == before, "grid presets: a corrupt file doesn't wipe the grid");
+        }
+
+        check(deleteGridPreset("Round Trip") && ! listGridPresets().contains("Round Trip"),
+              "grid presets: delete removes it from the list");
+
+        // --- built-in patterns ---
+        check(builtInGridPatternNames().size() >= 20,
+              "grid presets: the factory patterns are there — "
+              + String(builtInGridPatternNames().size()));
+
+        {
+            // EVERY built-in must paint something. A named pattern that produces an empty
+            // grid is a menu entry that does nothing.
+            //
+            // Measured over TWO BARS (32 steps), not one. A step is a fixed 1/16, so 32
+            // steps is two bars — and a pattern keyed to bar boundaries ("Crush Bars"
+            // alternates them) genuinely has no room to act inside a single bar. That's the
+            // pattern being honest, not broken. Checking at 16 flagged it, which is how the
+            // steps-per-beat bug below surfaced.
+            StringArray empty;
+            for (const auto& name : builtInGridPatternNames())
+            {
+                FxGrid g; g.setNumSteps(32);
+                check(applyBuiltInGridPattern(name, g), "grid presets: '" + name + "' applies");
+                int cells = 0;
+                for (int r = 0; r < FxGrid::numRows; ++r)
+                    for (int s = 0; s < 32; ++s) if (g.getCell(r, s) > 0) ++cells;
+                if (cells == 0) empty.add(name);
+            }
+            check(empty.isEmpty(),
+                  "grid presets: every factory pattern paints something over two bars"
+                  + (empty.isEmpty() ? String() : " (empty: " + empty.joinIntoString(", ") + ")"));
+        }
+
+        {
+            // Legal levels at every step count, and no crash on the short ones.
+            StringArray broken;
+            for (int steps : { 8, 16, 32 })
+                for (const auto& name : builtInGridPatternNames())
+                {
+                    FxGrid g; g.setNumSteps(steps);
+                    applyBuiltInGridPattern(name, g);
+                    for (int r = 0; r < FxGrid::numRows; ++r)
+                        for (int s = 0; s < steps; ++s)
+                        {
+                            const int v = g.getCell(r, s);
+                            if (v < 0 || v > 3) broken.addIfNotAlreadyThere(name + " @" + String(steps));
+                        }
+                }
+            check(broken.isEmpty(),
+                  "grid presets: factory patterns stay in range at 8/16/32 steps"
+                  + (broken.isEmpty() ? String() : " (bad: " + broken.joinIntoString(", ") + ")"));
+        }
+
+        // A beat is FOUR steps, always — the sequencer clocks 0.25 beats per step. Both the
+        // dice and the factory patterns derived this as numSteps/4, which is only correct at
+        // 16: at 32 it put "on the beat" every half bar, and bar-keyed patterns could never
+        // reach the second bar so they painted nothing at all.
+        check(gridStepsPerBeat == 4,
+              "grid: a beat is four steps, matching the 0.25-beat sequencer clock");
+
+        {
+            FxGrid g; g.setNumSteps(16);
+            g.setCell((int) GridRow::Drive, 1, 3);
+            const auto before = g.toString();
+            check(! applyBuiltInGridPattern("Not A Pattern", g),
+                  "grid presets: an unknown pattern name is refused");
+            check(g.toString() == before,
+                  "grid presets: a refused pattern leaves the grid alone, not half-written");
+        }
+
+        scratch.deleteRecursively();
+        setGridPresetDirectoryForTesting({});    // back to the real folder
     }
 
     // ---- Grid dice: three density levels ----
