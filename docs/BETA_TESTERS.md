@@ -1,10 +1,4 @@
-| **C3** (48) | slice 1 — the root |
-| **B2** (47) | the whole break |
-| any other key | wraps round, so every key plays a chop |
-
-So you can draw a note anywhere on the piano roll and hear something. It did not used to
-work that way: slices started at C5 (because a since-deleted drum layer owned the low
-notes) and a note drawn in the middle of the roll produced silence.# Nebula2 — beta tester guide
+# Nebula2 — beta tester guide
 
 A breakbeat instrument: load a loop, it chops it, then you wreck it.
 
@@ -39,13 +33,13 @@ you did.
 
 | Notes | What they play |
 |---|---|
-| **C3** (48) | slice 1 — the root |
-| **B2** (47) | the whole break |
-| any other key | wraps round, so every key plays a chop |
+| **C3** (48) | the whole loop — the root, and the one you reach for first |
+| **C#3** (49) and up | slice 1, 2, 3… |
+| any other key | wraps round, so every key plays something |
 
-You can draw a note anywhere on the piano roll and hear something. It didn't used to work
-that way: slices started at C5 — because a since-deleted drum layer owned the low notes —
-and a note drawn in the middle of the roll produced silence.
+You can draw a note anywhere on the piano roll and hear it. It didn't used to work that way:
+slices started at C5 — because a since-deleted drum layer owned the low notes — and a note
+drawn in the middle of the roll produced silence.
 
 Chops are gated by note length — hold a 16th, get a 16th. That's what makes it a slicer
 rather than a one-shot player.

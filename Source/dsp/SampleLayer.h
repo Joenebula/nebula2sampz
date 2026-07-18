@@ -17,7 +17,8 @@ namespace Nebula2
     // thread only ever reads that pointer. Superseded data is retained (never freed while
     // the audio thread might still be reading it).
     //
-    // Note map: C3 (48) is slice 1 and the root; B2 (47) plays the WHOLE break.
+    // Note map: C3 (48) plays the WHOLE break (the loop); C#3 (49) upward plays slice 1, 2,
+    // 3... C3 is the root because the loop is what you reach for first.
     //
     // EVERY OTHER KEY PLAYS SOMETHING. Notes outside the slice range wrap, so there are no
     // dead keys — you can draw a note anywhere on the piano roll and hear a chop.
@@ -36,8 +37,11 @@ namespace Nebula2
     class SampleLayer
     {
     public:
-        static constexpr int baseNote = 48;                     // C3 = slice 1, the root
-        static constexpr int wholeSampleNote = baseNote - 1;    // B2 = the WHOLE break
+        // C3 is the LOOP — the whole break — because that is the thing you reach for first.
+        // The slices climb from just above it, so the root and its chops sit together
+        // rather than the loop hiding a semitone below where you would look for it.
+        static constexpr int wholeSampleNote = 48;                 // C3 = the WHOLE break
+        static constexpr int baseNote = wholeSampleNote + 1;       // C#3 = slice 1, upward
         static constexpr int maxVoices = 8;
 
         SampleLayer();
