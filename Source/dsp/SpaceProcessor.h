@@ -35,6 +35,9 @@ namespace Nebula2
         };
 
         void prepare(const juce::dsp::ProcessSpec& spec);
+
+        // Must be called after prepare(), on the message thread and NOT from inside it.
+        void reloadIrIfNeeded() { reverb.reloadIrIfNeeded(); }
         void reset();
 
         // Message thread only (allocates: synthesises + loads a new IR). Character and Size

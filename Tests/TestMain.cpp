@@ -1115,9 +1115,22 @@ int main()
             check(echoEnergy > 1.0e-4, "space: delay send produces echoes");
         }
 
+        // prepare() deliberately does NOT load the IR — loading inside that call stack is
+        // what raced the convolution's background thread and crashed. So prepare() alone
+        // leaves the reverb silent, and the caller must run reloadIrIfNeeded() afterwards.
+        //
+        // That's a trap for anyone who forgets, so the contract is pinned here rather than
+        // left as a comment: this is what "prepared but not reloaded" looks like.
+        {
+            SpaceProcessor spNoIr; spNoIr.prepare(spec);
+            check(spNoIr.reverbIRSize() <= 1,
+                  "space: prepare() alone leaves no real IR — the load is deferred on purpose");
+        }
+
         // The reverb send adds a tail once its IR has loaded.
         {
             SpaceProcessor sp3; sp3.prepare(spec);
+            sp3.reloadIrIfNeeded();      // the required second step; see above
             SpaceProcessor::Params warm; warm.revMix = 100.0f; warm.dlyMix = 0.0f;
             // > 1, not > 0: JUCE seeds the convolution with a 1-sample identity IR.
             bool irReady = false;

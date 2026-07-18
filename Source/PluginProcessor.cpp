@@ -182,6 +182,10 @@ void Nebula2AudioProcessor::handleAsyncUpdate()
     const auto wanted = (Nebula2::ReverbChar) juce::jlimit(0, 4, wantedRevChar.load());
     const float wantedSize = wantedRevSize.load();
     // One rebuild path for character AND size; setCharacterAndSize skips a redundant swap.
+    // Load any IR that prepare() marked stale. This runs on the message thread in its OWN
+    // call stack — never inside prepareToPlay, which is the whole point (see Reverb.cpp).
+    space.reloadIrIfNeeded();
+
     space.setCharacterAndSize(wanted, wantedSize);
 
     Nebula2::SampleLayer::SliceSettings s;
@@ -234,6 +238,15 @@ void Nebula2AudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
     // Pre-render the drum kit (heavy + allocates — must not happen on the audio thread).
     drumKit.prepare(sampleRate);
     sampleLayer.prepare(sampleRate, samplesPerBlock);
+
+    // Load the reverb IR LATER, on the message thread, in a call stack of its own:
+    // handleAsyncUpdate() calls space.reloadIrIfNeeded().
+    //
+    // Not from here, and this is the crash fix rather than tidiness. Loading inside prepare
+    // queues work on the convolution's background queue and wakes its thread, so the NEXT
+    // prepare's popAll races that thread's popAll on a single-CONSUMER FIFO, reads a slot
+    // the other consumer already took, and calls an empty std::function.
+    triggerAsyncUpdate();
 }
 
 void Nebula2AudioProcessor::releaseResources()

@@ -59,6 +59,31 @@ namespace Nebula2
         sampleRate = spec.sampleRate;
         conv.prepare(spec);
         dryScratch.setSize((int) spec.numChannels, (int) spec.maximumBlockSize, false, false, true);
+
+        // The IR load is deliberately NOT done here — see reloadIrIfNeeded().
+        //
+        // This line used to be setCharacter(currentChar, currentSize), and it was the
+        // crash. The chain:
+        //   Convolution::prepare()    drains its BackgroundMessageQueue (popAll)
+        //   loadImpulseResponse()     queues work and wakes the background thread
+        // so every prepare left work IN FLIGHT for the next prepare to race. That queue is
+        // single-producer / single-CONSUMER, and prepare's popAll plus the background
+        // thread's popAll are two consumers: one reads a slot the other already took, gets
+        // an empty FixedSizeFunction, calls it, and throws std::bad_function_call.
+        //
+        // pluginval's Automation test calls prepareToPlay repeatedly with changing block
+        // sizes, which is why it surfaced there and at roughly 1 run in 18 — it needs the
+        // background thread to still be busy when the next prepare lands.
+        irDirty = true;
+    }
+
+    void Reverb::reloadIrIfNeeded()
+    {
+        // MESSAGE THREAD, and deliberately in a SEPARATE call stack from prepare(). That
+        // separation is the fix: the queue is empty when Convolution::prepare drains it, so
+        // its popAll and the background thread's are never both live.
+        if (! irDirty) return;
+        irDirty = false;
         setCharacter(currentChar, currentSize);
     }
 

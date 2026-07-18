@@ -25,15 +25,14 @@ namespace Nebula2
     void SpaceProcessor::prepare(const juce::dsp::ProcessSpec& spec)
     {
         sampleRate = spec.sampleRate;
-        reverb.prepare(spec);          // already loads an IR for the reverb's own character
+        reverb.prepare(spec);          // marks the IR stale; does NOT load it
         delay.prepare(spec);
         wetScratch.setSize((int) spec.numChannels, (int) spec.maximumBlockSize, false, false, true);
 
-        // Only load again if our wanted char/size actually differs from what reverb.prepare
-        // already loaded. Route through setCharacterAndSize so its skip-guard applies — a
-        // redundant load queues a second async IR swap (an allocation on JUCE's loader
-        // thread, and it resets the convolution mid-flight, cutting the tail).
-        setCharacterAndSize(character, sizePercent);
+        // NO IR load here any more. Queueing one inside the same call stack as
+        // Convolution::prepare is precisely what raced its background thread and threw
+        // bad_function_call — see the note in Reverb::prepare. The caller runs
+        // reloadIrIfNeeded() afterwards, off this stack.
     }
 
     void SpaceProcessor::reset()

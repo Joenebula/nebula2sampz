@@ -26,6 +26,10 @@ namespace Nebula2
     {
     public:
         void prepare(const juce::dsp::ProcessSpec& spec);
+
+        // Loads the impulse response if prepare() marked it stale. MESSAGE THREAD, and it
+        // must NOT be called from inside prepare — see the note there.
+        void reloadIrIfNeeded();
         void reset();
 
         // Rebuilds the IR for the character AND size, and hands it to the convolution
@@ -46,6 +50,7 @@ namespace Nebula2
         juce::dsp::Convolution conv;
         juce::AudioBuffer<float> dryScratch;
         double sampleRate = 44100.0;
+        bool irDirty = true;   // prepare() sets this; reloadIrIfNeeded() clears it
         ReverbChar currentChar = ReverbChar::Hall;
         double currentSize = 2.0;      // seconds; the prototype's default Size (~50%)
     };
