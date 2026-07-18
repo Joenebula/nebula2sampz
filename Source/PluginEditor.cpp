@@ -166,6 +166,74 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
 
     content.addAndMakeVisible(waveform);
 
+    // --- per-slice editor ---
+    // Click a chop in the waveform, then shape it. The controls follow the selection and
+    // grey out when nothing is selected, rather than sitting there apparently editing a
+    // slice you haven't chosen.
+    waveform.onSliceSelected = [this](int) { refreshSliceEditor(); };
+
+    sliceEditLabel.setColour(juce::Label::textColourId, kAccent);
+    content.addAndMakeVisible(sliceEditLabel);
+
+    auto setupSliceSlider = [this](juce::Slider& s, juce::Label& lab, const juce::String& name,
+                                   double lo, double hi, double interval)
+    {
+        lab.setText(name, juce::dontSendNotification);
+        lab.setColour(juce::Label::textColourId, kSub);
+        content.addAndMakeVisible(lab);
+        s.setSliderStyle(juce::Slider::LinearHorizontal);
+        s.setTextBoxStyle(juce::Slider::TextBoxRight, false, 48, 18);
+        s.setRange(lo, hi, interval);
+        content.addAndMakeVisible(s);
+    };
+    setupSliceSlider(sliceGainSlider,  sliceGainLabel,  "Level", 0.0, 150.0, 1.0);
+    setupSliceSlider(slicePanSlider,   slicePanLabel,   "Pan",  -100.0, 100.0, 1.0);
+    setupSliceSlider(slicePitchSlider, slicePitchLabel, "Pitch", -24.0, 24.0, 1.0);
+
+    sliceGainSlider.onValueChange = [this]
+    {
+        const int s = waveform.getSelectedSlice();
+        if (s >= 0) processorRef.getSampleLayer().setSliceGain(s, (float) sliceGainSlider.getValue() / 100.0f);
+        waveform.repaint();
+    };
+    slicePanSlider.onValueChange = [this]
+    {
+        const int s = waveform.getSelectedSlice();
+        if (s >= 0) processorRef.getSampleLayer().setSlicePan(s, (float) slicePanSlider.getValue() / 100.0f);
+        waveform.repaint();
+    };
+    slicePitchSlider.onValueChange = [this]
+    {
+        const int s = waveform.getSelectedSlice();
+        if (s >= 0) processorRef.getSampleLayer().setSliceSemitones(s, (float) slicePitchSlider.getValue());
+        waveform.repaint();
+    };
+
+    sliceRevButton.setColour(juce::ToggleButton::textColourId, kSub);
+    sliceRevButton.onClick = [this]
+    {
+        const int s = waveform.getSelectedSlice();
+        if (s >= 0) processorRef.getSampleLayer().setSliceReverse(s, sliceRevButton.getToggleState());
+        waveform.repaint();
+    };
+    content.addAndMakeVisible(sliceRevButton);
+
+    sliceResetButton.onClick = [this]
+    {
+        const int s = waveform.getSelectedSlice();
+        if (s < 0) return;
+        auto& l = processorRef.getSampleLayer();
+        l.setSliceGain(s, 1.0f);
+        l.setSlicePan(s, 0.0f);
+        l.setSliceSemitones(s, 0.0f);
+        l.setSliceReverse(s, false);
+        refreshSliceEditor();
+        waveform.repaint();
+    };
+    content.addAndMakeVisible(sliceResetButton);
+
+    refreshSliceEditor();
+
     // --- FX grid ---
     content.addAndMakeVisible(gridView);
     gridOnButton.setColour(juce::ToggleButton::textColourId, kSub);
@@ -452,6 +520,40 @@ void Nebula2AudioProcessorEditor::saveGridPatternAs()
         }), false);
 }
 
+void Nebula2AudioProcessorEditor::setSliceEditorEnabled(bool on)
+{
+    juce::Component* parts[] = { &sliceGainSlider, &slicePanSlider, &slicePitchSlider,
+                                 &sliceRevButton, &sliceResetButton };
+    for (auto* c : parts) c->setEnabled(on);
+}
+
+void Nebula2AudioProcessorEditor::refreshSliceEditor()
+{
+    const int s = waveform.getSelectedSlice();
+    setSliceEditorEnabled(s >= 0);
+
+    if (s < 0)
+    {
+        // Law 4: a control that can't act says so. Greying the sliders isn't enough on its
+        // own — it looks like a bug unless something tells you what to do about it.
+        sliceEditLabel.setText("SLICE - click a chop in the waveform to edit it",
+                               juce::dontSendNotification);
+        return;
+    }
+
+    sliceEditLabel.setText("SLICE " + juce::String(s + 1), juce::dontSendNotification);
+
+    const auto v = processorRef.getSampleLayer().getSliceSettings(s);
+    // dontSendNotification throughout: these are REFLECTING state, and a notification here
+    // would call the onValueChange handlers and write the value straight back — harmless
+    // until a rounding difference makes the write not match the read, at which point
+    // selecting a slice quietly edits it.
+    sliceGainSlider.setValue(v.gain * 100.0, juce::dontSendNotification);
+    slicePanSlider.setValue(v.pan * 100.0, juce::dontSendNotification);
+    slicePitchSlider.setValue(v.semitones, juce::dontSendNotification);
+    sliceRevButton.setToggleState(v.reverse, juce::dontSendNotification);
+}
+
 void Nebula2AudioProcessorEditor::rollGrid()
 {
     // Only offer the dice lanes that can actually SOUND. A lane sitting on its neutral
@@ -513,7 +615,7 @@ int Nebula2AudioProcessorEditor::contentHeightFor(Page p) const
 {
     switch (p)
     {
-        case Page::play:  return 822;   // sample + mixer + colour (two knob rows) + space
+        case Page::play:  return 858;   // sample + mixer + slice editor + colour + space
         case Page::morph: return 320;
         case Page::grid:  return gridPageHeight();
         case Page::rack:  return 470;
@@ -544,7 +646,9 @@ void Nebula2AudioProcessorEditor::showPage(Page p)
         &charBox, &charLabel, &revCharBox, &revCharLabel,
         &dlySyncBox, &dlySyncLabel, &dlyModeBox, &dlyModeLabel, &fxOnButton, &limiterButton, &spaceOnButton,
         &resoKeyBox, &resoKeyLabel, &resoScaleBox, &resoScaleLabel,
-        &colourRandButton, &spaceRandButton, &soloBox, &soloLabel
+        &colourRandButton, &spaceRandButton, &soloBox, &soloLabel,
+        &sliceEditLabel, &sliceGainSlider, &slicePanSlider, &slicePitchSlider,
+        &sliceGainLabel, &slicePanLabel, &slicePitchLabel, &sliceRevButton, &sliceResetButton
     };
     for (auto* c : playChildren) c->setVisible(play);
 
@@ -769,7 +873,7 @@ void Nebula2AudioProcessorEditor::paintContent(juce::Graphics& g)
 
     if (page == Page::play)
     {
-        auto sampleArea = body.removeFromTop(222.0f);
+        auto sampleArea = body.removeFromTop(258.0f);
         Nebula2LookAndFeel::drawCard(g, sampleArea, "SAMPLE");
         if (dragHighlight)
         {
@@ -937,7 +1041,7 @@ void Nebula2AudioProcessorEditor::layoutContent()
     }
 
     // --- Sample panel ---
-    auto sampleArea = body.removeFromTop(222).reduced(10);
+    auto sampleArea = body.removeFromTop(258).reduced(10);
     sampleArea.removeFromTop(12);
     auto sRow2 = sampleArea.removeFromTop(26);
     loadButton.setBounds(sRow2.removeFromLeft(120));
@@ -980,6 +1084,23 @@ void Nebula2AudioProcessorEditor::layoutContent()
     soloLabel.setBounds(mixRow.removeFromLeft(34));
     soloBox.setBounds(mixRow.removeFromLeft(86).reduced(0, 3));
 
+    // Per-slice editor, under the waveform it edits.
+    sampleArea.removeFromTop(4);
+    auto sliceFxRow = sampleArea.removeFromBottom(28);
+    sliceEditLabel.setBounds(sliceFxRow.removeFromLeft(210));
+    sliceGainLabel.setBounds(sliceFxRow.removeFromLeft(36));
+    sliceGainSlider.setBounds(sliceFxRow.removeFromLeft(130).reduced(0, 4));
+    sliceFxRow.removeFromLeft(6);
+    slicePanLabel.setBounds(sliceFxRow.removeFromLeft(28));
+    slicePanSlider.setBounds(sliceFxRow.removeFromLeft(130).reduced(0, 4));
+    sliceFxRow.removeFromLeft(6);
+    slicePitchLabel.setBounds(sliceFxRow.removeFromLeft(34));
+    slicePitchSlider.setBounds(sliceFxRow.removeFromLeft(120).reduced(0, 4));
+    sliceFxRow.removeFromLeft(8);
+    sliceRevButton.setBounds(sliceFxRow.removeFromLeft(84));
+    sliceResetButton.setBounds(sliceFxRow.removeFromLeft(92));
+
+    sampleArea.removeFromBottom(4);
     sampleArea.removeFromTop(4);
     waveform.setBounds(sampleArea);
     body.removeFromTop(8);

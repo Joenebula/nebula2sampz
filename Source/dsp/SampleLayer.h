@@ -83,6 +83,30 @@ namespace Nebula2
         juce::String sliceOrderToString() const;
         void sliceOrderFromString(const juce::String& s) noexcept;
 
+        // --- per-SLICE settings ---
+        //
+        // Level, pan, transpose and reverse, per chop. The prototype's action bar: without
+        // these a break can be rearranged but not shaped, so a too-loud snare or a hat that
+        // wants pushing left has no answer short of editing the file.
+        //
+        // Indexed by SLICE, not by pad — so a setting stays with the sound it was dialled
+        // in for when the break is shuffled, rather than staying with the position.
+        //
+        // Same threading as the order map: written on the message thread, read on the audio
+        // thread, one atomic per field. A read racing a write yields the old or the new
+        // value for one note.
+        struct SliceSettingsView { float gain; float pan; float semitones; bool reverse; };
+
+        void setSliceGain(int slice, float gain) noexcept;        // 0..1.5
+        void setSlicePan(int slice, float pan) noexcept;          // -1..1
+        void setSliceSemitones(int slice, float semis) noexcept;  // -24..24
+        void setSliceReverse(int slice, bool rev) noexcept;
+        SliceSettingsView getSliceSettings(int slice) const noexcept;
+        void resetSliceSettings() noexcept;
+
+        juce::String sliceSettingsToString() const;
+        void sliceSettingsFromString(const juce::String& s) noexcept;
+
         // What each slice of the loaded break sounds like (kick / snare / hat / ...).
         // MESSAGE THREAD ONLY: it walks the whole sample and allocates. Empty if nothing
         // is loaded. The caller feeds this to musicalSliceOrder() to arrange the break
@@ -192,6 +216,10 @@ namespace Nebula2
             int note = -1;
             double sliceStart = 0.0, sliceEnd = 0.0;
             float gain = 1.0f;
+            // Per-slice shaping, captured at note-on so it stays put for this note.
+            float panL = 1.0f, panR = 1.0f;
+            bool reverse = false;
+            float sliceSemis = 0.0f;
 
             int sliceIndex = -1;
             double outSample = 0.0;     // output samples since note-on
@@ -240,6 +268,12 @@ namespace Nebula2
 
         // pad -> slice. See setSliceOrder for the threading argument.
         std::array<std::atomic<int>, (size_t) maxSlices> sliceOrder;
+
+        // Per-slice settings, indexed by slice.
+        std::array<std::atomic<float>, (size_t) maxSlices> sliceGain;
+        std::array<std::atomic<float>, (size_t) maxSlices> slicePan;
+        std::array<std::atomic<float>, (size_t) maxSlices> sliceSemis;
+        std::array<std::atomic<bool>,  (size_t) maxSlices> sliceRev;
 
         // True when the order is anything other than 0,1,2,3...
         bool orderIsRearranged() const noexcept;

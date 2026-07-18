@@ -26,6 +26,10 @@ namespace Nebula2
     {
         formats.registerBasicFormats();
         resetSliceOrder();
+        // std::atomic members are NOT zero-initialised. Without this every slice gain was
+        // indeterminate, which in practice meant 0 — the whole sampler went silent and
+        // twelve unrelated tests failed at once.
+        resetSliceSettings();
     }
 
     void SampleLayer::resetSliceOrder() noexcept
@@ -64,6 +68,89 @@ namespace Nebula2
         return sliceOrder[(size_t) pad].load();
     }
 
+    void SampleLayer::resetSliceSettings() noexcept
+    {
+        for (int i = 0; i < maxSlices; ++i)
+        {
+            sliceGain[(size_t) i].store(1.0f);
+            slicePan[(size_t) i].store(0.0f);
+            sliceSemis[(size_t) i].store(0.0f);
+            sliceRev[(size_t) i].store(false);
+        }
+    }
+
+    void SampleLayer::setSliceGain(int slice, float g) noexcept
+    {
+        if (slice < 0 || slice >= maxSlices) return;
+        sliceGain[(size_t) slice].store(juce::jlimit(0.0f, 1.5f, g));
+    }
+
+    void SampleLayer::setSlicePan(int slice, float p) noexcept
+    {
+        if (slice < 0 || slice >= maxSlices) return;
+        slicePan[(size_t) slice].store(juce::jlimit(-1.0f, 1.0f, p));
+    }
+
+    void SampleLayer::setSliceSemitones(int slice, float s) noexcept
+    {
+        if (slice < 0 || slice >= maxSlices) return;
+        sliceSemis[(size_t) slice].store(juce::jlimit(-24.0f, 24.0f, s));
+    }
+
+    void SampleLayer::setSliceReverse(int slice, bool r) noexcept
+    {
+        if (slice < 0 || slice >= maxSlices) return;
+        sliceRev[(size_t) slice].store(r);
+    }
+
+    SampleLayer::SliceSettingsView SampleLayer::getSliceSettings(int slice) const noexcept
+    {
+        if (slice < 0 || slice >= maxSlices) return { 1.0f, 0.0f, 0.0f, false };
+        return { sliceGain[(size_t) slice].load(),
+                 slicePan[(size_t) slice].load(),
+                 sliceSemis[(size_t) slice].load(),
+                 sliceRev[(size_t) slice].load() };
+    }
+
+    juce::String SampleLayer::sliceSettingsToString() const
+    {
+        // One slice per token: gain|pan|semis|rev
+        juce::String out;
+        for (int i = 0; i < maxSlices; ++i)
+        {
+            if (i > 0) out << ",";
+            const auto v = getSliceSettings(i);
+            out << juce::String(v.gain, 3) << "|" << juce::String(v.pan, 3) << "|"
+                << juce::String(v.semitones, 2) << "|" << (v.reverse ? 1 : 0);
+        }
+        return out;
+    }
+
+    void SampleLayer::sliceSettingsFromString(const juce::String& s) noexcept
+    {
+        if (s.isEmpty()) { resetSliceSettings(); return; }
+
+        auto rows = juce::StringArray::fromTokens(s, ",", "");
+        // Same rule as the order map: garbage means "I don't know what these were", and the
+        // honest answer to that is the neutral setting, not a half-applied mixture.
+        for (const auto& row : rows)
+            if (juce::StringArray::fromTokens(row, "|", "").size() != 4)
+            {
+                resetSliceSettings();
+                return;
+            }
+
+        resetSliceSettings();
+        for (int i = 0; i < juce::jmin(rows.size(), maxSlices); ++i)
+        {
+            auto f = juce::StringArray::fromTokens(rows[i], "|", "");
+            setSliceGain(i, f[0].getFloatValue());
+            setSlicePan(i, f[1].getFloatValue());
+            setSliceSemitones(i, f[2].getFloatValue());
+            setSliceReverse(i, f[3].getIntValue() != 0);
+        }
+    }
+
     bool SampleLayer::orderIsRearranged() const noexcept
     {
         for (int i = 0; i < maxSlices; ++i)
@@ -86,14 +173,23 @@ namespace Nebula2
         v.sliceIndex = slice;
         v.sliceStart = (double) s.sliceStarts[(size_t) slice];
         v.sliceEnd   = (double) s.sliceStarts[(size_t) slice + 1];
-        v.gain       = seqGain;
+        {
+            // Per-slice shaping. Unity at centre — see the note in noteOn.
+            const auto ss = getSliceSettings(slice);
+            v.gain  = seqGain * ss.gain;
+            v.panL  = ss.pan <= 0.0f ? 1.0f : 1.0f - ss.pan;
+            v.panR  = ss.pan >= 0.0f ? 1.0f : 1.0f + ss.pan;
+            v.reverse = ss.reverse;
+            v.sliceSemis = ss.semitones;
+        }
         v.outSample  = 0.0;
         v.release    = -1.0;
         v.releaseLen = juce::jmax(1.0, 0.005 * hostRate);
 
         const double nativeRate = s.sourceSampleRate / hostRate;
-        const double transpose = pitchOffsetSemis == 0.0f
-                               ? 1.0 : std::pow(2.0, (double) pitchOffsetSemis / 12.0);
+        const float totalSemis = pitchOffsetSemis + v.sliceSemis;
+        const double transpose = totalSemis == 0.0f
+                               ? 1.0 : std::pow(2.0, (double) totalSemis / 12.0);
         v.nativeRate = nativeRate;
         v.pitchRate  = nativeRate * transpose;
 
@@ -519,6 +615,19 @@ namespace Nebula2
         v.sliceEnd   = whole ? (double) s->audio->getNumSamples()
                              : (double) s->sliceStarts[(size_t) slice + 1];
         v.gain       = juce::jlimit(0.0f, 1.0f, velocity);
+        {
+            // Per-slice shaping (skipped for the whole-break note, which isn't one slice).
+            const auto ss = whole ? SliceSettingsView{ 1.0f, 0.0f, 0.0f, false }
+                                  : getSliceSettings(slice);
+            v.gain *= ss.gain;
+            // Unity at CENTRE, not equal-power. Equal-power puts the centre at -3 dB, which
+            // would quietly drop the level of every existing sound the moment this shipped —
+            // a pan control is not allowed to change how loud a break is when it is centred.
+            v.panL = ss.pan <= 0.0f ? 1.0f : 1.0f - ss.pan;
+            v.panR = ss.pan >= 0.0f ? 1.0f : 1.0f + ss.pan;
+            v.reverse = ss.reverse;
+            v.sliceSemis = ss.semitones;
+        }
         v.outSample  = 0.0;
         v.release    = -1.0;
         v.releaseLen = juce::jmax(1.0, 0.005 * hostRate);   // 5 ms
@@ -529,9 +638,13 @@ namespace Nebula2
         // Transpose (grid Pitch +/-). Only the grain READ speed moves; hopIn below is
         // computed from nativeRate, so the chop's LENGTH is untouched. Exactly 1.0 when
         // the offset is 0, so an unpainted lane is bit-for-bit the old behaviour.
-        const double transpose = pitchOffsetSemis == 0.0f
+        // The grid lane's transpose AND this slice's own, added in semitones (which is
+        // where they compose — multiplying two ratios is the same thing, adding the
+        // semitones just says so).
+        const float totalSemis = pitchOffsetSemis + v.sliceSemis;
+        const double transpose = totalSemis == 0.0f
                                ? 1.0
-                               : std::pow(2.0, (double) pitchOffsetSemis / 12.0);
+                               : std::pow(2.0, (double) totalSemis / 12.0);
         v.nativeRate = nativeRate;
         v.pitchRate  = nativeRate * transpose;
 
@@ -667,8 +780,13 @@ namespace Nebula2
                     const double read = v.sliceStart + (double) k * v.hopIn
                                       + half * v.nativeRate + (localT - half) * v.pitchRate;
 
+                    // REVERSE mirrors the read inside the slice, so the chop plays back to
+                    // front while still starting and ending on its own boundaries — the
+                    // grain machinery and the timing are untouched.
+                    const double rd = v.reverse ? (v.sliceStart + v.sliceEnd - read) : read;
+
                     for (int c = 0; c < busChs && c < 2; ++c)
-                        acc[c] += readAt(c, read) * w;
+                        acc[c] += readAt(c, rd) * w;
                 }
 
                 // Note-off gate: 5 ms fade, then the voice frees itself.
@@ -681,7 +799,7 @@ namespace Nebula2
                 }
 
                 for (int c = 0; c < busChs && c < 2; ++c)
-                    bus.addSample(c, startSample + i, acc[c] * env);
+                    bus.addSample(c, startSample + i, acc[c] * env * (c == 0 ? v.panL : v.panR));
 
                 v.outSample += 1.0;
                 if (! v.active) break;

@@ -20,6 +20,13 @@ public:
     void paint(juce::Graphics&) override;
     void resized() override;
 
+    // Click a slice to select it for editing. -1 = nothing selected. The editor listens so
+    // the per-slice controls follow what you clicked.
+    void mouseDown(const juce::MouseEvent&) override;
+    std::function<void(int)> onSliceSelected;
+    void setSelectedSlice(int s) { selectedSlice = s; cacheKey = {}; repaint(); }
+    int getSelectedSlice() const noexcept { return selectedSlice; }
+
     // Call when a new sample is loaded — invalidates the cached picture.
     void sampleChanged();
 
@@ -27,6 +34,7 @@ private:
     void timerCallback() override;
     void rebuildCache();
     juce::String makeCacheKey() const;   // one definition: stamped AND compared
+    int selectedSlice = -1;
 
     Nebula2::SampleLayer& layer;
     juce::Image cache;

@@ -116,7 +116,30 @@ void WaveformView::rebuildCache()
             const bool moved = (pad != s);
             g.setColour(moved ? kAccent.withAlpha(0.95f) : kSub.withAlpha(0.7f));
             g.drawText(juce::String(pad + 1), x0 + 3, 2, 18, 10, juce::Justification::topLeft);
+
+            // A dot on any slice that's been SHAPED. Per-slice settings are otherwise
+            // invisible: you'd have to click each chop in turn to discover which ones you'd
+            // touched, which is the same "looks like it did nothing" trap as the shuffle.
+            const auto ss = layer.getSliceSettings(s);
+            const bool shaped = ss.gain != 1.0f || ss.pan != 0.0f
+                             || ss.semitones != 0.0f || ss.reverse;
+            if (shaped)
+            {
+                g.setColour(kAccent.withAlpha(0.9f));
+                g.fillEllipse((float) x0 + 3.0f, (float) h - 9.0f, 4.0f, 4.0f);
+            }
         }
+    }
+
+    // The selected slice, shaded so it's obvious which chop the controls are editing.
+    if (selectedSlice >= 0 && selectedSlice < numSlices)
+    {
+        const float x0 = bounds[(size_t) selectedSlice] * (float) w;
+        const float x1 = bounds[(size_t) selectedSlice + 1] * (float) w;
+        g.setColour(kAccent.withAlpha(0.10f));
+        g.fillRect(x0, 0.0f, x1 - x0, (float) h);
+        g.setColour(kAccent.withAlpha(0.75f));
+        g.drawRect(x0, 0.0f, x1 - x0, (float) h, 1.5f);
     }
 
     // Includes the slice ORDER (see makeCacheKey), or a shuffle would redraw the stale
@@ -134,7 +157,9 @@ juce::String WaveformView::makeCacheKey() const
     return juce::String(getWidth()) + "x" + juce::String(getHeight()) + "|"
          + layer.getSampleName() + "|"
          + juce::String((int) layer.getSliceBoundariesNormalised().size())
-         + "|" + layer.sliceOrderToString();
+         + "|" + layer.sliceOrderToString()
+         + "|" + juce::String(selectedSlice)
+         + "|" + layer.sliceSettingsToString();
 }
 
 void WaveformView::paint(juce::Graphics& g)
@@ -175,4 +200,24 @@ void WaveformView::paint(juce::Graphics& g)
         g.setColour(kAccent);
         g.drawVerticalLine((int) (head * (float) w), 0.0f, (float) h);
     }
+}
+
+void WaveformView::mouseDown(const juce::MouseEvent& e)
+{
+    // Which slice did they click? Boundaries are normalised, so this is a straight lookup.
+    const auto bounds = layer.getSliceBoundariesNormalised();
+    const int n = (int) bounds.size() - 1;
+    if (n <= 0 || getWidth() <= 0) return;
+
+    const float x = (float) e.x / (float) getWidth();
+    int hit = -1;
+    for (int s = 0; s < n; ++s)
+        if (x >= bounds[(size_t) s] && x < bounds[(size_t) s + 1]) { hit = s; break; }
+
+    // Clicking the same slice again deselects, so there's a way back to "nothing selected"
+    // without hunting for an empty patch of the waveform.
+    selectedSlice = (hit == selectedSlice) ? -1 : hit;
+    cacheKey = {};                 // the selection is drawn, so the cache is now stale
+    repaint();
+    if (onSliceSelected) onSliceSelected(selectedSlice);
 }

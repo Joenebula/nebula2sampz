@@ -3477,6 +3477,173 @@ int main()
         }
     }
 
+    // ---- Per-slice settings: gain, pan, transpose, reverse ----
+    {
+        using namespace Nebula2;
+        const double sr = 48000.0;
+
+        const int sliceLen = 4800;
+        AudioBuffer<float> audio(2, sliceLen * 4);
+        for (int s = 0; s < 4; ++s)
+            for (int i = 0; i < sliceLen; ++i)
+            {
+                const float v = 0.2f * (float) (s + 1);
+                audio.setSample(0, s * sliceLen + i, v);
+                audio.setSample(1, s * sliceLen + i, v);
+            }
+
+        auto play = [&](std::function<void(SampleLayer&)> configure, double& outL, double& outR)
+        {
+            SampleLayer sl;
+            sl.prepare(sr, 512);
+            auto copy = audio;
+            sl.loadBuffer(std::move(copy), sr, "steps");
+            SampleLayer::SliceSettings ss; ss.count = 4; ss.transient = false;
+            sl.setSliceSettings(ss);
+            sl.setStretchEnabled(false);
+            configure(sl);
+            sl.noteOn(SampleLayer::baseNote, 1.0f);   // pad 0 -> slice 0
+
+            AudioBuffer<float> out(2, 2048);
+            out.clear();
+            sl.render(out, 0, 2048);
+            double l = 0.0, r = 0.0;
+            for (int i = 500; i < 2000; ++i)
+            {
+                l += std::abs(out.getSample(0, i));
+                r += std::abs(out.getSample(1, i));
+            }
+            outL = l / 1500.0; outR = r / 1500.0;
+        };
+
+        double baseL = 0, baseR = 0;
+        play([](SampleLayer&) {}, baseL, baseR);
+        check(baseL > 0.05, "slice fx: the reference chop sounds — " + String(baseL, 3));
+        check(std::abs(baseL - baseR) < 1.0e-6, "slice fx: untouched slices are centred (L == R)");
+
+        {
+            double l = 0, r = 0;
+            play([](SampleLayer& sl) { sl.setSliceGain(0, 0.5f); }, l, r);
+            check(l < baseL * 0.6 && l > baseL * 0.4,
+                  "slice fx: gain 0.5 halves the level — " + String(baseL, 3) + " -> " + String(l, 3));
+            play([](SampleLayer& sl) { sl.setSliceGain(0, 0.0f); }, l, r);
+            check(l < 1.0e-6, "slice fx: gain 0 is silent");
+        }
+
+        // Pan — and specifically that CENTRE is unity. An equal-power law would put centre
+        // at -3 dB and quietly drop the level of every existing sound the moment it shipped.
+        {
+            double l = 0, r = 0;
+            play([](SampleLayer& sl) { sl.setSlicePan(0, 0.0f); }, l, r);
+            check(std::abs(l - baseL) < 1.0e-6, "slice fx: pan at centre does NOT change the level");
+            play([](SampleLayer& sl) { sl.setSlicePan(0, -1.0f); }, l, r);
+            check(l > baseL * 0.95 && r < 1.0e-6,
+                  "slice fx: hard left keeps the left level and silences the right — "
+                  + String(l, 3) + " / " + String(r, 3));
+            play([](SampleLayer& sl) { sl.setSlicePan(0, 1.0f); }, l, r);
+            check(r > baseR * 0.95 && l < 1.0e-6, "slice fx: hard right mirrors it");
+        }
+
+        // Transpose, measured by zero crossings on a tone rather than by level.
+        {
+            AudioBuffer<float> tone(2, (int) sr);
+            for (int i = 0; i < tone.getNumSamples(); ++i)
+            {
+                const float v = 0.5f * std::sin(MathConstants<float>::twoPi * 200.0f
+                                                * (float) i / (float) sr);
+                tone.setSample(0, i, v); tone.setSample(1, i, v);
+            }
+            auto crossingsFor = [&](float semis)
+            {
+                SampleLayer sl;
+                sl.prepare(sr, 512);
+                auto copy = tone;
+                sl.loadBuffer(std::move(copy), sr, "tone");
+                SampleLayer::SliceSettings ss; ss.count = 4; ss.transient = false;
+                sl.setSliceSettings(ss);
+                sl.setStretchEnabled(false);
+                sl.setSliceSemitones(0, semis);
+                sl.noteOn(SampleLayer::baseNote, 1.0f);
+                AudioBuffer<float> out(2, 8000);
+                out.clear();
+                sl.render(out, 0, 8000);
+                int n = 0;
+                for (int i = 2001; i < 7000; ++i)
+                    if ((out.getSample(0, i - 1) < 0.0f) != (out.getSample(0, i) < 0.0f)) ++n;
+                return n;
+            };
+            const int flat = crossingsFor(0.0f), up = crossingsFor(12.0f);
+            check(flat > 20 && up > (int) (flat * 1.7) && up < (int) (flat * 2.3),
+                  "slice fx: +12 semitones on a slice doubles its pitch — "
+                  + String(flat) + " -> " + String(up));
+        }
+
+        // Reverse must genuinely change the waveform, not just flip a flag.
+        {
+            SampleLayer a, b;
+            auto setup = [&](SampleLayer& sl, bool rev)
+            {
+                sl.prepare(sr, 512);
+                AudioBuffer<float> ramp(2, sliceLen * 4);
+                ramp.clear();
+                for (int i = 0; i < sliceLen; ++i)
+                {
+                    const float v = (float) i / (float) sliceLen;   // rises across slice 0
+                    ramp.setSample(0, i, v); ramp.setSample(1, i, v);
+                }
+                sl.loadBuffer(std::move(ramp), sr, "ramp");
+                SampleLayer::SliceSettings ss; ss.count = 4; ss.transient = false;
+                sl.setSliceSettings(ss);
+                sl.setStretchEnabled(false);
+                sl.setSliceReverse(0, rev);
+                sl.noteOn(SampleLayer::baseNote, 1.0f);
+            };
+            setup(a, false); setup(b, true);
+            AudioBuffer<float> oa(2, 2048), ob(2, 2048);
+            oa.clear(); ob.clear();
+            a.render(oa, 0, 2048);
+            b.render(ob, 0, 2048);
+
+            const float aStart = std::abs(oa.getSample(0, 300)), aEnd = std::abs(oa.getSample(0, 1800));
+            const float bStart = std::abs(ob.getSample(0, 300)), bEnd = std::abs(ob.getSample(0, 1800));
+            check(aEnd > aStart, "slice fx: forwards, the ramp rises");
+            check(bEnd < bStart, "slice fx: reversed, the same ramp falls — "
+                                 + String(bStart, 3) + " -> " + String(bEnd, 3));
+        }
+
+        // Settings survive a save, and degrade to neutral on garbage rather than
+        // half-applying — the same rule the order map follows.
+        {
+            SampleLayer a, b;
+            a.setSliceGain(2, 0.4f);
+            a.setSlicePan(2, -0.75f);
+            a.setSliceSemitones(2, 7.0f);
+            a.setSliceReverse(2, true);
+            b.sliceSettingsFromString(a.sliceSettingsToString());
+            const auto v = b.getSliceSettings(2);
+            check(std::abs(v.gain - 0.4f) < 0.01f && std::abs(v.pan + 0.75f) < 0.01f
+                   && std::abs(v.semitones - 7.0f) < 0.01f && v.reverse,
+                  "slice fx: settings survive a save/restore round trip");
+
+            SampleLayer c;
+            c.setSliceGain(0, 0.1f);
+            c.sliceSettingsFromString("not|valid");
+            check(c.getSliceSettings(0).gain == 1.0f,
+                  "slice fx: a corrupt saved block degrades to neutral, not half-applied");
+        }
+
+        {
+            SampleLayer sl;
+            sl.setSliceGain(-1, 0.0f);
+            sl.setSliceGain(9999, 0.0f);
+            sl.setSliceGain(0, 99.0f);
+            sl.setSlicePan(0, -50.0f);
+            const auto v = sl.getSliceSettings(0);
+            check(v.gain <= 1.5f && v.pan >= -1.0f,
+                  "slice fx: values clamp and bad indices are ignored");
+        }
+    }
+
     // ---- Layer mixer ----
     {
         using namespace Nebula2;

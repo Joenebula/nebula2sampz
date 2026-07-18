@@ -160,6 +160,17 @@ private:
     juce::Label soloLabel;
     std::unique_ptr<APVTS::ComboBoxAttachment> soloAttachment;
 
+    // Per-slice shaping. NOT parameters: there are 64 slices x 4 settings, and publishing
+    // 256 automatable knobs for a thing you edit by clicking a chop would bury every real
+    // control in the host's automation list. They travel in the state chunk instead.
+    juce::Label sliceEditLabel;
+    juce::Slider sliceGainSlider, slicePanSlider, slicePitchSlider;
+    juce::Label sliceGainLabel, slicePanLabel, slicePitchLabel;
+    juce::ToggleButton sliceRevButton { "Reverse" };
+    juce::TextButton sliceResetButton { "Reset Slice" };
+    void refreshSliceEditor();
+    void setSliceEditorEnabled(bool);
+
     juce::TextButton colourRandButton { "Randomise" };
     juce::TextButton spaceRandButton { "Randomise" };
     juce::ToggleButton spaceOnButton { "Space On" };

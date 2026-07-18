@@ -204,6 +204,7 @@ private:
     juce::CriticalSection pendingPathLock;
     juce::String pendingSamplePath;
     juce::String pendingSliceOrder;   // applied after the load, never before
+    juce::String pendingSliceFx;      // same: loadFile re-slices, which resets these
 
     int currentProgram = 0;
     float uiScale = 0.0f;      // 0 = never chosen; the editor then follows the screen

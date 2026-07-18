@@ -159,11 +159,13 @@ void Nebula2AudioProcessor::handleAsyncUpdate()
         pathToLoad = pendingSamplePath;
         pendingSamplePath.clear();
     }
-    juce::String orderToApply;
+    juce::String orderToApply, fxToApply;
     {
         const juce::ScopedLock sl(pendingPathLock);
         orderToApply = pendingSliceOrder;
+        fxToApply    = pendingSliceFx;
         pendingSliceOrder.clear();
+        pendingSliceFx.clear();
     }
     if (pathToLoad.isNotEmpty())
     {
@@ -171,6 +173,7 @@ void Nebula2AudioProcessor::handleAsyncUpdate()
         const bool ok = f.existsAsFile() && sampleLayer.loadFile(f);
         // AFTER the load, for the reason given where it was stashed.
         if (orderToApply.isNotEmpty()) sampleLayer.sliceOrderFromString(orderToApply);
+        if (fxToApply.isNotEmpty())    sampleLayer.sliceSettingsFromString(fxToApply);
         if (auto* ed = dynamic_cast<Nebula2AudioProcessorEditor*>(getActiveEditor()))
             ed->sampleReSliced();      // refresh the readout/waveform either way
         juce::ignoreUnused(ok);        // a missing file just leaves the layer empty
@@ -599,6 +602,7 @@ void Nebula2AudioProcessor::getStateInformation(juce::MemoryBlock& destData)
     // The arrangement (which slice each pad plays) is not derivable from the audio, so it
     // has to travel with the project or a shuffled break comes back in its original order.
     sampleNode.setProperty("sliceOrder", sampleLayer.sliceOrderToString(), nullptr);
+    sampleNode.setProperty("sliceFx", sampleLayer.sliceSettingsToString(), nullptr);
 
     // The grid is structured data, not a flat parameter — it needs saving explicitly too,
     // or a reopened project comes back with an empty pattern.
@@ -638,6 +642,7 @@ void Nebula2AudioProcessor::setStateInformation(const void* data, int sizeInByte
     {
         const juce::String path = sampleNode.getProperty("path").toString();
         const juce::String order = sampleNode.getProperty("sliceOrder").toString();
+        const juce::String fx    = sampleNode.getProperty("sliceFx").toString();
         if (path.isNotEmpty() && path != sampleLayer.getSourcePath())
         {
             const juce::ScopedLock sl(pendingPathLock);
@@ -645,12 +650,14 @@ void Nebula2AudioProcessor::setStateInformation(const void* data, int sizeInByte
             // Held until AFTER the load. loadFile re-slices and resets the order, so
             // applying it here would restore the arrangement and then immediately wipe it.
             pendingSliceOrder = order;
+            pendingSliceFx = fx;
             triggerAsyncUpdate();
         }
         else
         {
             // Same sample already loaded (or none): nothing will re-slice, so apply now.
             sampleLayer.sliceOrderFromString(order);
+            sampleLayer.sliceSettingsFromString(fx);
         }
     }
 
