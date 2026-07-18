@@ -27,6 +27,7 @@
 #include "../Source/GridPresets.h"
 #include "../Source/Randomise.h"
 #include "../Source/History.h"
+#include "../Source/MidiLearn.h"
 #include "../Source/dsp/SliceAnalysis.h"
 #include "../Source/dsp/AmpShape.h"
 #include "../Source/dsp/MorphPad.h"
@@ -3657,6 +3658,101 @@ int main()
             randomiseRack(g, r2);
             check(g.getCables().size() == firstCount,
                   "rack dice: rolling again replaces the patch rather than accumulating");
+        }
+    }
+
+    // ---- MIDI learn ----
+    {
+        using namespace Nebula2;
+
+        {
+            MidiLearn m;
+            check(! m.isArmed(), "midi: starts unarmed");
+            check(m.paramForCC(10).isEmpty(), "midi: nothing is mapped to start with");
+            check(m.ccForParam("drive") == -1, "midi: an unmapped parameter reports -1");
+        }
+
+        // Learning binds on the CC that ARRIVES, not the next one. Binding on the next
+        // would mean the first turn of the knob does nothing, which feels broken even
+        // though it isn't.
+        {
+            MidiLearn m;
+            m.arm("drive");
+            const auto learned = m.noteCC(21, 64);
+            check(learned == "drive", "midi: the arming CC is the one that binds");
+            check(m.paramForCC(21) == "drive", "midi: and the binding stuck");
+            check(! m.isArmed(), "midi: learning disarms itself");
+
+            std::array<float, MidiLearn::numCCs> vals {};
+            std::array<bool, MidiLearn::numCCs> has {};
+            check(m.drainPending(vals, has) == 1 && has[21],
+                  "midi: the CC that armed it ALSO moves the control");
+            check(std::abs(vals[21] - 64.0f / 127.0f) < 0.001f,
+                  "midi: the value is scaled to 0..1");
+        }
+
+        // One CC per parameter. Two CCs on one knob means whichever moved last wins, which
+        // is indistinguishable from a bug.
+        {
+            MidiLearn m;
+            m.bind(1, "drive");
+            m.bind(2, "drive");
+            check(m.paramForCC(1).isEmpty() && m.paramForCC(2) == "drive",
+                  "midi: rebinding MOVES a parameter rather than adding a second source");
+            check(m.ccForParam("drive") == 2, "midi: and the lookup agrees");
+        }
+
+        // Clearing, both ways round.
+        {
+            MidiLearn m;
+            m.bind(5, "crush");
+            m.clearCC(5);
+            check(m.paramForCC(5).isEmpty(), "midi: a CC can be cleared");
+            m.bind(6, "tone");
+            m.clearParam("tone");
+            check(m.ccForParam("tone") == -1, "midi: a parameter can be unmapped");
+            m.bind(7, "width");
+            m.clearAll();
+            check(m.ccForParam("width") == -1, "midi: clear all empties the map");
+        }
+
+        // Draining is a HANDOVER, not a peek: the audio thread records, the message thread
+        // takes. Reading twice must not apply the same move twice.
+        {
+            MidiLearn m;
+            m.bind(9, "pump");
+            m.noteCC(9, 100);
+            std::array<float, MidiLearn::numCCs> vals {};
+            std::array<bool, MidiLearn::numCCs> has {};
+            check(m.drainPending(vals, has) == 1, "midi: a recorded CC drains once");
+            check(m.drainPending(vals, has) == 0, "midi: and is not delivered twice");
+        }
+
+        // Out-of-range CCs must be refused rather than writing past the array.
+        {
+            MidiLearn m;
+            m.bind(-1, "drive");
+            m.bind(999, "drive");
+            m.noteCC(-1, 64);
+            m.noteCC(999, 64);
+            check(m.ccForParam("drive") == -1, "midi: out-of-range CCs are refused");
+        }
+
+        // Round trip, and a corrupt entry skipped WITHOUT losing the rest — a map is a lot
+        // of hardware setup to throw away over one bad line.
+        {
+            MidiLearn a;
+            a.bind(3, "drive");
+            a.bind(74, "tone");
+            MidiLearn b;
+            b.fromString(a.toString());
+            check(b.paramForCC(3) == "drive" && b.paramForCC(74) == "tone",
+                  "midi: a map survives a save/restore round trip");
+
+            MidiLearn c;
+            c.fromString("3=drive,rubbish,74=tone");
+            check(c.paramForCC(3) == "drive" && c.paramForCC(74) == "tone",
+                  "midi: a corrupt entry is skipped and the rest of the map survives");
         }
     }
 

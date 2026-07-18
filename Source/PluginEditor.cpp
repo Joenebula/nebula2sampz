@@ -806,6 +806,10 @@ void Nebula2AudioProcessorEditor::showPage(Page p)
 
 void Nebula2AudioProcessorEditor::timerCallback()
 {
+    // Apply any MIDI CCs the audio thread recorded. Here, not in processBlock: moving a
+    // parameter notifies listeners and repaints, which is not audio-thread work.
+    processorRef.applyPendingMidi();
+
     updateSliceControlStates();
 
     // Keep the Play button honest: the host transport can clear audition on its own (it
@@ -906,7 +910,11 @@ void Nebula2AudioProcessorEditor::addKnob(Knob& k, const juce::String& paramID,
     k.slider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
     content.addAndMakeVisible(k.slider);
 
-    k.label.setText(name, juce::dontSendNotification);
+    // Right-click for MIDI learn. Every knob gets it from HERE, so a control added later
+    // cannot quietly be the one that isn't learnable.
+    attachMidiMenu(k.slider, paramID);
+
+
     k.label.setJustificationType(juce::Justification::centred);
     k.label.setColour(juce::Label::textColourId, kSub);
     content.addAndMakeVisible(k.label);
@@ -1333,4 +1341,52 @@ void Nebula2AudioProcessorEditor::applyAmpShape()
                                                       ampShapeBox.getSelectedId() - 1);
     processorRef.getSampleLayer().setAmpShape(Nebula2::makeAmpShape(id),
                                               ampOnButton.getToggleState());
+}
+
+void Nebula2AudioProcessorEditor::attachMidiMenu(juce::Slider& s, const juce::String& paramId)
+{
+    // A mouse listener rather than a Slider subclass: subclassing would mean every knob,
+    // fader and the Sens slider had to be built from the new type, and the one control
+    // someone forgets to convert is the one that silently is not learnable.
+    midiMenuTargets[&s] = paramId;
+    s.addMouseListener(this, false);
+}
+
+void Nebula2AudioProcessorEditor::mouseDown(const juce::MouseEvent& e)
+{
+    if (! e.mods.isPopupMenu()) return;
+
+    const auto it = midiMenuTargets.find(dynamic_cast<juce::Slider*>(e.eventComponent));
+    if (it != midiMenuTargets.end()) showMidiMenuFor(it->second);
+}
+
+void Nebula2AudioProcessorEditor::showMidiMenuFor(const juce::String& paramId)
+{
+    auto& learn = processorRef.getMidiLearn();
+    const int cc = learn.ccForParam(paramId);
+
+    juce::PopupMenu m;
+    m.addSectionHeader(cc >= 0 ? paramId + "  (CC " + juce::String(cc) + ")" : paramId);
+    m.addItem(1, learn.isArmed() ? "Waiting for a CC..." : "MIDI learn");
+    if (cc >= 0) m.addItem(2, "Clear MIDI map");
+    m.addItem(3, "Reset to default");
+
+    m.showMenuAsync(juce::PopupMenu::Options(),
+        [this, paramId](int result)
+        {
+            auto& l = processorRef.getMidiLearn();
+            if (result == 1)      l.arm(paramId);
+            else if (result == 2) l.clearParam(paramId);
+            else if (result == 3)
+            {
+                // "Reset to default" is a parameter move like any other, so it goes
+                // through gestures — a host recording automation must see it.
+                if (auto* p = processorRef.getValueTreeState().getParameter(paramId))
+                {
+                    p->beginChangeGesture();
+                    p->setValueNotifyingHost(p->getDefaultValue());
+                    p->endChangeGesture();
+                }
+            }
+        });
 }

@@ -378,6 +378,12 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
             {
                 sampleLayer.noteOn(msg.getNoteNumber(), msg.getFloatVelocity());
             }
+            else if (msg.isController())
+            {
+                // Record only — see getMidiLearn(). Learning also happens here so the CC
+                // that arms a control is the one that moves it.
+                midiLearn.noteCC(msg.getControllerNumber(), msg.getControllerValue());
+            }
             else if (msg.isNoteOff())
             {
                 // Drums are one-shots (a kick doesn't stop when you lift the key), but a
@@ -631,6 +637,10 @@ void Nebula2AudioProcessor::getStateInformation(juce::MemoryBlock& destData)
     uiNode.setProperty("scale", uiScale, nullptr);
     uiNode.setProperty("gridDice", gridDiceDensity, nullptr);
 
+    // The MIDI map is hardware setup, not a sound. It travels with the project so a
+    // controller keeps working when you reopen it.
+    uiNode.setProperty("midiMap", midiLearn.toString(), nullptr);
+
     if (auto xml = state.createXml())
         copyXmlToBinary(*xml, destData);
 }
@@ -693,6 +703,7 @@ void Nebula2AudioProcessor::setStateInformation(const void* data, int sizeInByte
     {
         uiScale = (float) uiNode.getProperty("scale", 0.0);
         gridDiceDensity = juce::jlimit(0, 2, (int) uiNode.getProperty("gridDice", 1));
+        midiLearn.fromString(uiNode.getProperty("midiMap").toString());
     }
 
     apvts.replaceState(tree);
@@ -755,4 +766,27 @@ bool Nebula2AudioProcessor::redoState()
     if (! history.redo(captureSnapshot(), out)) return false;
     applySnapshot(out);
     return true;
+}
+
+void Nebula2AudioProcessor::applyPendingMidi()
+{
+    // MESSAGE THREAD. setValueNotifyingHost notifies listeners, repaints attached controls
+    // and in some hosts allocates — none of which belongs in processBlock, which is why the
+    // audio thread only records and this drains.
+    std::array<float, Nebula2::MidiLearn::numCCs> vals {};
+    std::array<bool, Nebula2::MidiLearn::numCCs> has {};
+    if (midiLearn.drainPending(vals, has) == 0) return;
+
+    for (int cc = 0; cc < Nebula2::MidiLearn::numCCs; ++cc)
+    {
+        if (! has[(size_t) cc]) continue;
+        const auto id = midiLearn.paramForCC(cc);
+        if (id.isEmpty()) continue;                     // a CC nobody mapped
+        if (auto* p = apvts.getParameter(id))
+        {
+            p->beginChangeGesture();
+            p->setValueNotifyingHost(vals[(size_t) cc]);
+            p->endChangeGesture();
+        }
+    }
 }

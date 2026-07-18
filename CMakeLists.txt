@@ -59,6 +59,8 @@ target_sources(Nebula2 PRIVATE
     Source/Parameters.cpp
     Source/Parameters.h
     Source/ParameterIDs.h
+    Source/MidiLearn.cpp
+    Source/MidiLearn.h
     Source/History.cpp
     Source/History.h
     Source/Randomise.cpp
@@ -149,6 +151,8 @@ target_sources(Nebula2Tests PRIVATE
     Source/Parameters.cpp
     Source/Parameters.h
     Source/ParameterIDs.h
+    Source/MidiLearn.cpp
+    Source/MidiLearn.h
     Source/History.cpp
     Source/History.h
     Source/Randomise.cpp

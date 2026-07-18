@@ -12,6 +12,7 @@
 #include "dsp/RackGraph.h"
 #include "dsp/RackModules.h"
 #include "History.h"
+#include "MidiLearn.h"
 
 // MIDI-triggered drum voices -> Colour FX -> Space send -> master chain.
 //
@@ -119,6 +120,11 @@ public:
     bool redoState();
     Nebula2::History& getHistory() noexcept { return history; }
 
+    // MIDI learn. The audio thread only RECORDS incoming CCs; the editor applies them on
+    // the message thread, because moving a parameter notifies listeners and repaints.
+    Nebula2::MidiLearn& getMidiLearn() noexcept { return midiLearn; }
+    void applyPendingMidi();
+
 private:
     juce::UndoManager undoManager;
     juce::AudioProcessorValueTreeState apvts;
@@ -214,6 +220,7 @@ private:
     juce::String pendingSliceFx;      // same: loadFile re-slices, which resets these
 
     Nebula2::History history;
+    Nebula2::MidiLearn midiLearn;
     int currentProgram = 0;
     float uiScale = 0.0f;      // 0 = never chosen; the editor then follows the screen
     int gridDiceDensity = 1;   // 0 Low, 1 Mid, 2 High

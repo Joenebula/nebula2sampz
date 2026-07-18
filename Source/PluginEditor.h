@@ -9,6 +9,7 @@
 #include "Nebula2LookAndFeel.h"
 #include "Theme.h"
 #include <array>
+#include <map>
 
 // A functional control surface: every live parameter, attached to the APVTS so the host
 // and the UI can never disagree (law: one source of truth — the visual derives from state).
@@ -24,6 +25,7 @@ public:
 
     void paint(juce::Graphics&) override;
     void resized() override;
+    void mouseDown(const juce::MouseEvent&) override;   // right-click -> MIDI learn menu
 
     // Called by the processor after an off-thread re-slice, so the waveform redraws.
     void sampleReSliced();
@@ -178,6 +180,9 @@ private:
     juce::TextButton ampRandButton { "Vary" };
     void refreshSliceEditor();
     void applyAmpShape();
+    void attachMidiMenu(juce::Slider&, const juce::String& paramId);
+    void showMidiMenuFor(const juce::String& paramId);
+    std::map<juce::Slider*, juce::String> midiMenuTargets;
     void setSliceEditorEnabled(bool);
 
     juce::TextButton colourRandButton { "Randomise" };
