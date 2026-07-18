@@ -36,6 +36,16 @@ namespace Nebula2
     // Corner order matches the prototype: A(top-left) B(top-right) C(bottom-left) D(bottom-right)
     enum class MorphCorner { A = 0, B, C, D, Count };
 
+    // Four fresh scenes for the pad's corners.
+    //
+    // Each corner is rolled inside its OWN character — open, dirty, dark, broken — not four
+    // draws from one range. The prototype is explicit about why: four independent rolls
+    // "would all land in the same beige middle", and a pad whose corners all sound alike has
+    // nothing to morph BETWEEN. That's the whole instrument, so it's the part worth a test.
+    //
+    // RNG by reference, so a seed reproduces a set of scenes.
+    std::array<MorphScene, 4> randomMorphScenes(juce::Random& rng);
+
     // Auto-motion: the pad dot moves itself in a shape, tempo-locked. The prototype's
     // Off/Circle/Fig-8/Square/Drift. When on, the effective pad position is the base
     // (padX,padY) plus this offset — so the sliders still set the CENTRE the motion orbits.

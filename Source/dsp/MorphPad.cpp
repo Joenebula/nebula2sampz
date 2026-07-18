@@ -61,6 +61,31 @@ namespace Nebula2
         return s;
     }
 
+    std::array<MorphScene, 4> randomMorphScenes(juce::Random& rng)
+    {
+        auto r = [&rng](float lo, float hi) { return lo + rng.nextFloat() * (hi - lo); };
+
+        std::array<MorphScene, 4> s;
+
+        // A — open: bright, barely touched.
+        s[0] = { r(7000.0f, 16000.0f), r(0.6f, 2.0f),   r(0.0f, 20.0f),  r(0.0f, 15.0f),
+                 r(0.0f, 20.0f),       0.0f,            r(95.0f, 120.0f),  r(0.0f, 20.0f) };
+
+        // B — dirty: driven hard, still open enough to hear the drive.
+        s[1] = { r(2500.0f, 8000.0f),  r(1.0f, 4.0f),   r(50.0f, 95.0f), r(0.0f, 35.0f),
+                 r(0.0f, 25.0f),       r(0.0f, 25.0f),  r(90.0f, 130.0f),  r(5.0f, 25.0f) };
+
+        // C — dark and resonant: filter right down, resonance right up.
+        s[2] = { r(300.0f, 1400.0f),   r(6.0f, 16.0f),  r(15.0f, 55.0f), r(0.0f, 20.0f),
+                 r(30.0f, 80.0f),      0.0f,            r(70.0f, 100.0f),  r(15.0f, 45.0f) };
+
+        // D — wide, wet, broken: flanged, shattered, drenched.
+        s[3] = { r(5000.0f, 14000.0f), r(0.7f, 3.0f),   r(10.0f, 40.0f), r(35.0f, 85.0f),
+                 r(20.0f, 60.0f),      r(30.0f, 80.0f), r(130.0f, 190.0f), r(45.0f, 85.0f) };
+
+        return s;
+    }
+
     std::array<float, 4> morphWeights(float x, float y) noexcept
     {
         x = juce::jlimit(0.0f, 1.0f, x);

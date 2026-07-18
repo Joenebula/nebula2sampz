@@ -212,6 +212,25 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     addKnob(morphSize,  Nebula2::ParamID::morphSize,  "Size",  " %");
     addKnob(morphGlide, Nebula2::ParamID::morphGlide, "Glide", " %");
 
+    // The pad has no scene editor, so this is the only way to change what it morphs
+    // BETWEEN. Without it the four corners sit at their seed values forever, which is why
+    // "what does the morph actually morph?" is a hard question to answer from the UI.
+    morphRandButton.onClick = [this]
+    {
+        juce::Random rng;
+        processorRef.getMorphScenes() = Nebula2::randomMorphScenes(rng);
+        // Rolling scenes while the pad is off would change nothing audible, which reads as
+        // a broken button — so switch it on, as the prototype does.
+        if (auto* p = processorRef.getValueTreeState().getParameter(Nebula2::ParamID::padOn))
+        {
+            p->beginChangeGesture();
+            p->setValueNotifyingHost(1.0f);
+            p->endChangeGesture();
+        }
+        morphPad.repaint();
+    };
+    content.addAndMakeVisible(morphRandButton);
+
     // --- Modular rack ---
     content.addAndMakeVisible(rackView);
     rackOnButton.setColour(juce::ToggleButton::textColourId, kSub);
@@ -530,6 +549,7 @@ void Nebula2AudioProcessorEditor::showPage(Page p)
     morphMotionBox.setVisible(morph); morphMotionLabel.setVisible(morph);
     morphRateBox.setVisible(morph);   morphRateLabel.setVisible(morph);
     for (auto* k : { &morphSize, &morphGlide }) { k->slider.setVisible(morph); k->label.setVisible(morph); }
+    morphRandButton.setVisible(morph);
 
     gridView.setVisible(grid);
     gridOnButton.setVisible(grid);
@@ -816,6 +836,8 @@ void Nebula2AudioProcessorEditor::layoutContent()
             row.removeFromLeft(10);
             morphRateLabel.setBounds(row.removeFromLeft(40));
             morphRateBox.setBounds(row.removeFromLeft(86).reduced(0, 1));
+            row.removeFromLeft(12);
+            morphRandButton.setBounds(row.removeFromLeft(96));
 
             mp.removeFromTop(6);
             auto krow = mp.removeFromTop(20);

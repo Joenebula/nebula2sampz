@@ -184,6 +184,9 @@ private:
     juce::Label morphMotionLabel, morphRateLabel;
     std::unique_ptr<APVTS::ComboBoxAttachment> morphMotionAttachment, morphRateAttachment;
     Knob morphSize, morphGlide;
+    // Four new scenes. Also the only way to change what the pad blends between: there is
+    // no scene editor, so without this the corners are fixed at their seeds.
+    juce::TextButton morphRandButton { "New Scenes" };
 
     // Modular rack
     RackView rackView { processorRef };

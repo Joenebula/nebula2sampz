@@ -3476,6 +3476,74 @@ int main()
         }
     }
 
+    // ---- Morph scene dice ----
+    {
+        using namespace Nebula2;
+
+        // THE property worth protecting. Four independent rolls from one range would all
+        // land in the same beige middle, and a pad whose corners sound alike has nothing to
+        // morph between — the pad IS the difference between its corners. Each corner is
+        // rolled inside its own character instead, and this is what checks that held.
+        {
+            double sameFilter = 0.0;
+            const int trials = 100;
+            for (int t = 0; t < trials; ++t)
+            {
+                Random rng(300 + t);
+                const auto s = randomMorphScenes(rng);
+
+                // The dark corner must be genuinely darker than the open one, every time —
+                // not merely different on average.
+                if (! (s[2].cut < s[0].cut)) sameFilter += 1.0;
+            }
+            check(sameFilter == 0.0,
+                  "morph dice: the dark corner is always darker than the open one — "
+                  + String((int) sameFilter) + " failures in " + String(trials));
+        }
+
+        {
+            Random rng(11);
+            const auto s = randomMorphScenes(rng);
+
+            check(s[1].drv > s[0].drv,
+                  "morph dice: the dirty corner drives harder than the open one — "
+                  + String(s[1].drv, 0) + " vs " + String(s[0].drv, 0));
+            check(s[2].res > s[0].res,
+                  "morph dice: the dark corner is more resonant — "
+                  + String(s[2].res, 1) + " vs " + String(s[0].res, 1));
+            check(s[3].wid > s[0].wid && s[3].spc > s[0].spc,
+                  "morph dice: the broken corner is wider and wetter");
+            check(s[3].sht > 0.0f && s[0].sht == 0.0f,
+                  "morph dice: only the broken corner shatters");
+
+            // Every value has to be usable — a scene with a 30 Hz cutoff or negative width
+            // is a corner that just sounds broken rather than interesting.
+            bool sane = true;
+            for (const auto& sc : s)
+            {
+                if (sc.cut < 100.0f || sc.cut > 20000.0f) sane = false;
+                if (sc.res < 0.0f || sc.res > 20.0f) sane = false;
+                if (sc.drv < 0.0f || sc.drv > 100.0f) sane = false;
+                if (sc.wid < 0.0f || sc.wid > 200.0f) sane = false;
+                if (sc.spc < 0.0f || sc.spc > 100.0f) sane = false;
+                if (sc.sht < 0.0f || sc.sht > 100.0f) sane = false;
+            }
+            check(sane, "morph dice: every rolled value is in a usable range");
+        }
+
+        // A seed reproduces its scenes, and two different seeds don't collide.
+        {
+            Random a(7), b(7), c(8);
+            const auto s1 = randomMorphScenes(a);
+            const auto s2 = randomMorphScenes(b);
+            const auto s3 = randomMorphScenes(c);
+            check(s1[0].cut == s2[0].cut && s1[3].sht == s2[3].sht,
+                  "morph dice: a seed reproduces its scenes");
+            check(s1[0].cut != s3[0].cut,
+                  "morph dice: a different seed gives different scenes");
+        }
+    }
+
     // ---- Slice analysis: telling a kick from a hat ----
     {
         using namespace Nebula2;
