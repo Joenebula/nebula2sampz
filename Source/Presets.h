@@ -50,6 +50,20 @@ namespace Nebula2
     // be absent from this function entirely, which meant preset recall quietly stopped
     // being total the day the rack landed — the doc comment above stayed true-looking and
     // became a lie.
+    //
+    // The SAMPLE LAYER is deliberately absent, and that IS a decision rather than the same
+    // oversight repeated — worth stating, because the paragraph above argues the opposite
+    // way for the rack and someone will reasonably ask why that reasoning doesn't apply.
+    //
+    // A preset is a SOUND DESIGN: colour, space, a rack patch, a grid pattern. Your break
+    // and how you have arranged it — the slice order, and each chop's level, pan, pitch and
+    // reverse — are your MATERIAL. Trying "Ghost Choir" must not throw away a beat you
+    // spent ten minutes rearranging, and a preset author has no idea how many slices your
+    // sample even has.
+    //
+    // So "recall is total" is scoped to the design, not to the material. If that ever
+    // changes it needs the treatment the rack got — passed in explicitly, reset first, and
+    // gated — rather than being decided by whether a value happens to sit in the APVTS.
     void applyPreset(juce::AudioProcessorValueTreeState& apvts, int index,
                      RackGraph& rack, juce::SpinLock& rackLock,
                      std::array<MorphScene, 4>& scenes, FxGrid& grid);
