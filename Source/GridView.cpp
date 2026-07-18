@@ -80,8 +80,64 @@ int GridView::stepAt(juce::Point<int> pos) const
     return (s >= 0 && s < steps) ? s : -1;
 }
 
+juce::RangedAudioParameter* GridView::panelParamFor(int row) const
+{
+    const char* id = Nebula2::gridRowPanelParamId((Nebula2::GridRow) row);
+    return id == nullptr ? nullptr : processorRef.getValueTreeState().getParameter(id);
+}
+
+bool GridView::laneNameHit(juce::Point<int> pos) const
+{
+    // The label column, below the note strip. stepAt() already refuses x < labelW, so this
+    // region was previously dead: a drag there did nothing at all.
+    return pos.x < labelW && pos.y >= noteRowHeight && rowAt(pos) >= 0;
+}
+
+void GridView::setLevelFromMouse(juce::Point<int> pos)
+{
+    auto* p = panelParamFor(draggingLevelRow);
+    if (p == nullptr) return;
+
+    // setValueNotifyingHost takes a NORMALISED value, not the parameter's own units. Passing
+    // 100 here would peg every lane to its maximum and look like the drag "worked".
+    const float t = juce::jlimit(0.0f, 1.0f, (float) pos.x / (float) juce::jmax(1, labelW));
+    p->setValueNotifyingHost(t);
+    repaint();
+}
+
+void GridView::mouseDoubleClick(const juce::MouseEvent& e)
+{
+    if (! laneNameHit(e.getPosition())) return;
+
+    const int row = rowAt(e.getPosition());
+    auto* p = panelParamFor(row);
+    if (p == nullptr) return;
+
+    // Back to rest — which is 0 for most lanes and 100 for Tone and Width. Dragging can get
+    // close to a neutral without hitting it, and a lane that is nearly-at-rest is the most
+    // confusing state there is: it looks live and does almost nothing.
+    const float rest = Nebula2::gridRowNeutral((Nebula2::GridRow) row);
+    p->setValueNotifyingHost(p->convertTo0to1(rest));
+    repaint();
+}
+
 void GridView::mouseDown(const juce::MouseEvent& e)
 {
+    // A drag on the lane NAME sets that lane's level. Checked before the cell logic because
+    // the label column is not part of the step area at all.
+    if (laneNameHit(e.getPosition()))
+    {
+        draggingLevelRow = rowAt(e.getPosition());
+        if (auto* p = panelParamFor(draggingLevelRow))
+        {
+            // Wrap the whole drag in one gesture so the host records it as a single
+            // automation move rather than a hundred separate ones.
+            p->beginChangeGesture();
+            setLevelFromMouse(e.getPosition());
+        }
+        return;
+    }
+
     // The note strip first: it owns the top of the view, and a click there is a pitch, not
     // a cell. Right-click clears the step, matching the effect lanes' erase.
     if (e.getPosition().y < noteRowHeight)
@@ -116,6 +172,11 @@ void GridView::mouseDrag(const juce::MouseEvent& e)
     // effect cells mid-gesture.
     if (editingNotes) { setNoteFromMouse(e.getPosition()); return; }
 
+    // Same reasoning as the note strip: once a level drag has started it owns the gesture,
+    // even if the pointer wanders out of the label column. Re-testing would drop you into
+    // painting cells half way through setting a level.
+    if (draggingLevelRow >= 0) { setLevelFromMouse(e.getPosition()); return; }
+
     const int row = rowAt(e.getPosition());
     const int step = stepAt(e.getPosition());
     if (row < 0 || step < 0) return;
@@ -145,21 +206,42 @@ void GridView::paint(juce::Graphics& g)
         const int y = noteRowHeight + i * rowH;
         const bool starved = rowIsStarved(r);
 
+        // The label cell IS this lane's level slider, so it draws its own fill first and
+        // the text sits on top. Filled by NORMALISED position, so the bar shows where the
+        // lane sits in its own range: Width (0..200) rests half way, Tone (0..100) rests
+        // full. A percentage-filled bar would put Width's rest at the far right and imply
+        // there was no travel left.
+        {
+            juce::Rectangle<int> cell(0, y + 1, labelW - 2, rowH - 2);
+            g.setColour(kWell.brighter(0.10f));
+            g.fillRect(cell);
+
+            float t = 0.0f;
+            if (auto* p = panelParamFor(r)) t = juce::jlimit(0.0f, 1.0f, p->getValue());
+
+            if (t > 0.001f)
+            {
+                // Same live/at-rest language as the cells: dim when the lane cannot act,
+                // so the bar never looks busy while the lane is silent.
+                g.setColour(starved ? kSub.withAlpha(0.18f) : juce::Colour(0xff1d6e56));
+                g.fillRect(cell.withWidth(juce::roundToInt((float) cell.getWidth() * t)));
+            }
+        }
+
         // Row label. A starved row says so - it cannot sound, so don't pretend.
         g.setColour(starved ? kSub.withAlpha(0.4f) : kSub);
         g.setFont(juce::FontOptions(10.0f));
         g.drawText(Nebula2::gridRowName((Nebula2::GridRow) r), 4, y, labelW - 28, rowH,
                    juce::Justification::centredLeft);
-        if (starved)
-        {
-            // Show the lane's ACTUAL setting, not a hardcoded "0%". Tone and Width rest at
-            // 100, so the old fixed text would have called a lane sitting at 100 a zero the
-            // moment they stopped being exempt from this tag.
-            g.setColour(juce::Colour(0xffff6a4d).withAlpha(0.85f));
-            g.setFont(juce::FontOptions(8.5f));
-            g.drawText(juce::String(juce::roundToInt(panelAmountFor(r))) + "%",
-                       labelW - 26, y, 24, rowH, juce::Justification::centredRight);
-        }
+
+        // The value now shows ALWAYS, not only when starved. It stopped being a warning
+        // tag the moment the number became something you drag - a slider you can only read
+        // while it is doing nothing is the wrong way round.
+        g.setColour(starved ? juce::Colour(0xffff6a4d).withAlpha(0.85f)
+                            : juce::Colour(0xff9fe1cb).withAlpha(0.9f));
+        g.setFont(juce::FontOptions(8.5f));
+        g.drawText(juce::String(juce::roundToInt(panelAmountFor(r))) + "%",
+                   labelW - 28, y, 24, rowH, juce::Justification::centredRight);
 
         for (int s = 0; s < steps; ++s)
         {
@@ -314,4 +396,14 @@ void GridView::setNoteFromMouse(juce::Point<int> pos)
 void GridView::mouseUp(const juce::MouseEvent&)
 {
     editingNotes = false;
+
+    // Close the automation gesture we opened in mouseDown. Leaving it open makes the host
+    // think the control is still being held, and some DAWs will not resume automation
+    // playback until it closes.
+    if (draggingLevelRow >= 0)
+    {
+        if (auto* p = panelParamFor(draggingLevelRow))
+            p->endChangeGesture();
+        draggingLevelRow = -1;
+    }
 }

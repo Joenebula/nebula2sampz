@@ -647,41 +647,43 @@ void Nebula2AudioProcessorEditor::refreshSliceEditor()
 void Nebula2AudioProcessorEditor::rollGrid()
 {
     processorRef.pushHistory();
-    // Only offer the dice lanes that can actually SOUND. A lane sitting on its neutral
-    // can't be heard however it's painted, so casting one wastes a slot and makes the roll
-    // quietly sparser than the density you asked for. This is the same at-rest rule the
-    // view greys lanes with — read from the live parameter values, which is why the filter
-    // happens here rather than inside randomiseGrid().
-    std::vector<Nebula2::GridRow> eligible;
+    // The dice now TURNS LANES ON as well as painting them.
+    //
+    // It used to roll only across lanes that were already off their neutral, and refuse with
+    // a dialog when none were — a dialog on the GRID page telling you to go to the SAMPLE
+    // page to make this button work. On a fresh Init that was every single time. A control
+    // whose failure message is "go elsewhere and come back" is a control that should have
+    // done the thing itself.
+    //
+    // So: pick lanes, set their levels, then paint them. There is no unusable state left to
+    // warn about, which is why the dialog is gone rather than reworded.
     auto& vts = processorRef.getValueTreeState();
-    for (auto r : Nebula2::gridDisplayOrder())
+    const auto density = (Nebula2::RandomDensity) processorRef.getGridDiceDensity();
+    juce::Random rng;   // time-seeded: a fresh roll each click
+
+    std::vector<Nebula2::GridRow> eligible =
+        Nebula2::pickRandomLanes(Nebula2::gridDisplayOrder(), density, rng);
+
+    for (auto r : eligible)
     {
         const char* id = Nebula2::gridRowPanelParamId(r);
         if (id == nullptr) continue;
-        auto* raw = vts.getRawParameterValue(id);
-        if (raw == nullptr) continue;
-        if (! Nebula2::gridRowIsAtRest(r, raw->load())) eligible.push_back(r);
+        auto* p = vts.getParameter(id);
+        if (p == nullptr) continue;
+
+        // Levels are rolled in NORMALISED space, then nudged away from the lane's rest so
+        // the dice can never hand back a lane that is technically on and audibly nothing.
+        const float rest = p->convertTo0to1(Nebula2::gridRowNeutral(r));
+        float t = rng.nextFloat();
+        if (std::abs(t - rest) < 0.25f) t = rest > 0.5f ? rest - 0.25f - rng.nextFloat() * 0.4f
+                                                       : rest + 0.25f + rng.nextFloat() * 0.4f;
+
+        p->beginChangeGesture();
+        p->setValueNotifyingHost(juce::jlimit(0.0f, 1.0f, t));
+        p->endChangeGesture();
     }
 
-    if (eligible.empty())
-    {
-        // Nothing could sound, so rolling would paint a grid you can't hear. Say why rather
-        // than appearing to work — the same law the greyed lanes follow.
-        juce::NativeMessageBox::showAsync(
-            juce::MessageBoxOptions()
-                .withIconType(juce::MessageBoxIconType::InfoIcon)
-                .withTitle("Nothing to randomise yet")
-                .withMessage("Every lane is sitting at its resting value, so a pattern "
-                             "wouldn't be audible.\n\nTurn up a lane's knob on the SAMPLE "
-                             "page first - Drive, Stutter, Reverb, whatever you want the "
-                             "dice to play with."),
-            nullptr);
-        return;
-    }
-
-    juce::Random rng;   // time-seeded: a fresh roll each click
-    Nebula2::randomiseGrid(processorRef.getGrid(), eligible,
-                           (Nebula2::RandomDensity) processorRef.getGridDiceDensity(), rng);
+    Nebula2::randomiseGrid(processorRef.getGrid(), eligible, density, rng);
 
     // A pattern you can't hear looks like a broken button, so the roll also switches the
     // grid on (the prototype does the same).

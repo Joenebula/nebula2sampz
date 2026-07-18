@@ -122,6 +122,34 @@ namespace Nebula2
         }
     }
 
+    std::vector<GridRow> pickRandomLanes(const std::vector<GridRow>& from,
+                                         RandomDensity density, juce::Random& rng)
+    {
+        // The cast sizes match randomiseGrid's own table below, deliberately: the caller now
+        // switches these lanes ON before painting, so if the two lists disagreed the dice
+        // would turn up lanes it never paints, or paint lanes it never turned up.
+        int castMin = 3, castMax = 4;
+        switch (density)
+        {
+            case RandomDensity::Low:  castMin = 1; castMax = 2; break;
+            case RandomDensity::High: castMin = 5; castMax = 7; break;
+            case RandomDensity::Mid:
+            default:                  break;
+        }
+
+        std::vector<GridRow> pool (from);
+        // Without replacement. Picking with replacement gives a cast that is quietly
+        // smaller than the density asked for, which is the bug this whole function exists
+        // to avoid repeating.
+        for (int i = (int) pool.size() - 1; i > 0; --i)
+            std::swap (pool[(size_t) i], pool[(size_t) rng.nextInt (i + 1)]);
+
+        const int want = juce::jlimit (0, (int) pool.size(),
+                                       castMin + rng.nextInt (juce::jmax (1, castMax - castMin + 1)));
+        pool.resize ((size_t) want);
+        return pool;
+    }
+
     void randomiseGrid(FxGrid& grid, const std::vector<GridRow>& eligible,
                        RandomDensity density, juce::Random& rng)
     {

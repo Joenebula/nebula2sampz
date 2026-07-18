@@ -22,6 +22,7 @@ public:
     void mouseDown(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
     void mouseUp(const juce::MouseEvent&) override;
+    void mouseDoubleClick(const juce::MouseEvent&) override;
 
     // Height comes from Nebula2::gridPanelHeight() — see FxGrid.h for why it lives there
     // (the test binary links that file and not the GUI). Adding a lane must widen the
@@ -42,6 +43,22 @@ private:
     void drawNoteRow(juce::Graphics&, Nebula2::FxGrid&, int steps, int gridW, int playing);
     void setNoteFromMouse(juce::Point<int> pos);
     bool editingNotes = false;
+
+    // --- the lane name doubles as a level slider ---
+    //
+    // Painting a lane whose knob is at rest does nothing, and the only cure used to be
+    // "go to the SAMPLE page and turn a knob up" - said in a dialog, on the page that
+    // could not fix it. The level now lives on the row it governs: drag across the name
+    // to set it, double-click to put it back to rest.
+    //
+    // The fill is the NORMALISED position, not the percentage. Width runs 0..200, so its
+    // rest at 100 sits half way across; Tone runs 0..100 and rests full. Showing each bar
+    // at its true position in its own range is the only version that isn't lying about
+    // how much travel is left.
+    juce::RangedAudioParameter* panelParamFor(int row) const;
+    void setLevelFromMouse(juce::Point<int> pos);
+    bool laneNameHit(juce::Point<int> pos) const;   // in the label column, below the notes
+    int  draggingLevelRow = -1;                     // -1 = not dragging a level
 
     Nebula2AudioProcessor& processorRef;
     int lastStep = -2;

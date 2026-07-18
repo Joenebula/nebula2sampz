@@ -146,6 +146,12 @@ namespace Nebula2
     // Takes the RNG by reference so a test can seed it and get the same pattern twice.
     // Never returns an empty grid when anything is eligible: a dice that visibly does
     // nothing reads as broken.
+    // Which lanes this roll should use. Split out from randomiseGrid because the caller now
+    // has to switch these lanes ON (set their levels) BEFORE painting them - the dice used
+    // to refuse when every lane was at rest, which on a fresh Init was every time.
+    std::vector<GridRow> pickRandomLanes(const std::vector<GridRow>& from,
+                                         RandomDensity density, juce::Random& rng);
+
     void randomiseGrid(FxGrid& grid, const std::vector<GridRow>& eligible,
                        RandomDensity density, juce::Random& rng);
 

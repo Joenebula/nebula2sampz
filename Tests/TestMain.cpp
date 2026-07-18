@@ -1304,6 +1304,56 @@ int main()
             check(layer.activeVoiceCount() > 0, "sample: the root plays slice 1");
         }
 
+        // The dice must never come back empty-handed. It used to roll only across lanes the
+        // user had already turned up, so on a fresh Init it had nothing to work with and
+        // put up a dialog telling you to go to another page. It now picks the lanes itself.
+        {
+            using namespace Nebula2;
+            const auto all = gridDisplayOrder();
+
+            for (auto d : { RandomDensity::Low, RandomDensity::Mid, RandomDensity::High })
+            {
+                int emptyRolls = 0, tooMany = 0;
+                for (int seed = 0; seed < 200; ++seed)
+                {
+                    juce::Random rng (seed);
+                    const auto pick = pickRandomLanes (all, d, rng);
+                    if (pick.empty()) ++emptyRolls;
+                    if (pick.size() > all.size()) ++tooMany;
+
+                    // No lane twice: a repeat silently shrinks the cast, which is the exact
+                    // way a density setting stops meaning anything.
+                    std::set<int> uniq;
+                    for (auto r : pick) uniq.insert ((int) r);
+                    if (uniq.size() != pick.size()) ++tooMany;
+                }
+                check (emptyRolls == 0,
+                       String ("grid dice: ") + randomDensityName (d)
+                           + " always picks at least one lane - 0 empty rolls in 200");
+                check (tooMany == 0,
+                       String ("grid dice: ") + randomDensityName (d)
+                           + " never repeats or overruns the lane list");
+            }
+
+            // Density must be ORDERED, or the three settings are decoration. Averaged over
+            // many rolls because any single roll can land at the overlap of two ranges.
+            auto meanCast = [&] (RandomDensity d)
+            {
+                double t = 0.0;
+                for (int seed = 0; seed < 400; ++seed)
+                {
+                    juce::Random rng (seed + 991);
+                    t += (double) pickRandomLanes (all, d, rng).size();
+                }
+                return t / 400.0;
+            };
+            const double lo = meanCast (RandomDensity::Low);
+            const double mid = meanCast (RandomDensity::Mid);
+            const double hi = meanCast (RandomDensity::High);
+            check (lo < mid && mid < hi,
+                   "grid dice: Low < Mid < High lanes on average - the setting means something");
+        }
+
         // Every rack parameter the DSP reads must have something on screen that moves it.
         //
         // phsDepth, echWow and three of the six EQ bands (35Hz, 420Hz, 5.2k) were read every

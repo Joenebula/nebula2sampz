@@ -63,11 +63,16 @@ rather than a one-shot player.
 
 **GRID** — 16 lanes of step-sequenced effects, plus a **Note** strip on top for melody.
 
-- A lane's knob (on SAMPLE) sets the **ceiling**; the painted cell scales it. A lane whose
-  knob is at rest shows greyed with its value, because it genuinely can't do anything —
-  turn its knob up first.
-- **Randomise** rolls a pattern at Low/Mid/High density, and only uses lanes that can
-  actually sound. **Pattern** has 27 factory patterns and anything you've saved.
+- **Drag across a lane's name** to set its level — the name cell is the slider, and it
+  fills left to right. Double-click puts it back to rest. That level is the **ceiling**;
+  the painted cell scales it, so a lane at rest can't be heard however hard you paint it
+  (it greys out and shows its value to say so).
+- Most lanes rest at 0 and fill up. **Tone and Width rest at 100** and you drag them
+  *down* — that's what those two effects are. The bar shows where the lane sits in its own
+  range, so Width (which goes to 200) rests half way across.
+- **Randomise** turns lanes on for you, at Low/Mid/High density — it sets the levels and
+  then paints them, so it always produces something you can hear. **Pattern** has 27
+  factory patterns and anything you've saved.
 - The **Note** strip: drag to draw a melody. Pitches snap to the Key and Scale set by
   Resonate on the SAMPLE page.
 
