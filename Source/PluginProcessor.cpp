@@ -276,6 +276,7 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
     const double hostPpq = transport.ppq;
     const bool hostRolling = Nebula2::hostIsRolling(hostPpq, lastHostPpq);
     lastHostPpq = hostPpq;
+    hostTransportRolling.store(hostRolling);   // so the Preview button can tell the truth
 
     if (hostRolling)
     {
@@ -301,7 +302,7 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
             transport.ppq     = auditionPpq;
             auditionPpq += (bpm / 60.0) * ((double) numSamples / juce::jmax(1.0, getSampleRate()));
 
-            // Loop the whole break: re-trigger the instant nothing is sounding. B4 = 83.
+            // Loop the whole break: re-trigger the instant nothing is sounding.
             if (! sampleLayer.isSounding())
                 sampleLayer.noteOn(wholeBreakNote, 0.9f);
         }

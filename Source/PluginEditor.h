@@ -113,10 +113,14 @@ private:
     void refreshAfterStateChange();   // after undo/redo: every view re-reads the state
     void updateUndoButtons();
 
-    // In-app audition: play the loaded break without rolling the DAW. Reflects the
-    // processor's state (which the host transport can clear), so the Timer keeps the
-    // button's label honest rather than trusting the last click.
-    juce::TextButton auditionButton { "▶ Play" };
+    // In-app PREVIEW: play the loaded break without rolling the DAW. It is not a transport
+    // button, which is why it says Preview — called "Play" it read as one, so starting the
+    // DAW and seeing it stay on "Play" looked like a bug.
+    //
+    // No initial text: refreshPreviewButton() is the single place that decides the label
+    // and the enabled state, and it runs on the timer. Seeding a label here would be a
+    // second copy of that decision, and the one that goes stale.
+    juce::TextButton auditionButton;
 
     // Undo for the grid, slice order/settings, rack patch and morph scenes — the state the
     // dice rewrite in one click, and which the APVTS UndoManager does not cover.
@@ -254,6 +258,9 @@ private:
     // them live-looking but inert is exactly the silent failure that wastes an hour.
     void timerCallback() override;
     void updateSliceControlStates();
+
+    // The ONE place that decides the Preview button's text and enabled state.
+    void refreshPreviewButton();
     int lastSliceModeSeen = -1;
 
     juce::ToggleButton fxOnButton { "FX On" };

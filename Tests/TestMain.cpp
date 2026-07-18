@@ -1304,6 +1304,34 @@ int main()
             check(layer.activeVoiceCount() > 0, "sample: the root plays slice 1");
         }
 
+        // The PREVIEW button must describe what it will do, in all four states. It used to
+        // read "Play" always, so starting the DAW left it saying Play and it looked broken;
+        // and because the preview flag is NOT cleared when the host takes over, the naive
+        // fix would have it say "Stop" while nothing was previewing.
+        {
+            using namespace Nebula2;
+            const auto play    = juce::String::fromUTF8("\xe2\x96\xb6 Preview");
+            const auto stop    = juce::String::fromUTF8("\xe2\x96\xa0 Stop");
+
+            const auto idle    = previewButtonState(false, false);
+            const auto playing = previewButtonState(true,  false);
+            const auto hostOn  = previewButtonState(false, true);
+            const auto both    = previewButtonState(true,  true);
+
+            check(idle.text == play && idle.enabled,
+                  "preview: idle offers Preview, and can be pressed");
+            check(playing.text == stop && playing.enabled,
+                  "preview: while previewing it offers Stop");
+            check(hostOn.text == play && ! hostOn.enabled,
+                  "preview: while the DAW rolls it is greyed, not dead-looking Play");
+
+            // The case that motivated making this a function at all.
+            check(both.text == play && ! both.enabled,
+                  "preview: DAW rolling wins - never offers to Stop a suppressed preview");
+            check(! both.text.contains("Play"),
+                  "preview: the word Play is gone - it is not a transport button");
+        }
+
         // The note map is ABSOLUTE, not relative. Every other test here drives
         // SampleLayer::baseNote, so they all passed happily while the constant itself was an
         // octave out and the user's C3 played slice 12. A test written in terms of the thing

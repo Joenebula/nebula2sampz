@@ -86,11 +86,20 @@ public:
     // The LFO's current value (-1..1) so the rack UI can draw a moving picture.
     float getRackLfoValue() const noexcept { return rackEngine.lfoValue(); }
 
-    // In-app audition: play the loaded break WITHOUT the DAW rolling. Toggled by the
-    // editor's Play button. The moment the host transport starts, it takes over and this
-    // clears itself — so the DAW is always the authority when it's running.
+    // In-app PREVIEW: play the loaded break WITHOUT the DAW rolling. Toggled by the
+    // editor's Preview button.
+    //
+    // When the host transport starts it takes over and the preview loop is SUPPRESSED —
+    // but this flag is deliberately NOT cleared, so preview resumes if you stop the DAW
+    // again. (This comment used to claim it "clears itself". It never did — the flag stays
+    // set and only the loop is muted. The button then read "Stop" while nothing was
+    // previewing, which is why the UI asks isHostRolling() too rather than this alone.)
     void setAudition(bool on) noexcept { auditionActive.store(on); }
     bool isAuditioning() const noexcept { return auditionActive.load(); }
+
+    // Is the HOST transport rolling? Published for the editor so the Preview button can
+    // say what is actually true: while the DAW plays, preview cannot sound.
+    bool isHostRolling() const noexcept { return hostTransportRolling.load(); }
 
     // UI zoom. Lives here (not in the editor) so it survives the editor being closed and
     // reopened, and travels in the session. NOT a parameter: it's a property of the screen
@@ -226,8 +235,9 @@ private:
     int gridDiceDensity = 1;   // 0 Low, 1 Mid, 2 High
 
     // In-app audition (see setAudition). auditionActive is set from the editor; the rest is
-    // audio-thread only. B4 (83) is the whole-break note.
+    // audio-thread only. The whole-break note comes from SampleLayer, never a literal.
     std::atomic<bool> auditionActive { false };
+    std::atomic<bool> hostTransportRolling { false };   // audio -> UI, see isHostRolling()
     double auditionPpq = 0.0;          // audio thread: the synthesized transport position
     double lastHostPpq = -1.0;         // audio thread: to detect the host actually rolling
     bool   auditionWasRolling = false;

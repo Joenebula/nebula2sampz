@@ -25,8 +25,9 @@ you did.
 ## Making a sound in 30 seconds
 
 1. **SAMPLE** tab → **Load Sample…** → pick a breakbeat. (Or drag a file onto the plugin.)
-2. Press **▶ Play** in the header. That's an in-app audition — it doesn't start your DAW.
-   The moment your DAW's transport rolls, the DAW takes over.
+2. Press **▶ Preview** in the header. That auditions the break inside the plugin — it does
+   **not** start your DAW, and it isn't a transport button. While your DAW's transport is
+   rolling the DAW drives the sound, so Preview greys out; stop the DAW and it comes back.
 3. Turn something on the COLOUR panel.
 
 ### The note map

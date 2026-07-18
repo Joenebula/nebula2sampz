@@ -424,13 +424,14 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     viewport.setScrollBarsShown(true, false);
     addAndMakeVisible(viewport);
 
-    // --- audition (in-app Play) ---
+    // --- preview (in-app audition) ---
+    // The label is not set here any more. The timer owns it, via one shared rule, because
+    // the host can change what the button ought to say without the user touching it — and
+    // two places deciding the same label is how it went stale before.
     auditionButton.onClick = [this]
     {
-        const bool nowOn = ! processorRef.isAuditioning();
-        processorRef.setAudition(nowOn);
-        auditionButton.setButtonText(nowOn ? juce::String::fromUTF8("■ Stop")
-                                           : juce::String::fromUTF8("▶ Play"));
+        processorRef.setAudition(! processorRef.isAuditioning());
+        refreshPreviewButton();
     };
     addAndMakeVisible(auditionButton);
 
@@ -812,13 +813,27 @@ void Nebula2AudioProcessorEditor::timerCallback()
 
     updateSliceControlStates();
 
-    // Keep the Play button honest: the host transport can clear audition on its own (it
-    // "takes over"), so the button must follow the processor's real state, not the last
-    // click.
-    const bool on = processorRef.isAuditioning();
-    const auto want = on ? juce::String::fromUTF8("■ Stop") : juce::String::fromUTF8("▶ Play");
-    if (auditionButton.getButtonText() != want)
-        auditionButton.setButtonText(want);
+    refreshPreviewButton();
+}
+
+// Keep the Preview button honest. The host transport takes over without the user touching
+// anything, so the button must follow the processor's real state rather than the last click.
+void Nebula2AudioProcessorEditor::refreshPreviewButton()
+{
+    const auto want = Nebula2::previewButtonState(processorRef.isAuditioning(),
+                                                  processorRef.isHostRolling());
+
+    if (auditionButton.getButtonText() != want.text)
+        auditionButton.setButtonText(want.text);
+
+    if (auditionButton.isEnabled() != want.enabled)
+    {
+        auditionButton.setEnabled(want.enabled);
+        // Say WHY it's greyed, rather than leaving a dead-looking control — the exact
+        // "looks broken but isn't" trap that started this.
+        auditionButton.setTooltip(want.enabled ? juce::String()
+                                               : "The DAW transport is rolling - it drives the sound");
+    }
 }
 
 void Nebula2AudioProcessorEditor::updateSliceControlStates()
