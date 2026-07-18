@@ -44,6 +44,13 @@ namespace Nebula2
         }
     }
 
+    std::vector<SliceInfo> SampleLayer::analyseCurrentSlices() const
+    {
+        auto* s = current.load();
+        if (s == nullptr || s->audio == nullptr) return {};
+        return Nebula2::analyseSlices(*s->audio, s->sliceStarts, s->sourceSampleRate);
+    }
+
     std::vector<int> SampleLayer::getSliceOrder() const
     {
         std::vector<int> out((size_t) maxSlices);

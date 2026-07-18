@@ -202,6 +202,7 @@ private:
     // Rearranging the break. Shuffle permutes which slice each pad plays; Reset puts the
     // original order back, which matters because a shuffle is otherwise irreversible.
     juce::TextButton shuffleButton { "Shuffle" };
+    juce::TextButton suggestBeatButton { "Suggest" };
     juce::TextButton resetOrderButton { "Reset Order" };
     juce::Label sampleInfo;
     std::unique_ptr<juce::FileChooser> chooser;

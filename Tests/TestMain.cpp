@@ -27,6 +27,7 @@
 #include "../Source/dsp/StepFx.h"
 #include "../Source/dsp/Resonator.h"
 #include "../Source/GridPresets.h"
+#include "../Source/dsp/SliceAnalysis.h"
 #include "../Source/dsp/MorphPad.h"
 #include "../Source/dsp/MorphEngine.h"
 #include "../Source/dsp/RackGraph.h"
@@ -3472,6 +3473,143 @@ int main()
             const int n = watch.count();
             check(n == 0, "rt: StepFx allocates nothing"
                           + (n == 0 ? String() : " — got " + String(n)));
+        }
+    }
+
+    // ---- Slice analysis: telling a kick from a hat ----
+    {
+        using namespace Nebula2;
+        const double sr = 48000.0;
+
+        // Synthesised drums with known identities. A classifier nobody has run against
+        // input it's supposed to recognise is a guess with a confident name on it.
+        auto makeKick = [sr](std::vector<float>& out)
+        {
+            const int n = (int) (0.20 * sr);
+            out.resize((size_t) n);
+            for (int i = 0; i < n; ++i)
+            {
+                const double t = i / sr;
+                const double env = std::exp(-t * 22.0);
+                const double f = 110.0 * std::exp(-t * 28.0) + 45.0;   // pitch drop
+                out[(size_t) i] = (float) (0.9 * env * std::sin(MathConstants<double>::twoPi * f * t));
+            }
+        };
+        auto makeHat = [sr](std::vector<float>& out)
+        {
+            const int n = (int) (0.05 * sr);
+            out.resize((size_t) n);
+            Random rng(3);
+            for (int i = 0; i < n; ++i)
+            {
+                const double env = std::exp(-(double) i / sr * 120.0);
+                out[(size_t) i] = (float) (0.7 * env * (rng.nextFloat() * 2.0f - 1.0f));
+            }
+        };
+        auto makeTonal = [sr](std::vector<float>& out)
+        {
+            const int n = (int) (0.40 * sr);
+            out.resize((size_t) n);
+            for (int i = 0; i < n; ++i)
+            {
+                const double t = i / sr;
+                out[(size_t) i] = (float) (0.5 * std::exp(-t * 1.2)
+                                  * std::sin(MathConstants<double>::twoPi * 220.0 * t));
+            }
+        };
+
+        std::vector<float> kick, hat, tonal;
+        makeKick(kick); makeHat(hat); makeTonal(tonal);
+
+        const auto ik = analyseSlice(kick.data(),  (int) kick.size(),  sr);
+        const auto ih = analyseSlice(hat.data(),   (int) hat.size(),   sr);
+        const auto it = analyseSlice(tonal.data(), (int) tonal.size(), sr);
+
+        check(ik.kind == SliceKind::Kick,
+              String("slice analysis: a synthesised kick reads as a kick — got ")
+              + sliceKindName(ik.kind) + " (low " + String(ik.lowRatio, 2)
+              + ", bright " + String(ik.brightHz, 0) + ")");
+        check(ih.kind == SliceKind::Hat,
+              String("slice analysis: a synthesised hat reads as a hat — got ")
+              + sliceKindName(ih.kind) + " (bright " + String(ih.brightHz, 0)
+              + ", decay " + String(ih.decay, 2) + ")");
+        check(ik.brightHz < ih.brightHz,
+              "slice analysis: a kick measures darker than a hat — "
+              + String(ik.brightHz, 0) + " vs " + String(ih.brightHz, 0));
+        check(ik.lowRatio > ih.lowRatio,
+              "slice analysis: a kick has more low-band energy than a hat — "
+              + String(ik.lowRatio, 2) + " vs " + String(ih.lowRatio, 2));
+        check(it.decay > ih.decay,
+              "slice analysis: a sustained tone measures as decaying slower than a hat — "
+              + String(it.decay, 2) + " vs " + String(ih.decay, 2));
+
+        // Degenerate input must not crash or claim to know anything.
+        {
+            const auto empty = analyseSlice(nullptr, 0, sr);
+            check(empty.kind == SliceKind::Perc, "slice analysis: no samples is handled");
+            std::vector<float> tiny(4, 0.0f);
+            const auto t2 = analyseSlice(tiny.data(), 4, sr);
+            check(t2.rms == 0.0f, "slice analysis: a too-short slice is handled");
+            std::vector<float> silence((size_t) sr / 10, 0.0f);
+            const auto s = analyseSlice(silence.data(), (int) silence.size(), sr);
+            check(std::isfinite(s.decay) && std::isfinite(s.lowRatio),
+                  "slice analysis: silence doesn't divide by zero");
+        }
+
+        // --- the musical arrangement ---
+        {
+            // A believable break: kick, hat, snare, hat, ...
+            std::vector<SliceInfo> info;
+            for (int i = 0; i < 16; ++i)
+            {
+                SliceInfo s;
+                s.kind = (i % 4 == 0) ? SliceKind::Kick
+                       : (i % 4 == 2) ? SliceKind::Snare
+                                      : SliceKind::Hat;
+                info.push_back(s);
+            }
+
+            // Over many rolls, a downbeat should land on a kick or snare far more often
+            // than chance. One roll proves nothing — this is a random process.
+            int drumOnDown = 0, trials = 200;
+            for (int t = 0; t < trials; ++t)
+            {
+                Random rng(500 + t);
+                const auto order = musicalSliceOrder(info, 16, rng);
+                const auto k = info[(size_t) order[0]].kind;
+                if (k == SliceKind::Kick || k == SliceKind::Snare) ++drumOnDown;
+            }
+            check(drumOnDown > trials * 0.9,
+                  "slice arrangement: the downbeat gets a kick or snare, not whatever fell there — "
+                  + String(drumOnDown) + "/" + String(trials));
+
+            // ...and it must still be a valid arrangement: in range, nothing left unset.
+            // ONE check over 50 rolls — 50 identical green lines is noise, not evidence.
+            {
+                int bad = 0;
+                for (int t = 0; t < 50; ++t)
+                {
+                    Random rng(900 + t);
+                    const auto order = musicalSliceOrder(info, 16, rng);
+                    if ((int) order.size() != 16) { ++bad; continue; }
+                    for (int v : order) if (v < 0 || v >= 16) { ++bad; break; }
+                }
+                check(bad == 0,
+                      "slice arrangement: every entry is a real slice, over 50 rolls"
+                      + (bad == 0 ? String() : " — " + String(bad) + " bad"));
+            }
+        }
+
+        // With nothing known it must fall back to a plain shuffle rather than inventing
+        // structure — a "smart" arrangement built on no information is just a lie.
+        {
+            Random rng(1);
+            const auto order = musicalSliceOrder({}, 8, rng);
+            check(order.size() == 8, "slice arrangement: no analysis falls back to a shuffle");
+            std::vector<bool> seen(8, false);
+            for (int v : order) if (v >= 0 && v < 8) seen[(size_t) v] = true;
+            bool all = true; for (bool b : seen) if (! b) all = false;
+            check(all, "slice arrangement: the fallback is still a true permutation");
         }
     }
 

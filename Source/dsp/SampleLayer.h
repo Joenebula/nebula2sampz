@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_audio_formats/juce_audio_formats.h>
+#include "SliceAnalysis.h"
 #include <juce_dsp/juce_dsp.h>
 #include <atomic>
 #include <vector>
@@ -81,6 +82,12 @@ namespace Nebula2
 
         juce::String sliceOrderToString() const;
         void sliceOrderFromString(const juce::String& s) noexcept;
+
+        // What each slice of the loaded break sounds like (kick / snare / hat / ...).
+        // MESSAGE THREAD ONLY: it walks the whole sample and allocates. Empty if nothing
+        // is loaded. The caller feeds this to musicalSliceOrder() to arrange the break
+        // according to what the slices actually are.
+        std::vector<SliceInfo> analyseCurrentSlices() const;
 
         // Gates the chop to the note, like a slicer should: hold a 16th, get a 16th-long
         // chop. Without this, every slice runs its full length and a fast pattern turns

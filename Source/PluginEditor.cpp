@@ -1,6 +1,7 @@
 #include "PluginEditor.h"
 #include "ParameterIDs.h"
 #include "GridPresets.h"
+#include "dsp/SliceAnalysis.h"
 
 namespace
 {
@@ -100,6 +101,24 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
         waveform.repaint();
     };
     content.addAndMakeVisible(shuffleButton);
+
+    // The "best options" arrangement: it listens to what each slice IS (kick / snare / hat)
+    // and puts drums where drums belong, rather than scattering them. Falls back to a plain
+    // shuffle when the analysis finds no drums — better an honest shuffle than a
+    // rearrangement that claims to be musical and isn't.
+    suggestBeatButton.onClick = [this]
+    {
+        auto& layer = processorRef.getSampleLayer();
+        const int count = layer.getNumSlices();
+        if (count <= 1) return;
+
+        const auto info = layer.analyseCurrentSlices();   // message thread: this allocates
+        juce::Random rng;
+        layer.setSliceOrder(Nebula2::musicalSliceOrder(info, count, rng));
+        waveform.repaint();
+        refreshSampleInfo();
+    };
+    content.addAndMakeVisible(suggestBeatButton);
 
     resetOrderButton.onClick = [this]
     {
@@ -480,7 +499,7 @@ void Nebula2AudioProcessorEditor::showPage(Page p)
     const bool rack  = p == Page::rack;
 
     juce::Component* playChildren[] = {
-        &loadButton, &shuffleButton, &resetOrderButton, &sampleInfo, &waveform,
+        &loadButton, &shuffleButton, &suggestBeatButton, &resetOrderButton, &sampleInfo, &waveform,
         &sliceModeBox, &sliceCountBox, &sliceModeLabel, &sliceCountLabel,
         &charBox, &charLabel, &revCharBox, &revCharLabel,
         &dlySyncBox, &dlySyncLabel, &dlyModeBox, &dlyModeLabel, &fxOnButton, &limiterButton, &spaceOnButton,
@@ -878,7 +897,9 @@ void Nebula2AudioProcessorEditor::layoutContent()
     auto sRow2 = sampleArea.removeFromTop(26);
     loadButton.setBounds(sRow2.removeFromLeft(120));
     sRow2.removeFromLeft(10);
-    shuffleButton.setBounds(sRow2.removeFromLeft(72));
+    shuffleButton.setBounds(sRow2.removeFromLeft(70));
+    sRow2.removeFromLeft(4);
+    suggestBeatButton.setBounds(sRow2.removeFromLeft(74));
     sRow2.removeFromLeft(4);
     resetOrderButton.setBounds(sRow2.removeFromLeft(86));
     sRow2.removeFromLeft(12);
