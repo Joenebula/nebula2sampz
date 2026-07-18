@@ -17,7 +17,8 @@ namespace Nebula2
     // the audio thread might still be reading it).
     //
     // Note map: B4 (83) plays the WHOLE break; C5 (84) upward plays slice 1, 2, 3...
-    // All clear of the GM drum notes (36-46, 75), so the two layers can't fight over a key.
+    // (The GM drum range 36-46 used to be a second, synth-drum layer. That was removed —
+    // this is a breakbeat slicer, not a drum machine — so those notes now do nothing.)
     // Both are gated by note length and both follow the host tempo, so hitting B4 in a
     // 174 BPM session plays a 140 BPM break in time.
     // A shuffled pad->slice map for `count` slices: a permutation, so every slice still

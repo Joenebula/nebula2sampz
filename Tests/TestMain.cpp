@@ -16,10 +16,8 @@
 #include "../Source/dsp/Colour.h"
 #include "../Source/dsp/Reverb.h"
 #include "../Source/dsp/Delay.h"
-#include "../Source/dsp/DrumSynth.h"
 #include "../Source/dsp/TempoDetect.h"
 #include "../Source/dsp/Slicer.h"
-#include "../Source/dsp/DrumKit.h"
 #include "../Source/dsp/ColourChain.h"
 #include "../Source/dsp/SpaceProcessor.h"
 #include "../Source/dsp/SampleLayer.h"
@@ -645,61 +643,6 @@ int main()
         check(tailEnergy > 1.0e-4, "reverb engine: impulse produces a wet reverb tail");
     }
 
-    // ---------------------------------------------------------------------------------
-    // Phase 3 — drum voices (kick, snare)
-    // ---------------------------------------------------------------------------------
-    {
-        namespace D = Nebula2::Drums;
-        const double sr = 48000.0;
-
-        const auto kick  = D::vKick(0.8f, 42, sr);
-        const auto kick2 = D::vKick(0.8f, 42, sr);
-        check((int) kick.size() == 24000, "drum kick: length = dur*sr");
-        bool detK = true; for (size_t i = 0; i < kick.size() && detK; i += 13) if (kick[i] != kick2[i]) detK = false;
-        check(detK, "drum kick: deterministic for a given seed");
-        bool finK = true; for (float v : kick) if (! std::isfinite(v)) { finK = false; break; }
-        check(finK, "drum kick: finite (no NaN/inf)");
-        check(D::peak(kick) > 0.1f, "drum kick: produces sound");
-        check(D::peak(kick) < 2.0f, "drum kick: bounded (no runaway)");
-
-        const auto snare = D::vSnare(0.8f, 7, sr);
-        check((int) snare.size() == 14400, "drum snare: length = dur*sr");
-        bool finS = true; for (float v : snare) if (! std::isfinite(v)) { finS = false; break; }
-        check(finS, "drum snare: finite (no NaN/inf)");
-        check(D::peak(snare) > 0.1f, "drum snare: produces sound");
-        check(D::peak(snare) < 2.0f, "drum snare: bounded");
-
-        // The seed actually changes the voice (noise/detune differ).
-        const auto kA = D::vKick(0.8f, 1, sr);
-        const auto kB = D::vKick(0.8f, 2, sr);
-        bool differ = false;
-        for (size_t i = 0; i < kA.size(); ++i) if (std::abs(kA[i] - kB[i]) > 1.0e-6f) { differ = true; break; }
-        check(differ, "drum kick: different seeds -> different voice");
-
-        // Remaining voices: finite, audible, bounded, right length.
-        struct VoiceCase { const char* name; std::vector<float> buf; };
-        VoiceCase cases[] = {
-            { "hat-closed", D::vHat(0.8f, 3, sr, false) },
-            { "hat-open",   D::vHat(0.8f, 3, sr, true) },
-            { "clap",       D::vClap(0.8f, 5, sr) },
-            { "tom",        D::vTom(0.8f, 0, sr) },
-            { "rim",        D::vRim(0.8f, 0, sr) },
-            { "perc",       D::vPerc(0.8f, 9, sr) },
-        };
-        for (const auto& vc : cases)
-        {
-            bool fin = true; for (float x : vc.buf) if (! std::isfinite(x)) { fin = false; break; }
-            check(fin, juce::String("drum ") + vc.name + ": finite");
-            check(vc.buf.size() > 100, juce::String("drum ") + vc.name + ": non-empty");
-            check(D::peak(vc.buf) > 0.02f, juce::String("drum ") + vc.name + ": produces sound");
-            check(D::peak(vc.buf) < 2.0f, juce::String("drum ") + vc.name + ": bounded");
-        }
-
-        // A noise-based voice is deterministic for its seed.
-        check(D::vClap(0.8f, 5, sr) == D::vClap(0.8f, 5, sr), "drum clap: deterministic for a seed");
-    }
-
-    // ---------------------------------------------------------------------------------
     // Phase 3 — tempo detection ("metadata is a hint; the data is the evidence")
     // ---------------------------------------------------------------------------------
     {
@@ -790,78 +733,6 @@ int main()
         }
     }
 
-    // ---------------------------------------------------------------------------------
-    // Phase 4 — MIDI-triggered drum kit (the first thing that makes sound)
-    // ---------------------------------------------------------------------------------
-    {
-        using namespace Nebula2;
-
-        // GM map matches the prototype's own MIDI exporter.
-        check(midiNoteToDrumVoice(36) == (int) DrumVoiceId::Kick,      "kit: note 36 -> kick");
-        check(midiNoteToDrumVoice(38) == (int) DrumVoiceId::Snare,     "kit: note 38 -> snare");
-        check(midiNoteToDrumVoice(42) == (int) DrumVoiceId::HatClosed, "kit: note 42 -> closed hat");
-        check(midiNoteToDrumVoice(46) == (int) DrumVoiceId::HatOpen,   "kit: note 46 -> open hat");
-        check(midiNoteToDrumVoice(60) == -1,                            "kit: unmapped note -> none");
-
-        DrumKit kit;
-        kit.prepare(48000.0);
-        check(kit.isPrepared(), "kit: prepares (pre-renders all voices x velocity layers)");
-
-        // Silent until something is triggered.
-        {
-            AudioBuffer<float> bus(2, 512); bus.clear();
-            kit.render(bus, 0, 512);
-            check(bus.getMagnitude(0, 512) == 0.0f, "kit: silent with no notes");
-        }
-
-        // A kick note produces sound, and it decays away to silence on its own.
-        {
-            kit.reset();
-            kit.noteOn(36, 0.9f);
-            check(kit.activeVoiceCount() == 1, "kit: note-on allocates one voice");
-
-            double energy = 0.0; bool finite = true;
-            for (int blk = 0; blk < 64; ++blk)          // 64*512 = 32768 samples > kick length
-            {
-                AudioBuffer<float> bus(2, 512); bus.clear();
-                kit.render(bus, 0, 512);
-                for (int i = 0; i < 512; ++i)
-                {
-                    const float v = bus.getSample(0, i);
-                    if (! std::isfinite(v)) finite = false;
-                    energy += (double) v * v;
-                }
-            }
-            check(finite, "kit: output finite");
-            check(energy > 1.0e-3, "kit: a kick note actually makes sound");
-            check(kit.activeVoiceCount() == 0, "kit: voice frees itself once the one-shot ends");
-        }
-
-        // An unmapped note triggers nothing (and doesn't crash).
-        {
-            kit.reset();
-            kit.noteOn(60, 0.9f);
-            check(kit.activeVoiceCount() == 0, "kit: unmapped note triggers nothing");
-        }
-
-        // Polyphony: several voices at once, and it never exceeds the pool.
-        {
-            kit.reset();
-            for (int i = 0; i < 100; ++i) kit.noteOn(36, 0.8f);
-            check(kit.activeVoiceCount() <= DrumKit::maxPolyphony, "kit: polyphony capped at the pool size");
-            check(kit.activeVoiceCount() > 1, "kit: plays multiple voices at once");
-        }
-
-        // Velocity changes the timbre (different layer), not just the level.
-        {
-            AudioBuffer<float> soft(2, 4096), loud(2, 4096);
-            kit.reset(); soft.clear(); kit.noteOn(36, 0.25f); kit.render(soft, 0, 4096);
-            kit.reset(); loud.clear(); kit.noteOn(36, 1.0f);  kit.render(loud, 0, 4096);
-            check(loud.getMagnitude(0, 4096) > soft.getMagnitude(0, 4096), "kit: harder hits are louder");
-        }
-    }
-
-    // ---------------------------------------------------------------------------------
     // Phase 4 — Colour chain (drive/crush/squeeze/tone/width on the bus)
     // ---------------------------------------------------------------------------------
     {
@@ -3118,26 +2989,6 @@ int main()
                           + (n == 0 ? String() : " — got " + String(n)));
         }
 
-        // The drum kit: MIDI-triggered voices mixed into the bus. noteOn/render claim to be
-        // allocation-free (voices are pre-rendered in prepare) — verify the claim.
-        {
-            DrumKit kit;
-            kit.prepare(sr);
-            kit.reset();
-            AudioBuffer<float> bus(2, block);
-            { bus.clear(); kit.noteOn(36, 1.0f); kit.render(bus, 0, block); }
-
-            rtcheck::Scope watch;
-            for (int i = 0; i < 20; ++i)
-            {
-                bus.clear();
-                kit.noteOn(36 + (i % 8), 0.5f + (float) (i % 2) * 0.4f);   // different voices/velocities
-                kit.render(bus, 0, block);
-            }
-            const int n = watch.count();
-            check(n == 0, "rt: DrumKit noteOn/render allocates nothing (pre-rendered voices)"
-                          + (n == 0 ? String() : " — got " + String(n)));
-        }
 
         // The sample layer's render, note trigger included — the granular stretch path.
         {
@@ -3808,57 +3659,31 @@ int main()
         }
     }
 
-    // ---- Layer mixer ----
+    // ---- Input trim ----
+    // Was a two-layer mixer (Sample / Drums / Solo) until the drum synth was removed. With
+    // one source there is nothing to balance and a Solo cannot act, so both went. What is
+    // left is a genuine control: level INTO the FX chain, which is not the same as Master.
     {
         using namespace Nebula2;
         DummyProcessor proc;
 
-        // The gain law as arithmetic rather than by ear. SOLO must beat the level knobs:
-        // soloing the sample and still hearing the kit because its fader is up would be a
-        // control that doesn't do what its name says.
-        // The SHARED law — not a copy of it. See Parameters.h.
-        auto layerGains = [](int solo, float smpPct, float drmPct, float& smp, float& drm)
-        {
-            layerMixGains(solo, smpPct, drmPct, smp, drm);
-        };
+        check(proc.apvts.getParameter(ParamID::smpVol) != nullptr,
+              "input: the trim is published");
+        bool reachable = false;
+        for (auto* c : editorControlledParamIds()) if (String(c) == String(ParamID::smpVol)) reachable = true;
+        check(reachable, "input: the trim has a control the user can reach");
 
-        float s = 0.0f, d = 0.0f;
+        auto* v = proc.apvts.getRawParameterValue(ParamID::smpVol);
+        check(v != nullptr && v->load() == 100.0f,
+              "input: defaults to unity, so a fresh instrument is not quietly trimmed");
 
-        layerGains(0, 100.0f, 100.0f, s, d);
-        check(s == 1.0f && d == 1.0f, "mixer: at defaults both layers pass at unity");
-
-        layerGains(1, 100.0f, 100.0f, s, d);
-        check(s == 1.0f && d == 0.0f, "mixer: solo Sample silences the drums");
-
-        layerGains(2, 100.0f, 100.0f, s, d);
-        check(s == 0.0f && d == 1.0f, "mixer: solo Drums silences the sample");
-
-        // The one that matters: solo overrides a raised fader on the muted layer.
-        layerGains(1, 0.0f, 150.0f, s, d);
-        check(d == 0.0f, "mixer: solo beats the other layer's level knob, however high");
-
-        layerGains(0, 0.0f, 150.0f, s, d);
-        check(s == 0.0f && d == 1.5f,
-              "mixer: a layer at 0 is silent, and 150% is a real boost — " + String(d, 2));
-
-        // The parameters must exist AND be reachable — a mixer you can't find is the failure
-        // this codebase has already shipped once.
-        for (const char* id : { ParamID::smpVol, ParamID::drmVol, ParamID::soloLayer })
-        {
-            check(proc.apvts.getParameter(id) != nullptr,
-                  String("mixer: ") + id + " is published");
-            bool reachable = false;
-            for (auto* c : editorControlledParamIds()) if (String(c) == String(id)) reachable = true;
-            check(reachable, String("mixer: ") + id + " has a control the user can reach");
-        }
-
-        // Defaults must be unity, not silence: an instrument that loads muted looks broken.
-        auto* sv = proc.apvts.getRawParameterValue(ParamID::smpVol);
-        auto* dv = proc.apvts.getRawParameterValue(ParamID::drmVol);
-        auto* so = proc.apvts.getRawParameterValue(ParamID::soloLayer);
-        check(sv != nullptr && dv != nullptr && so != nullptr
-               && sv->load() == 100.0f && dv->load() == 100.0f && so->load() == 0.0f,
-              "mixer: defaults are both layers at unity with solo off");
+        // The layers it used to balance are GONE, not merely hidden. A parameter left
+        // published with nothing reading it is the dead-control bug this project keeps
+        // hunting, so their absence is asserted rather than assumed.
+        check(proc.apvts.getParameter("drmVol") == nullptr,
+              "input: the drum level is gone, not orphaned");
+        check(proc.apvts.getParameter("solo") == nullptr,
+              "input: Solo is gone with the layer it soloed");
     }
 
     // ---- Colour / Space dice ----
@@ -5068,7 +4893,7 @@ int main()
             "drive", "char", "crush", "squeeze", "tone", "width", "pump", "gate",
             "reverse", "stutter", "shatter", "pitchUp", "pitchDown",
             "resonate", "resoKey", "resoScale",
-            "smpVol", "drmVol", "solo", "fxOn",
+            "smpVol", "fxOn",
             "revMix", "revSize", "dlyMix", "dlyFb", "dlySync", "dlyMode", "haunt", "spaceOn", "revChar",
             "rackOn",
             "flt.cut", "flt.res", "flt.type",

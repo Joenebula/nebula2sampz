@@ -80,14 +80,10 @@ target_sources(Nebula2 PRIVATE
     Source/dsp/Reverb.h
     Source/dsp/Delay.cpp
     Source/dsp/Delay.h
-    Source/dsp/DrumSynth.cpp
-    Source/dsp/DrumSynth.h
     Source/dsp/TempoDetect.cpp
     Source/dsp/TempoDetect.h
     Source/dsp/Slicer.cpp
     Source/dsp/Slicer.h
-    Source/dsp/DrumKit.cpp
-    Source/dsp/DrumKit.h
     Source/dsp/ColourChain.cpp
     Source/dsp/ColourChain.h
     Source/dsp/SpaceProcessor.cpp
@@ -172,14 +168,10 @@ target_sources(Nebula2Tests PRIVATE
     Source/dsp/Reverb.h
     Source/dsp/Delay.cpp
     Source/dsp/Delay.h
-    Source/dsp/DrumSynth.cpp
-    Source/dsp/DrumSynth.h
     Source/dsp/TempoDetect.cpp
     Source/dsp/TempoDetect.h
     Source/dsp/Slicer.cpp
     Source/dsp/Slicer.h
-    Source/dsp/DrumKit.cpp
-    Source/dsp/DrumKit.h
     Source/dsp/ColourChain.cpp
     Source/dsp/ColourChain.h
     Source/dsp/SpaceProcessor.cpp

@@ -3,7 +3,6 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "MasterProcessor.h"
 #include "Transport.h"
-#include "dsp/DrumKit.h"
 #include "dsp/ColourChain.h"
 #include "dsp/SpaceProcessor.h"
 #include "dsp/SampleLayer.h"
@@ -144,11 +143,9 @@ private:
     std::atomic<float>* resonateParam { nullptr };
     std::atomic<float>* resoKeyParam { nullptr };
     std::atomic<float>* resoScaleParam { nullptr };
-    // Layer mixer: the two layers had no balance control at all.
+    // Input trim into the FX chain (was a two-layer mixer before the drum synth went).
     std::atomic<float>* smpVolParam { nullptr };
-    std::atomic<float>* drmVolParam { nullptr };
-    std::atomic<float>* soloLayerParam { nullptr };
-    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smpGain, drmGain;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smpGain;
     Nebula2::StepFx stepFx;
     std::atomic<float>* fxOnParam { nullptr };
     std::atomic<float>* revMixParam { nullptr };
@@ -194,9 +191,8 @@ private:
 
     // Layer buses: sample-slicer layer and synth-drum layer, summed into the main output.
     // The drum layer is live (MIDI-triggered); the sample layer awaits the slicer.
-    juce::AudioBuffer<float> sampleBus, drumBus;
+    juce::AudioBuffer<float> sampleBus;
 
-    Nebula2::DrumKit drumKit;
     Nebula2::SampleLayer sampleLayer;
     Nebula2::ColourChain colourChain;
     Nebula2::SpaceProcessor space;

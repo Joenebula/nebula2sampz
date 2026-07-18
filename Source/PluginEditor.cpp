@@ -162,10 +162,7 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     sensitivity.slider.updateText();
 
     // --- layer mixer ---
-    addKnob(smpVol, Nebula2::ParamID::smpVol, "Sample", " %");
-    addKnob(drmVol, Nebula2::ParamID::drmVol, "Drums",  " %");
-    addCombo(soloBox, soloLabel, Nebula2::ParamID::soloLayer, "Solo",
-             { "Off", "Sample", "Drums" }, soloAttachment);
+    addKnob(smpVol, Nebula2::ParamID::smpVol, "Input", " %");
 
     content.addAndMakeVisible(waveform);
 
@@ -685,7 +682,7 @@ void Nebula2AudioProcessorEditor::showPage(Page p)
         &charBox, &charLabel, &revCharBox, &revCharLabel,
         &dlySyncBox, &dlySyncLabel, &dlyModeBox, &dlyModeLabel, &fxOnButton, &limiterButton, &spaceOnButton,
         &resoKeyBox, &resoKeyLabel, &resoScaleBox, &resoScaleLabel,
-        &colourRandButton, &spaceRandButton, &soloBox, &soloLabel,
+        &colourRandButton, &spaceRandButton,
         &sliceEditLabel, &sliceGainSlider, &slicePanSlider, &slicePitchSlider,
         &sliceGainLabel, &slicePanLabel, &slicePitchLabel, &sliceRevButton, &sliceResetButton
     };
@@ -693,7 +690,7 @@ void Nebula2AudioProcessorEditor::showPage(Page p)
 
     for (auto* k : { &drive, &crush, &squeeze, &tone, &width, &pump, &master,
                      &revMix, &revSize, &dlyMix, &dlyFb, &haunt, &sensitivity,
-                     &smpVol, &drmVol })
+                     &smpVol })
     {
         k->slider.setVisible(play);
         k->label.setVisible(play);
@@ -897,7 +894,9 @@ void Nebula2AudioProcessorEditor::paint(juce::Graphics& g)
 
     g.setColour(Theme::faint);
     g.setFont(Theme::mono(10.0f));
-    g.drawFittedText("drums 36-46, 75   |   B4 whole break   |   C5+ slices",
+    // No drum-note range here any more: the synth-drum layer is gone, so advertising
+    // "drums 36-46" would be the header promising a sound the plugin no longer makes.
+    g.drawFittedText("B4 whole break   |   C5+ slices",
                      title, juce::Justification::centredLeft, 1);
 
     g.setColour(Theme::line);
@@ -1116,22 +1115,15 @@ void Nebula2AudioProcessorEditor::layoutContent()
     sensitivity.label.setBounds(sliceRow.removeFromLeft(38));
     sensitivity.slider.setBounds(sliceRow.removeFromLeft(150).reduced(0, 6));
 
-    // Layer mixer: sits with the sample controls because the balance you want is the one
-    // between what you just loaded and the kit under it.
+    // Input trim, with the sample controls because it is the level of what you just loaded.
+    // Drums and Solo used to sit beside it; they went with the drum synth, since a balance
+    // control with one layer and a Solo with one source cannot do anything.
     sampleArea.removeFromTop(4);
     auto mixRow = sampleArea.removeFromTop(30);
     smpVol.label.setBounds(mixRow.removeFromLeft(52));
     smpVol.slider.setSliderStyle(juce::Slider::LinearHorizontal);
     smpVol.slider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 46, 18);
-    smpVol.slider.setBounds(mixRow.removeFromLeft(150).reduced(0, 4));
-    mixRow.removeFromLeft(12);
-    drmVol.label.setBounds(mixRow.removeFromLeft(48));
-    drmVol.slider.setSliderStyle(juce::Slider::LinearHorizontal);
-    drmVol.slider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 46, 18);
-    drmVol.slider.setBounds(mixRow.removeFromLeft(150).reduced(0, 4));
-    mixRow.removeFromLeft(12);
-    soloLabel.setBounds(mixRow.removeFromLeft(34));
-    soloBox.setBounds(mixRow.removeFromLeft(86).reduced(0, 3));
+    smpVol.slider.setBounds(mixRow.removeFromLeft(180).reduced(0, 4));
 
     // Per-slice editor, under the waveform it edits.
     sampleArea.removeFromTop(4);

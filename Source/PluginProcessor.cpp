@@ -27,8 +27,6 @@ Nebula2AudioProcessor::Nebula2AudioProcessor()
     resoKeyParam   = apvts.getRawParameterValue(Nebula2::ParamID::resoKey);
     resoScaleParam = apvts.getRawParameterValue(Nebula2::ParamID::resoScale);
     smpVolParam    = apvts.getRawParameterValue(Nebula2::ParamID::smpVol);
-    drmVolParam    = apvts.getRawParameterValue(Nebula2::ParamID::drmVol);
-    soloLayerParam = apvts.getRawParameterValue(Nebula2::ParamID::soloLayer);
     fxOnParam      = apvts.getRawParameterValue(Nebula2::ParamID::fxOn);
     revMixParam    = apvts.getRawParameterValue(Nebula2::ParamID::revMix);
     revCharParam   = apvts.getRawParameterValue(Nebula2::ParamID::revChar);
@@ -214,9 +212,7 @@ void Nebula2AudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
     // otherwise every prepareToPlay (which a host does on every bus-layout change, not just
     // at startup) would fade the whole instrument in from silence.
     smpGain.reset(sampleRate, 0.02);
-    drmGain.reset(sampleRate, 0.02);
     smpGain.setCurrentAndTargetValue(smpVolParam != nullptr ? smpVolParam->load() / 100.0f : 1.0f);
-    drmGain.setCurrentAndTargetValue(drmVolParam != nullptr ? drmVolParam->load() / 100.0f : 1.0f);
 
     masterProcessor.prepare(spec);
     masterProcessor.reset();
@@ -233,10 +229,8 @@ void Nebula2AudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
 
     // Preallocate the layer buses here (never in the audio callback).
     sampleBus.setSize(2, samplesPerBlock, false, false, true);
-    drumBus.setSize(2, samplesPerBlock, false, false, true);
 
     // Pre-render the drum kit (heavy + allocates — must not happen on the audio thread).
-    drumKit.prepare(sampleRate);
     sampleLayer.prepare(sampleRate, samplesPerBlock);
 
     // Load the reverb IR LATER, on the message thread, in a call stack of its own:
@@ -267,7 +261,6 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
 
     buffer.clear();
     sampleBus.clear();
-    drumBus.clear();
 
     // Host transport FIRST — noteOn below computes its time-stretch from the tempo, so a
     // stale BPM here would mis-stretch the first slice of every block.
@@ -370,7 +363,6 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
             const int pos = juce::jlimit(0, numSamples, meta.samplePosition);
             if (pos > cursor)
             {
-                drumKit.render(drumBus, cursor, pos - cursor);
                 sampleLayer.render(sampleBus, cursor, pos - cursor);
                 cursor = pos;
             }
@@ -378,7 +370,6 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
             const auto msg = meta.getMessage();
             if (msg.isNoteOn())
             {
-                drumKit.noteOn(msg.getNoteNumber(), msg.getFloatVelocity());
                 sampleLayer.noteOn(msg.getNoteNumber(), msg.getFloatVelocity());
             }
             else if (msg.isNoteOff())
@@ -390,7 +381,6 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
         }
         if (cursor < numSamples)
         {
-            drumKit.render(drumBus, cursor, numSamples - cursor);
             sampleLayer.render(sampleBus, cursor, numSamples - cursor);
         }
     }
@@ -400,25 +390,19 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
     // SOLO wins over the levels: soloing the sample and then wondering why the kit is still
     // audible because its knob is up would be a control that doesn't do what it says.
     {
-        const int solo = soloLayerParam != nullptr ? (int) soloLayerParam->load() : 0;
-        float smpLvl = 1.0f, drmLvl = 1.0f;
-        Nebula2::layerMixGains(solo,
-                               smpVolParam != nullptr ? smpVolParam->load() : 100.0f,
-                               drmVolParam != nullptr ? drmVolParam->load() : 100.0f,
-                               smpLvl, drmLvl);
+        // Input trim into the FX chain. This was a two-layer mixer until the drum synth was
+        // removed; with one layer there is nothing to balance, so Drums and Solo went with
+        // it rather than staying as controls that cannot do anything.
+        const float smpLvl = smpVolParam != nullptr ? smpVolParam->load() / 100.0f : 1.0f;
 
-        // Smoothed: these are faders, and a jump straight to a new gain clicks. The
-        // smoothers are set up in prepareToPlay.
+        // Smoothed: a jump straight to a new gain clicks. Set up in prepareToPlay.
         smpGain.setTargetValue(smpLvl);
-        drmGain.setTargetValue(drmLvl);
 
         for (int i = 0; i < numSamples; ++i)
         {
             const float sg = smpGain.getNextValue();
-            const float dg = drmGain.getNextValue();
             for (int c = 0; c < numChannels && c < 2; ++c)
-                buffer.addSample(c, i, sampleBus.getSample(c, i) * sg
-                                     + drumBus.getSample(c, i)   * dg);
+                buffer.addSample(c, i, sampleBus.getSample(c, i) * sg);
         }
     }
 

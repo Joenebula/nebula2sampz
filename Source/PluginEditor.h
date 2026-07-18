@@ -161,11 +161,8 @@ private:
     std::unique_ptr<APVTS::ComboBoxAttachment> charAttachment, revCharAttachment, dlySyncAttachment,
                                                sliceModeAttachment, sliceCountAttachment;
     Knob sensitivity;
-    // Layer mixer — the balance between the sampler and the drum kit.
-    Knob smpVol, drmVol;
-    juce::ComboBox soloBox;
-    juce::Label soloLabel;
-    std::unique_ptr<APVTS::ComboBoxAttachment> soloAttachment;
+    // Input trim into the FX chain (the two-layer mixer went with the drum synth).
+    Knob smpVol;
 
     // Per-slice shaping. NOT parameters: there are 64 slices x 4 settings, and publishing
     // 256 automatable knobs for a thing you edit by clicking a chop would bury every real
