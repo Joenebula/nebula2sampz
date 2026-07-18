@@ -40,10 +40,9 @@ float GridView::panelAmountFor(int row) const
 
 bool GridView::rowIsStarved(int row) const
 {
-    // Tone/Width rest at 100 and act by moving AWAY from it, so they're never starved.
-    const auto r = (Nebula2::GridRow) row;
-    if (r == Nebula2::GridRow::Tone || r == Nebula2::GridRow::Width) return false;
-    return panelAmountFor(row) <= 0.0f;
+    // The rule lives in FxGrid so it can be tested — see gridRowIsAtRest(). A lane is
+    // starved when its knob sits ON its neutral, whatever that neutral happens to be.
+    return Nebula2::gridRowIsAtRest((Nebula2::GridRow) row, panelAmountFor(row));
 }
 
 int GridView::laneHeight() const
@@ -127,13 +126,17 @@ void GridView::paint(juce::Graphics& g)
         // Row label. A starved row says so — it cannot sound, so don't pretend.
         g.setColour(starved ? kSub.withAlpha(0.4f) : kSub);
         g.setFont(juce::FontOptions(10.0f));
-        g.drawText(Nebula2::gridRowName((Nebula2::GridRow) r), 4, y, labelW - 22, rowH,
+        g.drawText(Nebula2::gridRowName((Nebula2::GridRow) r), 4, y, labelW - 28, rowH,
                    juce::Justification::centredLeft);
         if (starved)
         {
+            // Show the lane's ACTUAL setting, not a hardcoded "0%". Tone and Width rest at
+            // 100, so the old fixed text would have called a lane sitting at 100 a zero the
+            // moment they stopped being exempt from this tag.
             g.setColour(juce::Colour(0xffff6a4d).withAlpha(0.85f));
             g.setFont(juce::FontOptions(8.5f));
-            g.drawText("0%", labelW - 20, y, 18, rowH, juce::Justification::centredRight);
+            g.drawText(juce::String(juce::roundToInt(panelAmountFor(r))) + "%",
+                       labelW - 26, y, 24, rowH, juce::Justification::centredRight);
         }
 
         for (int s = 0; s < steps; ++s)

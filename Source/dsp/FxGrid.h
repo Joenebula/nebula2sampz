@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_core/juce_core.h>
+#include <cmath>
 #include <array>
 #include <vector>
 
@@ -82,6 +83,19 @@ namespace Nebula2
     // The value each effect sits at when a step is UNpainted (its "off" value). Tone and
     // Width are 100 (open/unchanged); everything else rests at 0.
     float gridRowNeutral(GridRow r);
+
+    // Can this lane do anything at this panel setting? A cell blends from the lane's
+    // NEUTRAL toward the panel amount, so when the two are equal every cell level lands on
+    // the same value and painting is a no-op — whatever that number happens to be.
+    //
+    // This was "amount <= 0, except Tone and Width, which are never at rest". That exempted
+    // exactly the two lanes whose neutral ISN'T zero — so on a fresh Init, where Tone and
+    // Width sit at 100 (their own neutral), they rendered live and paintable while every
+    // equally-inert lane was greyed and tagged. Identical condition, opposite answer.
+    inline bool gridRowIsAtRest(GridRow r, float panelAmount) noexcept
+    {
+        return std::abs(panelAmount - gridRowNeutral(r)) < 0.05f;
+    }
 
     class FxGrid
     {

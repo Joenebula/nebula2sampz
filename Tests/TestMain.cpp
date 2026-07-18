@@ -4023,7 +4023,54 @@ int main()
                   + (unreachable.isEmpty() ? String()
                                            : " (unreachable: " + unreachable.joinIntoString(", ") + ")"));
 
-            // ...and every id claimed to have a control must actually be a real parameter,
+            // What the grid SHOULD look like on a fresh Init, lane by lane. GridView greys a
+        // lane and tags it "0%" when its panel knob can't lift it off its neutral; that
+        // rendering can't be tested directly (no GUI in this binary), but the fact it is
+        // derived from — each lane's panel default versus its neutral — can be, and that is
+        // where a wrong answer would come from.
+        {
+            StringArray canAct;
+            for (auto r : gridDisplayOrder())
+            {
+                const char* id = gridRowPanelParamId(r);
+                if (id == nullptr) continue;
+                auto* raw = proc.apvts.getRawParameterValue(id);
+                if (raw == nullptr) continue;
+                if (raw->load() != gridRowNeutral(r)) canAct.add(gridRowName(r));
+            }
+            // On Init every lane sits AT its neutral: the percent lanes default to 0 (their
+            // neutral) and Tone/Width default to 100 (theirs). So nothing can act until you
+            // turn something up — which is what the wall of "0%" tags is telling you.
+            check(canAct.isEmpty(),
+                  "grid: on Init no lane can act until a knob moves"
+                  + (canAct.isEmpty() ? String() : " (unexpectedly live: " + canAct.joinIntoString(", ") + ")"));
+
+            // Reverb specifically: its default is 0, so it MUST read as starved like the
+            // rest. If it ever renders bright on a fresh Init, the bug is here.
+            auto* rev = proc.apvts.getRawParameterValue(ParamID::revMix);
+            check(rev != nullptr && rev->load() == 0.0f,
+                  "grid: Reverb's panel default is 0, so its lane starts starved — got "
+                  + String(rev != nullptr ? rev->load() : -1.0f));
+
+            // The at-rest rule itself, applied evenly. A lane can't act when its knob sits
+            // ON its neutral — and that has to hold for the lanes whose neutral is 100 just
+            // as much as for the ones whose neutral is 0. The old rule exempted Tone and
+            // Width outright, which meant the two lanes that rest at 100 rendered live and
+            // paintable at exactly the setting where painting does nothing.
+            check(gridRowIsAtRest(GridRow::Tone, 100.0f)
+                   && gridRowIsAtRest(GridRow::Width, 100.0f),
+                  "grid: Tone/Width at 100 ARE at rest — same rule as everyone else");
+            check(! gridRowIsAtRest(GridRow::Tone, 40.0f)
+                   && ! gridRowIsAtRest(GridRow::Width, 150.0f),
+                  "grid: Tone/Width away from 100 can act");
+            check(gridRowIsAtRest(GridRow::Reverb, 0.0f)
+                   && ! gridRowIsAtRest(GridRow::Reverb, 25.0f),
+                  "grid: a 0-neutral lane is at rest at 0 and live above it");
+            check(gridRowIsAtRest(GridRow::Drive, 0.02f),
+                  "grid: a hair off neutral still counts as at rest (no 0.4% live lanes)");
+        }
+
+        // ...and every id claimed to have a control must actually be a real parameter,
             // or the list above could be satisfied with typos.
             StringArray phantom;
             for (auto* c : controlled)
