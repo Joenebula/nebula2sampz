@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_audio_formats/juce_audio_formats.h>
+#include <juce_dsp/juce_dsp.h>
 #include <atomic>
 #include <vector>
 #include <array>
@@ -59,6 +60,14 @@ namespace Nebula2
         void noteOff(int midiNoteNumber) noexcept;
 
         void render(juce::AudioBuffer<float>& bus, int startSample, int numSamples) noexcept;
+
+        // HAUNT — the prototype's drone "conjured from your own slices". Picks the longest
+        // slice (proxy for the most sustained/tonal material), loops it two octaves down
+        // through a soft lowpass, swells the level in slowly, and ADDS it to the bus. The
+        // caller routes this into the Space block so the drone gets the reverb/delay.
+        // hauntAmt 0..100 %. Real-time safe. Off (and silent) at 0.
+        void renderHaunt(juce::AudioBuffer<float>& bus, int startSample, int numSamples,
+                         float hauntAmt) noexcept;
 
         // Host tempo, so slices can be stretched to fit the grid. 0 = unknown (no stretch).
         void setHostBpm(double bpm) noexcept { hostBpm = bpm; }
@@ -147,6 +156,14 @@ namespace Nebula2
         };
 
         juce::AudioFormatManager formats;
+
+        // --- Haunt drone state (audio thread) ---
+        const SampleData* hauntSeen = nullptr;   // to notice a sample change and re-pick
+        double hauntPos = 0.0;                    // read position in source samples
+        double hauntLoopStart = 0.0, hauntLoopEnd = 0.0;
+        float  hauntGain = 0.0f;                  // smoothed toward the target level
+        juce::dsp::IIR::Filter<float> hauntFiltL, hauntFiltR;
+        int pickLongestSlice(const SampleData& s) const noexcept;
 
         // Superseded SampleData, kept alive until we can PROVE the audio thread has moved
         // on. It used to be a plain vector that only ever grew: since each SampleData holds

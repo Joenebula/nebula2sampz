@@ -139,6 +139,7 @@ namespace Nebula2
         layout.add(std::make_unique<APC>(
             PID{ ParamID::dlyMode, version }, "Delay Mode",
             juce::StringArray{ "Ping-Pong", "Dub", "Warp" }, 0));
+        layout.add(std::make_unique<APF>(PID{ ParamID::haunt, version }, "Haunt", pct(), 0.0f));
         layout.add(std::make_unique<APB>(PID{ ParamID::spaceOn, version }, "Space On", true));
 
         // --- Modular rack ---

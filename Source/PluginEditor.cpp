@@ -36,6 +36,7 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     addKnob(revSize, Nebula2::ParamID::revSize, "Size", " %");
     addKnob(dlyMix,  Nebula2::ParamID::dlyMix,  "Mix",  " %");
     addKnob(dlyFb,   Nebula2::ParamID::dlyFb,   "Feedback", " %");
+    addKnob(haunt,   Nebula2::ParamID::haunt,   "Haunt", " %");
 
     addCombo(charBox, charLabel, Nebula2::ParamID::driveChar, "Character",
              { "Tube", "Fuzz", "Fold" }, charAttachment);
@@ -255,7 +256,7 @@ void Nebula2AudioProcessorEditor::showPage(Page p)
     for (auto* c : playChildren) c->setVisible(play);
 
     for (auto* k : { &drive, &crush, &squeeze, &tone, &width, &pump, &master,
-                     &revMix, &revSize, &dlyMix, &dlyFb, &sensitivity })
+                     &revMix, &revSize, &dlyMix, &dlyFb, &haunt, &sensitivity })
     {
         k->slider.setVisible(play);
         k->label.setVisible(play);
@@ -644,12 +645,14 @@ void Nebula2AudioProcessorEditor::layoutContent()
 
     sp.removeFromTop(4);    // divider gap
 
-    // DELAY: Mix, Feedback knobs + Sync dropdown + Space On.
+    // DELAY: Mix, Feedback, Haunt knobs + Sync/Mode dropdowns + Space On.
+    // (Haunt is a Space element in the prototype's own grouping: "reverb - delay - haunt".)
     sp.removeFromTop(14);   // "DELAY" sub-label
     auto dlyRow = sp.removeFromTop(74);
-    layoutKnob(dlyRow.removeFromLeft(84), dlyMix);
-    layoutKnob(dlyRow.removeFromLeft(84), dlyFb);
-    dlyRow.removeFromLeft(14);
+    layoutKnob(dlyRow.removeFromLeft(78), dlyMix);
+    layoutKnob(dlyRow.removeFromLeft(78), dlyFb);
+    layoutKnob(dlyRow.removeFromLeft(78), haunt);
+    dlyRow.removeFromLeft(12);
     auto dlyRight = dlyRow.withTrimmedTop(8);
     auto dRowA = dlyRight.removeFromTop(24);
     dlySyncLabel.setBounds(dRowA.removeFromLeft(38));

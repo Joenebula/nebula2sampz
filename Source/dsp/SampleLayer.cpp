@@ -15,12 +15,107 @@ namespace Nebula2
     void SampleLayer::prepare(double sr, int)
     {
         hostRate = sr;
+
+        juce::dsp::ProcessSpec mono { sr, 512, 1 };
+        hauntFiltL.prepare(mono);
+        hauntFiltR.prepare(mono);
+        // The prototype's haunt tone: a gentle lowpass at 1400 Hz, Q 1.2. Fixed, so the
+        // coefficients are built once here — nothing allocates in renderHaunt.
+        const auto c = juce::dsp::IIR::Coefficients<float>::makeLowPass(sr, 1400.0f, 1.2f);
+        *hauntFiltL.coefficients = *c;
+        *hauntFiltR.coefficients = *c;
+
         reset();
     }
 
     void SampleLayer::reset() noexcept
     {
         for (auto& v : voices) { v.active = false; v.outSample = 0.0; v.outDur = 0.0; }
+        hauntFiltL.reset();
+        hauntFiltR.reset();
+        hauntGain = 0.0f;
+        hauntSeen = nullptr;
+    }
+
+    int SampleLayer::pickLongestSlice(const SampleData& s) const noexcept
+    {
+        // The prototype scores by length x tonal-kind x decay; without per-slice analysis
+        // the port uses LENGTH alone — the longest slice is the best proxy for sustained,
+        // droneable material.
+        const int n = (int) s.sliceStarts.size() - 1;
+        if (n <= 0) return -1;
+        int best = 0, bestLen = 0;
+        for (int i = 0; i < n; ++i)
+        {
+            const int len = s.sliceStarts[(size_t) i + 1] - s.sliceStarts[(size_t) i];
+            if (len > bestLen) { bestLen = len; best = i; }
+        }
+        return best;
+    }
+
+    void SampleLayer::renderHaunt(juce::AudioBuffer<float>& bus, int startSample, int numSamples,
+                                  float hauntAmt) noexcept
+    {
+        auto* s = current.load();
+
+        // Target level: the prototype's (haunt/100)*0.42, and it swells in/out slowly.
+        const float target = (s != nullptr) ? juce::jlimit(0.0f, 1.0f, hauntAmt / 100.0f) * 0.42f : 0.0f;
+        // ~0.6 s smoothing time (the prototype's setTargetAtTime 0.6): per-sample coefficient.
+        const float smooth = 1.0f - std::exp(-1.0f / (float) (0.6 * hostRate));
+
+        // Nothing to do if silent and fully faded out.
+        if (s == nullptr || (target <= 0.0f && hauntGain < 1.0e-5f)) { hauntGain = 0.0f; return; }
+
+        const int srcLen = s->audio->getNumSamples();
+        const int srcChs = s->audio->getNumChannels();
+        if (srcLen <= 0 || srcChs <= 0) return;
+
+        // Re-pick the drone slice when the sample (re-slice) changes — cheap, no allocation.
+        if (s != hauntSeen)
+        {
+            const int best = pickLongestSlice(*s);
+            if (best < 0) return;
+            hauntLoopStart = (double) s->sliceStarts[(size_t) best];
+            hauntLoopEnd   = (double) s->sliceStarts[(size_t) best + 1];
+            hauntPos = hauntLoopStart;
+            hauntSeen = s;
+            hauntFiltL.reset();
+            hauntFiltR.reset();
+        }
+        const double loopLen = hauntLoopEnd - hauntLoopStart;
+        if (loopLen < 2.0) return;
+
+        // Two octaves down: read the source at 0.25 samples per output sample. (Prototype:
+        // playbackRate 0.5 = -1 octave, detune -1200 = another octave.)
+        constexpr double rate = 0.25;
+
+        const auto readAt = [&](int chan, double pos) -> float
+        {
+            const int i0 = (int) pos;
+            if (i0 < 0 || i0 >= srcLen) return 0.0f;
+            const int i1 = juce::jmin(i0 + 1, srcLen - 1);
+            const float frac = (float) (pos - (double) i0);
+            const auto* src = s->audio->getReadPointer(juce::jmin(chan, srcChs - 1));
+            return src[i0] + frac * (src[i1] - src[i0]);
+        };
+
+        const int busChs = bus.getNumChannels();
+        auto* outL = bus.getWritePointer(0, startSample);
+        auto* outR = busChs > 1 ? bus.getWritePointer(1, startSample) : nullptr;
+
+        for (int i = 0; i < numSamples; ++i)
+        {
+            hauntGain += (target - hauntGain) * smooth;
+
+            const float l = hauntFiltL.processSample(readAt(0, hauntPos));
+            const float r = hauntFiltR.processSample(readAt(1, hauntPos));
+
+            outL[i] += l * hauntGain;
+            if (outR != nullptr) outR[i] += r * hauntGain;
+
+            hauntPos += rate;
+            if (hauntPos >= hauntLoopEnd) hauntPos -= loopLen;   // loop the slice
+        }
     }
 
     void SampleLayer::publishSliced(std::shared_ptr<const juce::AudioBuffer<float>> audio,

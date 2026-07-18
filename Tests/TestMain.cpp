@@ -2662,6 +2662,60 @@ int main()
                   "sample: with audio stopped nothing is freed (can't prove no render is in flight)");
         }
 
+        // Haunt: a drone conjured from the loaded slices. Off at 0, audible when up.
+        {
+            SampleLayer layer;
+            layer.prepare(sr, block);
+            // A loadable break: a long low-ish tone so the "longest slice" has content.
+            AudioBuffer<float> brk(2, 20000);
+            for (int c = 0; c < 2; ++c)
+                for (int i = 0; i < 20000; ++i)
+                    brk.setSample(c, i, 0.4f * std::sin(MathConstants<float>::twoPi * 110.0f * (float) i / (float) sr));
+            layer.loadBuffer(std::move(brk), sr, "drone-src");
+
+            // Haunt at 0 adds NOTHING (additive, off by default).
+            {
+                AudioBuffer<float> bus(2, block); bus.clear();
+                layer.renderHaunt(bus, 0, block, 0.0f);
+                check(bus.getMagnitude(0, block) < 1.0e-6f, "haunt: 0% is silent (off by default)");
+            }
+            // Haunt up: it SWELLS in (starts near silent, grows) and becomes audible.
+            {
+                SampleLayer l2; l2.prepare(sr, block);
+                AudioBuffer<float> src(2, 20000);
+                for (int c = 0; c < 2; ++c)
+                    for (int i = 0; i < 20000; ++i)
+                        src.setSample(c, i, 0.4f * std::sin(MathConstants<float>::twoPi * 110.0f * (float) i / (float) sr));
+                l2.loadBuffer(std::move(src), sr, "d");
+
+                AudioBuffer<float> first(2, block); first.clear();
+                l2.renderHaunt(first, 0, block, 80.0f);
+                const float early = first.getMagnitude(0, block);
+
+                // Run ~1 second; by then it has swelled to a real level.
+                float late = 0.0f;
+                for (int n = 0; n < 90; ++n)
+                {
+                    AudioBuffer<float> bus(2, block); bus.clear();
+                    l2.renderHaunt(bus, 0, block, 80.0f);
+                    late = bus.getMagnitude(0, block);
+                }
+                check(late > 0.02f, "haunt: swells to an audible drone");
+                check(late > early * 2.0f, "haunt: SWELLS in slowly (not an instant jump)");
+
+                // Bounded/finite even after long sustain.
+                bool finite = true;
+                for (int n = 0; n < 40; ++n)
+                {
+                    AudioBuffer<float> bus(2, block); bus.clear();
+                    l2.renderHaunt(bus, 0, block, 100.0f);
+                    for (int i = 0; i < block; ++i)
+                        if (! std::isfinite(bus.getSample(0, i)) || std::abs(bus.getSample(0, i)) > 1.5f) finite = false;
+                }
+                check(finite, "haunt: stays finite and bounded under long sustain");
+            }
+        }
+
         // isSounding() is what the in-app audition loops on: re-trigger the whole break the
         // instant nothing is playing. So it must go true on note-on and back to false when
         // the voice finishes — if it stuck true, audition would play once and never loop; if
@@ -3011,6 +3065,24 @@ int main()
                           + (n == 0 ? String() : " — got " + String(n)));
         }
 
+        // The haunt drone reads + filters per sample; it must not allocate either.
+        {
+            SampleLayer layer;
+            layer.prepare(sr, block);
+            AudioBuffer<float> src(2, 20000);
+            for (int c = 0; c < 2; ++c)
+                for (int i = 0; i < 20000; ++i) src.setSample(c, i, 0.3f * std::sin((float) i * 0.01f));
+            layer.loadBuffer(std::move(src), sr, "h");
+            { AudioBuffer<float> bus(2, block); bus.clear(); layer.renderHaunt(bus, 0, block, 80.0f); }  // pick slice
+
+            AudioBuffer<float> bus(2, block);
+            rtcheck::Scope watch;
+            for (int i = 0; i < 20; ++i) { bus.clear(); layer.renderHaunt(bus, 0, block, 80.0f); }
+            const int n = watch.count();
+            check(n == 0, "rt: SampleLayer::renderHaunt allocates nothing"
+                          + (n == 0 ? String() : " — got " + String(n)));
+        }
+
         // Sanity: the detector must actually detect. A test that can only pass is worthless.
         //
         // This failed on macOS while passing on Windows — meaning every "allocates nothing"
@@ -3204,7 +3276,7 @@ int main()
             "padOn", "padX", "padY",
             "gridOn", "gridSteps",
             "drive", "char", "crush", "squeeze", "tone", "width", "pump", "fxOn",
-            "revMix", "revSize", "dlyMix", "dlyFb", "dlySync", "dlyMode", "spaceOn", "revChar",
+            "revMix", "revSize", "dlyMix", "dlyFb", "dlySync", "dlyMode", "haunt", "spaceOn", "revChar",
             "rackOn",
             "flt.cut", "flt.res", "flt.type",
             "lfo.rate", "lfo.depth", "lfo.shape",

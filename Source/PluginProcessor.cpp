@@ -25,6 +25,7 @@ Nebula2AudioProcessor::Nebula2AudioProcessor()
     dlyFbParam     = apvts.getRawParameterValue(Nebula2::ParamID::dlyFb);
     dlySyncParam   = apvts.getRawParameterValue(Nebula2::ParamID::dlySync);
     dlyModeParam   = apvts.getRawParameterValue(Nebula2::ParamID::dlyMode);
+    hauntParam     = apvts.getRawParameterValue(Nebula2::ParamID::haunt);
     spaceOnParam   = apvts.getRawParameterValue(Nebula2::ParamID::spaceOn);
     sliceModeParam   = apvts.getRawParameterValue(Nebula2::ParamID::sliceMode);
     sliceCountParam  = apvts.getRawParameterValue(Nebula2::ParamID::sliceCount);
@@ -378,6 +379,13 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
             wantedSensitivity.store(sens);
             triggerAsyncUpdate();
         }
+    }
+
+    // Haunt: a drone conjured from the loaded slices, ADDED before Space so the reverb and
+    // delay swallow it (the prototype routes it into spaceIn). Off at 0.
+    {
+        const float hauntAmt = hauntParam != nullptr ? hauntParam->load() : 0.0f;
+        sampleLayer.renderHaunt(buffer, 0, numSamples, hauntAmt);
     }
 
     // Space: parallel reverb + tempo-synced delay send (dry is preserved).
