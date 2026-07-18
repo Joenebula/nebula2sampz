@@ -241,6 +241,24 @@ namespace Nebula2
         // pad -> slice. See setSliceOrder for the threading argument.
         std::array<std::atomic<int>, (size_t) maxSlices> sliceOrder;
 
+        // True when the order is anything other than 0,1,2,3...
+        bool orderIsRearranged() const noexcept;
+
+        // Whole-break playback SEQUENCES the slices when the break has been rearranged.
+        //
+        // Without this the whole-break note plays the raw file end to end, so the in-app
+        // Play button ignored a shuffle completely — the numbers moved and the sound didn't.
+        // Individual slice pads always honoured the order; it was only this path that
+        // didn't, which is exactly the path the Play button uses.
+        //
+        // Only engaged when the order is REARRANGED. At identity the original single-voice
+        // playback is used unchanged, so an untouched break is bit-for-bit as before rather
+        // than newly stitched out of grains.
+        int seqVoice = -1;      // which voice is playing the sequence, -1 = not sequencing
+        int seqPad = 0;         // how far through the pads we are
+        float seqGain = 1.0f;
+        void startSeqSlice(const SampleData& s, int pad) noexcept;
+
         std::atomic<SampleData*> current { nullptr };
         std::array<Voice, maxVoices> voices;
         double hostRate = 44100.0;

@@ -3899,6 +3899,42 @@ int main()
                 return sum / 1500.0;
             };
 
+            // THE WHOLE-BREAK note (B4) — the path the in-app Play button uses. This is the
+            // one that was broken: it streamed the raw file end to end and never consulted
+            // the order, so a shuffle moved the numbers on screen and changed nothing you
+            // could hear. The slice-pad check below passed the entire time, which is exactly
+            // why it wasn't enough: it proved the map reached ONE playback path, and I read
+            // that as "the shuffle works".
+            {
+                auto wholeBreakOpening = [&](const std::vector<int>& order)
+                {
+                    SampleLayer sl;
+                    sl.prepare(sr, 512);
+                    auto copy = audio;
+                    sl.loadBuffer(std::move(copy), sr, "steps");
+                    SampleLayer::SliceSettings ss; ss.count = 4; ss.transient = false;
+                    sl.setSliceSettings(ss);
+                    sl.setStretchEnabled(false);
+                    if (! order.empty()) sl.setSliceOrder(order);
+                    sl.noteOn(SampleLayer::wholeSampleNote, 1.0f);
+
+                    AudioBuffer<float> out(2, 2048);
+                    out.clear();
+                    sl.render(out, 0, 2048);
+                    double sum = 0.0;
+                    for (int i = 500; i < 2000; ++i) sum += std::abs(out.getSample(0, i));
+                    return sum / 1500.0;
+                };
+
+                const double straight = wholeBreakOpening({});               // opens on slice 0 (0.2)
+                const double shuffled = wholeBreakOpening({ 3, 2, 1, 0 });   // must open on slice 3 (0.8)
+                check(straight > 0.05,
+                      "slice order: the whole break plays at all — " + String(straight, 3));
+                check(shuffled > straight * 2.0,
+                      "slice order: the WHOLE-BREAK note honours the order too — this is the"
+                      " path Play uses — " + String(straight, 3) + " -> " + String(shuffled, 3));
+            }
+
             const double plain = levelForPad({}, 0);              // pad 0 -> slice 0 (0.2)
             const double mapped = levelForPad({ 3, 2, 1, 0 }, 0); // pad 0 -> slice 3 (0.8)
             check(plain > 0.05, "slice order: the reference pad actually sounded — "

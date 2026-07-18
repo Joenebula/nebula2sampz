@@ -64,6 +64,58 @@ namespace Nebula2
         return sliceOrder[(size_t) pad].load();
     }
 
+    bool SampleLayer::orderIsRearranged() const noexcept
+    {
+        for (int i = 0; i < maxSlices; ++i)
+            if (sliceOrder[(size_t) i].load() != i) return true;
+        return false;
+    }
+
+    void SampleLayer::startSeqSlice(const SampleData& s, int pad) noexcept
+    {
+        const int numSlices = (int) s.sliceStarts.size() - 1;
+        if (numSlices <= 0 || pad < 0 || pad >= numSlices) { seqVoice = -1; return; }
+
+        int slice = sliceForPad(pad);
+        if (slice < 0 || slice >= numSlices) slice = pad;
+
+        // Always voice 0: the sequence is ONE continuous performance, so each slice must
+        // hand over to the next in the same slot rather than stacking eight voices deep.
+        auto& v = voices[0];
+        v.note       = wholeSampleNote;
+        v.sliceIndex = slice;
+        v.sliceStart = (double) s.sliceStarts[(size_t) slice];
+        v.sliceEnd   = (double) s.sliceStarts[(size_t) slice + 1];
+        v.gain       = seqGain;
+        v.outSample  = 0.0;
+        v.release    = -1.0;
+        v.releaseLen = juce::jmax(1.0, 0.005 * hostRate);
+
+        const double nativeRate = s.sourceSampleRate / hostRate;
+        const double transpose = pitchOffsetSemis == 0.0f
+                               ? 1.0 : std::pow(2.0, (double) pitchOffsetSemis / 12.0);
+        v.nativeRate = nativeRate;
+        v.pitchRate  = nativeRate * transpose;
+
+        const double inSamples = juce::jmax(1.0, v.sliceEnd - v.sliceStart);
+        const double inSeconds = inSamples / s.sourceSampleRate;
+
+        double stretch = 1.0;
+        if (stretchEnabled && s.detectedBpm > 0.0 && hostBpm > 0.0)
+            stretch = juce::jlimit(0.25, 4.0, s.detectedBpm / hostBpm);
+
+        v.outDur = inSeconds * stretch * hostRate;
+
+        const double grainSeconds = juce::jlimit(0.035, 0.09, inSeconds * 0.35);
+        v.grainOut = juce::jmax(8.0, grainSeconds * hostRate);
+        v.hopOut   = v.grainOut * 0.5;
+        v.hopIn    = v.hopOut * nativeRate / juce::jmax(1.0e-6, stretch);
+
+        v.active = true;
+        seqVoice = 0;
+        seqPad = pad;
+    }
+
     juce::String SampleLayer::sliceOrderToString() const
     {
         juce::String out;
@@ -437,6 +489,19 @@ namespace Nebula2
         // count. Fall back to the pad rather than dropping the note.
         if (! whole && (slice < 0 || slice >= numSlices)) slice = pad;
 
+        // The whole-break note on a REARRANGED break plays the slices in their new order,
+        // one after another, instead of streaming the raw file. This is the path the in-app
+        // Play button uses, and without it a shuffle moved the numbers on screen and
+        // changed nothing you could hear.
+        if (whole && orderIsRearranged() && numSlices > 0)
+        {
+            seqGain = juce::jlimit(0.0f, 1.0f, velocity);
+            for (auto& vv : voices) vv.active = false;    // one performance, not a pile-up
+            startSeqSlice(*s, 0);
+            return;
+        }
+        seqVoice = -1;
+
         // Free voice, else steal the most-advanced one.
         int slot = -1;
         for (int i = 0; i < maxVoices; ++i) if (! voices[(size_t) i].active) { slot = i; break; }
@@ -495,6 +560,10 @@ namespace Nebula2
 
     void SampleLayer::noteOff(int note) noexcept
     {
+        // Lifting the whole-break key ends the SEQUENCE too, or it would keep advancing
+        // through the remaining slices with nothing holding it down.
+        if (note == wholeSampleNote) seqVoice = -1;
+
         for (auto& v : voices)
             if (v.active && v.note == note && v.release < 0.0)
                 v.release = v.releaseLen;      // start the 5 ms fade
@@ -533,7 +602,28 @@ namespace Nebula2
 
             for (int i = 0; i < numSamples; ++i)
             {
-                if (v.outSample >= v.outDur) { v.active = false; break; }
+                if (v.outSample >= v.outDur)
+                {
+                    v.active = false;
+
+                    // Sequenced whole-break playback: this slice is done, so hand straight
+                    // over to the next PAD. Without this the break would stop dead after
+                    // its first chop instead of playing the rearrangement through.
+                    if (seqVoice == 0 && (&v == &voices[0]))
+                    {
+                        const int numSlices = (int) s->sliceStarts.size() - 1;
+                        if (seqPad + 1 < numSlices)
+                        {
+                            startSeqSlice(*s, seqPad + 1);
+                            // Carry on filling this block from where the last slice ended,
+                            // or every handover would leave a hole the length of whatever
+                            // remained of the block.
+                            continue;
+                        }
+                        seqVoice = -1;      // end of the break
+                    }
+                    break;
+                }
 
                 // 50% overlap means at most two grains are sounding at any instant.
                 const int k0 = (int) std::floor(v.outSample / v.hopOut);
