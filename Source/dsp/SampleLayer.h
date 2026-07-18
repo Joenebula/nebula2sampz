@@ -17,11 +17,17 @@ namespace Nebula2
     // thread only ever reads that pointer. Superseded data is retained (never freed while
     // the audio thread might still be reading it).
     //
-    // Note map: B4 (83) plays the WHOLE break; C5 (84) upward plays slice 1, 2, 3...
-    // (The GM drum range 36-46 used to be a second, synth-drum layer. That was removed —
-    // this is a breakbeat slicer, not a drum machine — so those notes now do nothing.)
-    // Both are gated by note length and both follow the host tempo, so hitting B4 in a
-    // 174 BPM session plays a 140 BPM break in time.
+    // Note map: C3 (48) is slice 1 and the root; B2 (47) plays the WHOLE break.
+    //
+    // EVERY OTHER KEY PLAYS SOMETHING. Notes outside the slice range wrap, so there are no
+    // dead keys — you can draw a note anywhere on the piano roll and hear a chop.
+    //
+    // It used to start at C5, and only because notes 36-46 were reserved for a synth-drum
+    // layer. That layer was deleted; the reservation outlived it, so a note drawn where any
+    // musician would draw one produced silence. The constraint was gone and the map wasn't.
+    //
+    // Gated by note length and following the host tempo, so hitting the root in a 174 BPM
+    // session plays a 140 BPM break in time.
     // A shuffled pad->slice map for `count` slices: a permutation, so every slice still
     // plays exactly once and nothing is lost or doubled. Free function and RNG-by-reference
     // so a seed reproduces an arrangement, which is the only way to test a shuffle.
@@ -30,8 +36,8 @@ namespace Nebula2
     class SampleLayer
     {
     public:
-        static constexpr int baseNote = 84;                     // C5 = slice 1, upward
-        static constexpr int wholeSampleNote = baseNote - 1;    // B4 = the WHOLE break
+        static constexpr int baseNote = 48;                     // C3 = slice 1, the root
+        static constexpr int wholeSampleNote = baseNote - 1;    // B2 = the WHOLE break
         static constexpr int maxVoices = 8;
 
         SampleLayer();

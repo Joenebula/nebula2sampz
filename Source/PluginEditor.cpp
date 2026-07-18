@@ -961,7 +961,7 @@ void Nebula2AudioProcessorEditor::paint(juce::Graphics& g)
     g.setFont(Theme::mono(10.0f));
     // No drum-note range here any more: the synth-drum layer is gone, so advertising
     // "drums 36-46" would be the header promising a sound the plugin no longer makes.
-    g.drawFittedText("B4 whole break   |   C5+ slices",
+    g.drawFittedText("C3 = slice 1   |   B2 = whole break   |   any key plays",
                      title, juce::Justification::centredLeft, 1);
 
     g.setColour(Theme::line);

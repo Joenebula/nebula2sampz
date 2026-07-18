@@ -1,4 +1,10 @@
-# Nebula2 — beta tester guide
+| **C3** (48) | slice 1 — the root |
+| **B2** (47) | the whole break |
+| any other key | wraps round, so every key plays a chop |
+
+So you can draw a note anywhere on the piano roll and hear something. It did not used to
+work that way: slices started at C5 (because a since-deleted drum layer owned the low
+notes) and a note drawn in the middle of the roll produced silence.# Nebula2 — beta tester guide
 
 A breakbeat instrument: load a loop, it chops it, then you wreck it.
 
@@ -14,7 +20,7 @@ when it is, its VST3 ID changes. Projects saved against this build will then sho
 a **missing plugin** — not corrupted, just unfound, and that instance's settings go with it.
 Experiment freely; don't commit a session to it.
 
-**Known crash.** Roughly 1 run in 45 under a validator that hammers the plugin with repeated
+**Known crash.** Roughly 1 run in 60 under a validator that hammers the plugin with repeated
 audio-setup changes. In normal playing you shouldn't see it. If you get a crash **when
 changing your audio device, sample rate or buffer size**, that's probably this one — say so
 and don't worry about reproducing it precisely. Anything else, please do report exactly what
@@ -33,8 +39,13 @@ you did.
 
 | Notes | What they play |
 |---|---|
-| **B4** (83) | the whole break |
-| **C5** (84) and up | slice 1, 2, 3… |
+| **C3** (48) | slice 1 — the root |
+| **B2** (47) | the whole break |
+| any other key | wraps round, so every key plays a chop |
+
+You can draw a note anywhere on the piano roll and hear something. It didn't used to work
+that way: slices started at C5 — because a since-deleted drum layer owned the low notes —
+and a note drawn in the middle of the roll produced silence.
 
 Chops are gated by note length — hold a 16th, get a 16th. That's what makes it a slicer
 rather than a one-shot player.

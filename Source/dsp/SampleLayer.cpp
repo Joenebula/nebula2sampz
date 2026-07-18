@@ -576,8 +576,17 @@ namespace Nebula2
 
         // The note picks a PAD; the pad's order entry picks the slice. Identity unless the
         // break has been rearranged, so an untouched instrument plays exactly as before.
-        const int pad = note - baseNote;
-        if (! whole && (pad < 0 || pad >= numSlices)) return;
+        //
+        // Notes outside the slice range WRAP rather than being dropped, so there are no
+        // dead keys. A silent note is indistinguishable from a broken plugin — which is
+        // exactly what a note drawn in the middle of the piano roll used to be, back when
+        // the map started at C5 because a since-deleted drum layer owned the low notes.
+        int pad = note - baseNote;
+        if (! whole && numSlices > 0)
+        {
+            pad %= numSlices;
+            if (pad < 0) pad += numSlices;      // C's % is a remainder, not a modulo
+        }
 
         int slice = whole ? 0 : sliceForPad(pad);
         // The order map is `maxSlices` long regardless of how many slices the break

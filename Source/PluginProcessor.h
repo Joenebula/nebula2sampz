@@ -231,7 +231,11 @@ private:
     double auditionPpq = 0.0;          // audio thread: the synthesized transport position
     double lastHostPpq = -1.0;         // audio thread: to detect the host actually rolling
     bool   auditionWasRolling = false;
-    static constexpr int wholeBreakNote = 83;
+    // NOT a copy of the number. This was `= 83`, and when the note map moved to C3 the
+    // audition kept triggering the old whole-break key and went silent — the same
+    // write-it-twice failure this project keeps hitting, caught here only because a test
+    // drove the audition rather than the note map.
+    static constexpr int wholeBreakNote = Nebula2::SampleLayer::wholeSampleNote;
 
     void handleAsyncUpdate() override;
 

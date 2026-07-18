@@ -1289,13 +1289,19 @@ int main()
                   "sample: gated pattern stays within the voice pool");
         }
 
-        // Out-of-range notes (incl. the drum range) don't trigger the sample layer.
+        // EVERY key plays something. This used to assert the opposite — that notes outside
+        // the range were dropped — and that was the design flaw: a note drawn in the middle
+        // of a piano roll produced silence, which is indistinguishable from a broken plugin.
         {
             layer.reset();
-            layer.noteOn(36, 1.0f);                      // a kick note
-            check(layer.activeVoiceCount() == 0, "sample: drum notes don't trigger slices");
+            layer.noteOn(36, 1.0f);
+            check(layer.activeVoiceCount() > 0, "sample: a note below the root still plays a chop");
+            layer.reset();
             layer.noteOn(SampleLayer::baseNote + 99, 1.0f);
-            check(layer.activeVoiceCount() == 0, "sample: notes past the last slice do nothing");
+            check(layer.activeVoiceCount() > 0, "sample: a note far above the root wraps and plays");
+            layer.reset();
+            layer.noteOn(SampleLayer::baseNote, 1.0f);
+            check(layer.activeVoiceCount() > 0, "sample: the root plays slice 1");
         }
 
         // B4 plays the WHOLE break, not a slice — it must run far longer than one chop and
@@ -2701,7 +2707,7 @@ int main()
 
             check(! layer.isSounding(), "audition: nothing sounds before the beat is triggered");
 
-            layer.noteOn(83, 0.9f);   // B4 = whole break
+            layer.noteOn(SampleLayer::wholeSampleNote, 0.9f);   // never the raw number again
             AudioBuffer<float> bus(2, block);
             bus.clear(); layer.render(bus, 0, block);
             check(layer.isSounding(), "audition: the whole break sounds once triggered");
