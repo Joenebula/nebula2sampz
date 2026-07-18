@@ -124,6 +124,9 @@ private:
     std::atomic<float>* shatterParam { nullptr };
     std::atomic<float>* pitchUpParam { nullptr };
     std::atomic<float>* pitchDownParam { nullptr };
+    std::atomic<float>* resonateParam { nullptr };
+    std::atomic<float>* resoKeyParam { nullptr };
+    std::atomic<float>* resoScaleParam { nullptr };
     Nebula2::StepFx stepFx;
     std::atomic<float>* fxOnParam { nullptr };
     std::atomic<float>* revMixParam { nullptr };

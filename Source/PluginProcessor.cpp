@@ -23,6 +23,9 @@ Nebula2AudioProcessor::Nebula2AudioProcessor()
     shatterParam   = apvts.getRawParameterValue(Nebula2::ParamID::shatter);
     pitchUpParam   = apvts.getRawParameterValue(Nebula2::ParamID::pitchUp);
     pitchDownParam = apvts.getRawParameterValue(Nebula2::ParamID::pitchDown);
+    resonateParam  = apvts.getRawParameterValue(Nebula2::ParamID::resonate);
+    resoKeyParam   = apvts.getRawParameterValue(Nebula2::ParamID::resoKey);
+    resoScaleParam = apvts.getRawParameterValue(Nebula2::ParamID::resoScale);
     fxOnParam      = apvts.getRawParameterValue(Nebula2::ParamID::fxOn);
     revMixParam    = apvts.getRawParameterValue(Nebula2::ParamID::revMix);
     revCharParam   = apvts.getRawParameterValue(Nebula2::ParamID::revChar);
@@ -372,6 +375,11 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
         cp.pump      = amt(pumpParam, Nebula2::GridRow::Pump, 0.0f);
         cp.ppq       = transport.ppq;   // so the duck lands on the beat
         cp.bpm       = transport.bpm;
+        cp.resonate  = amt(resonateParam, Nebula2::GridRow::Resonate, 0.0f);
+        cp.resoKey   = resoKeyParam != nullptr ? (int) resoKeyParam->load() : 0;
+        cp.resoScale = (Nebula2::ResoScale) juce::jlimit(
+                           0, (int) Nebula2::ResoScale::Count - 1,
+                           resoScaleParam != nullptr ? (int) resoScaleParam->load() : 0);
         colourChain.process(buffer, cp);
     }
 

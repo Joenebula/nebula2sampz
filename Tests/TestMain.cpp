@@ -25,6 +25,7 @@
 #include "../Source/dsp/SampleLayer.h"
 #include "../Source/dsp/FxGrid.h"
 #include "../Source/dsp/StepFx.h"
+#include "../Source/dsp/Resonator.h"
 #include "../Source/dsp/MorphPad.h"
 #include "../Source/dsp/MorphEngine.h"
 #include "../Source/dsp/RackGraph.h"
@@ -3473,6 +3474,235 @@ int main()
         }
     }
 
+    // ---- Resonate: the tuned bandpass bank ----
+    {
+        using namespace Nebula2;
+        const double rSr = 48000.0;
+        const int rBlock = 512;
+        juce::dsp::ProcessSpec rSpec { rSr, (juce::uint32) rBlock, 2 };
+
+        // Tuning maths, against the prototype's formula (55 Hz root, A1).
+        check(std::abs(resoVoiceHz(0, 0) - 55.0) < 1.0e-9,
+              "reso: key A, root degree, is 55 Hz (A1) — the prototype's root");
+        check(std::abs(resoVoiceHz(0, 12) - 110.0) < 1.0e-9,
+              "reso: twelve semitones is exactly an octave");
+        check(std::abs(resoVoiceHz(3, 0) - 65.40639) < 0.001,
+              "reso: key index 3 is C, not D# — the names start at A");
+        check(resoScaleDegrees(ResoScale::Minor)[1] == 3
+               && resoScaleDegrees(ResoScale::Major)[1] == 4
+               && resoScaleDegrees(ResoScale::Phrygian)[1] == 1
+               && resoScaleDegrees(ResoScale::Fifths)[1] == 7,
+              "reso: the four scales have the prototype's degrees");
+
+        // What is one voice's gain AT its centre frequency? The whole bank's level follows
+        // from this, and "a bandpass" does not pin it down: RBJ's cookbook has a constant-
+        // skirt form (peak gain = Q, so +32 dB at Q 42) and a constant-0 dB-peak form. The
+        // prototype's WebAudio BiquadFilterNode is the 0 dB one. If JUCE's differs, every
+        // level ported from the prototype is wrong by 32 dB — so measure it, don't assume.
+        {
+            juce::dsp::IIR::Filter<float> f;
+            juce::dsp::ProcessSpec mono { rSr, (juce::uint32) rBlock, 1 };
+            f.prepare(mono);
+            *f.coefficients = juce::dsp::IIR::ArrayCoefficients<float>::makeBandPass(
+                                  rSr, 55.0, Resonator::voiceQ);
+            f.reset();
+            double peak = 0.0;
+            const int n = (int) (rSr * 4);
+            for (int i = 0; i < n; ++i)
+            {
+                const float in = (float) std::sin(MathConstants<double>::twoPi * 55.0 * i / rSr);
+                const float out = f.processSample(in);
+                if (i > n / 2) peak = jmax(peak, (double) std::abs(out));
+            }
+            check(peak > 0.8 && peak < 1.25,
+                  "reso: a voice is a 0 dB-peak bandpass, like the prototype's — gain "
+                  + String(peak, 3));
+        }
+
+        auto tailRms = [](const AudioBuffer<float>& b, int from)
+        {
+            double e = 0.0;
+            for (int i = from; i < b.getNumSamples(); ++i)
+                e += (double) b.getSample(0, i) * b.getSample(0, i);
+            return std::sqrt(e / jmax(1, b.getNumSamples() - from));
+        };
+        auto runBank = [&](float amount, int keySemis, ResoScale sc)
+        {
+            // A 20 ms burst then silence — percussion exciting the bank, which is the whole
+            // premise ("a kick rings out a bass note"). NOT a single impulse: a Q of 42 is a
+            // ~1.3 Hz band, and one impulse deposits almost nothing into a band that narrow
+            // (it measured -88 dB), so an impulse tests the arithmetic rather than the sound.
+            Resonator r;
+            r.prepare(rSpec);
+            r.setTuning(keySemis, sc);
+            AudioBuffer<float> b(2, rBlock * 20);
+            b.clear();
+            Random rng(4242);
+            for (int i = 0; i < (int) (0.02 * rSr); ++i)
+            {
+                const float v = (rng.nextFloat() * 2.0f - 1.0f) * 0.8f;
+                b.setSample(0, i, v); b.setSample(1, i, v);
+            }
+            for (int off = 0; off < b.getNumSamples(); off += rBlock)
+            {
+                AudioBuffer<float> sub(b.getArrayOfWritePointers(), 2, off,
+                                       jmin(rBlock, b.getNumSamples() - off));
+                r.processAdd(sub, amount);
+            }
+            return b;
+        };
+
+        // It must RING: energy survives long after the excitation stopped.
+        {
+            const auto wet = runBank(1.0f, 0, ResoScale::Minor);
+            const auto dry = runBank(0.0f, 0, ResoScale::Minor);
+            const double wetTail = tailRms(wet, 6000), dryTail = tailRms(dry, 6000);
+            check(wetTail > 1.0e-4, "reso: a percussive burst rings out past its own end"
+                                    " — tail RMS " + String(wetTail, 6));
+            check(dryTail < 1.0e-9, "reso: at 0 there is no tail at all — "
+                                    + String(dryTail, 9));
+        }
+
+        // "It rings" is a weaker claim than "you can hear it", but the two probes I tried
+        // first both asked the question wrongly, and the numbers are worth keeping:
+        //   - broadband RMS on sustained noise: +0.00 dB. Eight ~1.3 Hz bands cannot move a
+        //     full-band level, so this can never show anything however loud the ring is.
+        //   - root-band energy on sustained noise: +1.7 dB. Better, but sustained noise is
+        //     the WORST case for a resonator — there are no gaps, so the ring is masked by
+        //     the very signal exciting it.
+        // The audible effect lives in the GAPS between hits, and the excitation has to be a
+        // DRUM, not white noise: the prototype's premise is "a kick rings out a bass note",
+        // and a kick puts its energy right where the root is, whereas flat noise deposits
+        // almost nothing into a 1.3 Hz band (that probe read -76 dB, which says more about
+        // white noise than about the effect). The filter gain is pinned at 0 dB peak above,
+        // so this is the prototype's own level, not a number tuned to make a test pass.
+        {
+            const int burst = (int) (0.02 * rSr);
+            AudioBuffer<float> wet(2, rBlock * 20);
+            wet.clear();
+            for (int i = 0; i < burst; ++i)      // a kick: 55 Hz, decaying
+            {
+                const float env = std::exp(-(float) i / (float) (0.008 * rSr));
+                const float v = 0.9f * env
+                              * (float) std::sin(MathConstants<double>::twoPi * 55.0 * i / rSr);
+                wet.setSample(0, i, v); wet.setSample(1, i, v);
+            }
+            {
+                Resonator r; r.prepare(rSpec);
+                r.setTuning(0, ResoScale::Minor);
+                for (int off = 0; off < wet.getNumSamples(); off += rBlock)
+                {
+                    AudioBuffer<float> sub(wet.getArrayOfWritePointers(), 2, off,
+                                           jmin(rBlock, wet.getNumSamples() - off));
+                    r.processAdd(sub, 1.0f);
+                }
+            }
+
+            // Excitation level, for reference.
+            double bSum = 0.0;
+            for (int i = 0; i < burst; ++i) bSum += (double) wet.getSample(0, i) * wet.getSample(0, i);
+            const double burstRms = std::sqrt(bSum / burst);
+
+            // Tonal content at the root, well into the gap (100 ms after the hit ends).
+            const int from = burst + (int) (0.1 * rSr);
+            double re = 0.0, im = 0.0; int n = 0;
+            for (int i = from; i < wet.getNumSamples(); ++i)
+            {
+                const double t = (double) i / rSr;
+                const double w = MathConstants<double>::twoPi * 55.0 * t;
+                re += wet.getSample(0, i) * std::cos(w);
+                im += wet.getSample(0, i) * std::sin(w);
+                ++n;
+            }
+            const double ring = 2.0 * std::sqrt(re * re + im * im) / jmax(1, n);
+            const double dB = 20.0 * std::log10(jmax(1.0e-12, ring) / jmax(1.0e-12, burstRms));
+            // -50 dB, not a "sounds good" target: it sits far above the white-noise case
+            // (-76 dB) so a bank that stopped ringing would fail, while not asserting a
+            // loudness the prototype never promised. The port's own figure is about -41 dB.
+            // Resonate IS a subtle effect at the prototype's levels — that's the design,
+            // and raising the gain would be a divergence, not a fix.
+            check(dB > -50.0, "reso: a kick leaves an audible tonal ring in the gap — "
+                              + String(dB, 1) + " dB relative to the hit");
+        }
+
+        // Zero must mean zero: bit-exact pass-through, not "nearly nothing".
+        {
+            Resonator r; r.prepare(rSpec);
+            AudioBuffer<float> b(2, rBlock);
+            for (int i = 0; i < rBlock; ++i)
+            {
+                const float v = 0.5f * std::sin((float) i * 0.05f);
+                b.setSample(0, i, v); b.setSample(1, i, v);
+            }
+            const auto ref = b;
+            r.processAdd(b, 0.0f);
+            bool same = true;
+            for (int i = 0; i < rBlock; ++i)
+                if (b.getSample(0, i) != ref.getSample(0, i)) same = false;
+            check(same, "reso: at 0 it is a bit-exact pass-through");
+        }
+
+        // The KEY must actually retune the bank, or it's a dead control.
+        {
+            const auto atA = runBank(1.0f, 0, ResoScale::Minor);
+            const auto atE = runBank(1.0f, 7, ResoScale::Minor);
+            double diff = 0.0;
+            for (int i = 4000; i < atA.getNumSamples(); ++i)
+                diff += std::abs(atA.getSample(0, i) - atE.getSample(0, i));
+            check(diff > 0.1, "reso: changing KEY changes the ring — diff " + String(diff, 3));
+        }
+
+        // ...and so must the SCALE.
+        {
+            const auto minor = runBank(1.0f, 0, ResoScale::Minor);
+            const auto fifth = runBank(1.0f, 0, ResoScale::Fifths);
+            double diff = 0.0;
+            for (int i = 4000; i < minor.getNumSamples(); ++i)
+                diff += std::abs(minor.getSample(0, i) - fifth.getSample(0, i));
+            check(diff > 0.1, "reso: changing SCALE changes the ring — diff " + String(diff, 3));
+        }
+
+        // High Q plus a hard drive is exactly the shape that blows up. It must not.
+        {
+            Resonator r; r.prepare(rSpec);
+            r.setTuning(0, ResoScale::Fifths);
+            bool ok = true;
+            for (int n = 0; n < 200; ++n)
+            {
+                AudioBuffer<float> b(2, rBlock);
+                for (int i = 0; i < rBlock; ++i)
+                {
+                    const float v = 0.9f * std::sin((float) (n * rBlock + i) * 0.02f);
+                    b.setSample(0, i, v); b.setSample(1, i, v);
+                }
+                r.processAdd(b, 1.0f);
+                for (int i = 0; i < rBlock; ++i)
+                    if (! std::isfinite(b.getSample(0, i)) || std::abs(b.getSample(0, i)) > 12.0f)
+                        ok = false;
+            }
+            check(ok, "reso: a high-Q bank driven hard stays finite and bounded");
+        }
+
+        // Retuning happens on the audio thread, and IIR::Coefficients::make*() allocates.
+        // This is the check that the ArrayCoefficients path is actually being used.
+        {
+            Resonator r; r.prepare(rSpec);
+            AudioBuffer<float> b(2, rBlock);
+            b.clear(); b.setSample(0, 0, 1.0f);
+            r.processAdd(b, 1.0f);            // warm up outside the watch
+
+            rtcheck::Scope watch;
+            for (int i = 0; i < 20; ++i)
+            {
+                r.setTuning(i % 12, (ResoScale) (i % 4));   // retune every block
+                r.processAdd(b, 1.0f);
+            }
+            const int n = watch.count();
+            check(n == 0, "rt: Resonator retune + process allocates nothing"
+                          + (n == 0 ? String() : " — got " + String(n)));
+        }
+    }
+
     // ---- SampleLayer transpose (the grid's Pitch +/- lanes) ----
     {
         using namespace Nebula2;
@@ -3646,14 +3876,23 @@ int main()
         check(allNamed, "grid: every displayed lane has a name");
         check(noDupes,  "grid: no lane is listed twice");
 
-        // The lanes whose effects DON'T exist yet must NOT be shown. Shrink this list as
-        // each effect lands — it failing after you build one is the test doing its job.
-        bool hidesUnbuilt = true;
-        for (auto r : { GridRow::Resonate })
-            for (auto shown : order)
-                if (shown == r) hidesUnbuilt = false;
-        check(hidesUnbuilt,
-              "grid: lanes with no effect behind them are NOT displayed (no dead lanes)");
+        // This used to be a list of lanes whose DSP didn't exist yet, checked to be hidden.
+        // That list is now empty, and an empty loop asserts nothing — so the check inverts
+        // into the stronger claim it can finally make: every storage row has an effect and
+        // is displayed. If a row is ever added to the enum ahead of its DSP, this fails and
+        // the hide-it list has to come back.
+        check((int) order.size() == FxGrid::numRows,
+              "grid: every one of the 16 lanes is displayed — " + String((int) order.size()));
+        {
+            bool allShown = true;
+            for (int i = 0; i < FxGrid::numRows; ++i)
+            {
+                bool found = false;
+                for (auto shown : order) if ((int) shown == i) found = true;
+                if (! found) allShown = false;
+            }
+            check(allShown, "grid: no storage row is missing from the display (no orphan lane)");
+        }
 
         // ...and the ones that DO exist are shown.
         {
@@ -3702,7 +3941,8 @@ int main()
             "padOn", "padX", "padY", "morphMotion", "morphRate", "morphSize", "morphGlide",
             "gridOn", "gridSteps",
             "drive", "char", "crush", "squeeze", "tone", "width", "pump", "gate",
-            "reverse", "stutter", "shatter", "pitchUp", "pitchDown", "fxOn",
+            "reverse", "stutter", "shatter", "pitchUp", "pitchDown",
+            "resonate", "resoKey", "resoScale", "fxOn",
             "revMix", "revSize", "dlyMix", "dlyFb", "dlySync", "dlyMode", "haunt", "spaceOn", "revChar",
             "rackOn",
             "flt.cut", "flt.res", "flt.type",

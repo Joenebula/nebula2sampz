@@ -18,6 +18,7 @@ namespace Nebula2
         saturator.prepare(spec);
         compressor.prepare(spec);
         toneFilter.prepare(spec);
+        resonator.prepare(spec);
 
         preGain.reset(spec.sampleRate, 0.02);
         postGain.reset(spec.sampleRate, 0.02);
@@ -30,6 +31,7 @@ namespace Nebula2
         saturator.reset();
         compressor.reset();
         toneFilter.reset();
+        resonator.reset();
     }
 
     void ColourChain::process(juce::AudioBuffer<float>& buffer, const Params& p) noexcept
@@ -85,6 +87,13 @@ namespace Nebula2
                     buffer.setSample(c, i, buffer.getSample(c, i) * g);
             }
         }
+
+        // 3c. RESONATE: the tuned bandpass bank, excited POST-FILTER and summed in
+        // parallel, exactly where the prototype taps it ("gr.filt.connect(resoBank.input)",
+        // bank -> postGain). Adds to the signal rather than replacing it, so at 0 it is a
+        // no-op.
+        resonator.setTuning(p.resoKey, p.resoScale);
+        resonator.processAdd(buffer, p.on ? juce::jlimit(0.0f, 1.0f, p.resonate / 100.0f) : 0.0f);
 
         // 4. Crush + width, after tone (and the duck).
         saturator.processCrushWidth(buffer, cr, w);

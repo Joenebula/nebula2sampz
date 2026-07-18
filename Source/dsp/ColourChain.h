@@ -3,6 +3,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include "Saturator.h"
 #include "Colour.h"
+#include "Resonator.h"
 
 namespace Nebula2
 {
@@ -33,6 +34,11 @@ namespace Nebula2
             float pump = 0.0f;       // 0..100 %
             double ppq = 0.0;        // host beat position (quarter notes)
             double bpm = 120.0;
+
+            // Resonate: a tuned bandpass bank in parallel, excited post-filter. 0 = off.
+            float resonate = 0.0f;   // 0..100 %
+            int resoKey = 0;         // semitones above A (0 = A, 3 = C, ...)
+            ResoScale resoScale = ResoScale::Minor;
         };
 
         void prepare(const juce::dsp::ProcessSpec& spec);
@@ -48,6 +54,7 @@ namespace Nebula2
         Saturator saturator;
         Compressor compressor;
         ToneFilter toneFilter;
+        Resonator resonator;
         juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> preGain, postGain;
         double sampleRate = 44100.0;
     };

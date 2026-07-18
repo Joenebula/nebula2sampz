@@ -52,6 +52,9 @@ namespace Nebula2::ParamID
     inline constexpr auto shatter   = "shatter";   // float 0..100  % (tempo-locked 1/16 gate)
     inline constexpr auto pitchUp   = "pitchUp";   // float 0..100  % (transpose the chop up, to +12 st)
     inline constexpr auto pitchDown = "pitchDown"; // float 0..100  % (transpose the chop down, to -12 st)
+    inline constexpr auto resonate  = "resonate";  // float 0..100  % (tuned bandpass bank, parallel)
+    inline constexpr auto resoKey   = "resoKey";   // choice 0..11  root note, 0 = A
+    inline constexpr auto resoScale = "resoScale"; // choice 0..3   minor/major/phrygian/fifths
     inline constexpr auto fxOn      = "fxOn";      // bool
 
     // --- Space (live: parallel reverb + tempo-synced delay send) ---

@@ -47,6 +47,7 @@ float GridView::panelAmountFor(int row) const
         case Nebula2::GridRow::Shatter: id = Nebula2::ParamID::shatter; break;
         case Nebula2::GridRow::PitchUp: id = Nebula2::ParamID::pitchUp; break;
         case Nebula2::GridRow::PitchDown: id = Nebula2::ParamID::pitchDown; break;
+        case Nebula2::GridRow::Resonate: id = Nebula2::ParamID::resonate; break;
         case Nebula2::GridRow::Haunt:   id = Nebula2::ParamID::haunt;   break;
         default: return 0.0f;
     }

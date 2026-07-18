@@ -138,6 +138,17 @@ namespace Nebula2
         layout.add(std::make_unique<APF>(PID{ ParamID::shatter, version }, "Shatter", pct(), 0.0f));
         layout.add(std::make_unique<APF>(PID{ ParamID::pitchUp, version }, "Pitch Up", pct(), 0.0f));
         layout.add(std::make_unique<APF>(PID{ ParamID::pitchDown, version }, "Pitch Down", pct(), 0.0f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::resonate, version }, "Resonate", pct(), 0.0f));
+        // Root of the resonator bank. Index 0 is A, not C: the prototype's root is A1
+        // (55 Hz) and resoKey is a semitone offset from it, so the names must start at A
+        // or every key would be off by three semitones.
+        layout.add(std::make_unique<APC>(
+            PID{ ParamID::resoKey, version }, "Resonate Key",
+            juce::StringArray{ "A", "A#", "B", "C", "C#", "D",
+                               "D#", "E", "F", "F#", "G", "G#" }, 0));
+        layout.add(std::make_unique<APC>(
+            PID{ ParamID::resoScale, version }, "Resonate Scale",
+            juce::StringArray{ "Minor", "Major", "Phrygian", "Fifths" }, 0));
         layout.add(std::make_unique<APB>(PID{ ParamID::fxOn, version }, "FX On", true));
 
         // --- Space (live) ---
