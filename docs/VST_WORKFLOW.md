@@ -133,7 +133,46 @@ The rules that fall out, in order of how much they'd have saved:
    chops cutting off, a dead Count control, an invisible Sens slider, a stale install, an
    unreadable UI — came from them looking, not from assertions.
 
-**2026-07-17 — OPEN, UNDIAGNOSED: an intermittent macOS CRASH in pluginval.**
+**2026-07-18 — DIAGNOSED. The crash was ours, and three things I said about it were wrong.**
+
+**What it actually was.** `Reverb::prepare` called `conv.prepare(spec)` — which DRAINS the
+convolution's background queue via `popAll` — then immediately `setCharacter()`, which QUEUES
+an IR load and wakes the background thread. Every prepare therefore left work in flight for
+the next prepare to race. That queue is single-producer / single-CONSUMER, and prepare's
+`popAll` plus the background thread's `popAll` are two consumers: one reads a slot the other
+already took, gets a default-constructed `FixedSizeFunction`, calls it, and throws
+`std::bad_function_call`.
+
+Fixed in two parts, both about having no work in flight when `Convolution::prepare` drains:
+(1) `prepare()` marks the IR stale and `reloadIrIfNeeded()` loads it afterwards in its own
+call stack; (2) staleness is keyed to the SAMPLE RATE, which is what the IR actually depends
+on — a block-size change was queueing a load that regenerated an identical IR.
+
+**Three corrections, which are the useful part of this entry:**
+
+1. **"macOS only" was false.** It reproduced on Windows at ~1 in 16. The claim rested on 12
+   clean local runs — and 12 runs at a 1-in-16 rate come back clean about half the time. That
+   is not evidence for "only".
+
+2. **"Needs a backtrace" was false for a full day.** CI had captured a backtrace on every
+   occurrence — three of them — and uploaded the logs. I never opened them. The tooling was
+   right; I didn't read its output.
+
+3. **"Crashes during Restoring default layout"** was one sample generalised. It also appeared
+   at Non-releasing audio processing, Automation and Editor Automation. The common factor
+   isn't the test — it's that all of them call prepareToPlay repeatedly. Reading those sites
+   together is what showed it was ONE race; I had reported it as two bugs before doing that.
+
+**Method note.** I twice drew a firm conclusion from evidence that hadn't settled: once by
+counting a directory a batch was still writing into (the "failing" file appeared to move
+between reads), and once from "the test that used to crash now passes" — which was true, and
+there was another crash two tests later. Both times the encouraging signal arrived before the
+evidence did. Let the batch finish.
+
+---
+
+**2026-07-17 — SUPERSEDED (see above). Kept deliberately: what the wrong diagnosis looked
+like is worth more than a tidy file.**
 This is the top open issue — it outranks every remaining feature.
 
 ```
