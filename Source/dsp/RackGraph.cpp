@@ -1,26 +1,35 @@
 #include "RackGraph.h"
+#include "../ParameterIDs.h"
 
 namespace Nebula2
 {
     namespace
     {
-        struct ModuleDef { const char* slug; const char* name; bool in, out, cv; };
+        struct ModuleDef { const char* slug; const char* name; const char* sub; bool in, out, cv; };
 
         // Jack map, straight from the prototype's markup. The LFO has an out but no in:
         // it makes CV, it doesn't process audio. `src` has out only; `out` has in only.
+        //
+        // `sub` is the line under the name. The prototype separates its parts with a middle
+        // dot; that is a raw non-ASCII byte in a string literal, which is exactly what
+        // rendered as mojibake in the rack status line, so these use a slash. CI now
+        // rejects the alternative outright.
         const ModuleDef defs[numRackModules] =
         {
-            { "src", "Beat",       false, true,  false },
-            { "eq",  "EQ",         true,  true,  false },
-            { "flt", "Ladder",     true,  true,  true  },
-            { "phs", "Phaser",     true,  true,  false },
-            { "cho", "Chorus",     true,  true,  false },
-            { "cmb", "Comb",       true,  true,  true  },
-            { "fld", "Wavefolder", true,  true,  true  },
-            { "vow", "Vowel",      true,  true,  true  },
-            { "ech", "Echo",       true,  true,  false },
-            { "lfo", "LFO",        false, true,  false },
-            { "out", "Main Out",   true,  false, false },
+            { "src", "Beat Out",      "the mix",            false, true,  false },
+            // NOT the prototype's "drag nodes / wheel = Q / spectrum". That line describes
+            // the movable-band EQ, which is not built yet - printing it would be the UI
+            // advertising an interaction that does nothing. It changes when the bands land.
+            { "eq",  "Parametric EQ", "3-band",             true,  true,  false },
+            { "flt", "Ladder",        "filter / cv",        true,  true,  true  },
+            { "phs", "Phaser",        "6-stage sweep",      true,  true,  false },
+            { "cho", "Chorus",        "3-voice",            true,  true,  false },
+            { "cmb", "Comb",          "tuned / metallic",   true,  true,  true  },
+            { "fld", "Wavefolder",    "destruction",        true,  true,  true  },
+            { "vow", "Vowel",         "formant / it talks", true,  true,  true  },
+            { "ech", "Space Echo",    "tape delay",         true,  true,  false },
+            { "lfo", "LFO",           "cv source",          false, true,  false },
+            { "out", "Main Out",      "-> speakers",        true,  false, false },
         };
 
         int idx(ModuleId m) noexcept { return (int) m; }
@@ -34,6 +43,90 @@ namespace Nebula2
     const char* moduleName(ModuleId m) noexcept
     {
         return m == ModuleId::count ? "" : defs[idx(m)].name;
+    }
+
+    const char* moduleSub(ModuleId m) noexcept
+    {
+        return m == ModuleId::count ? "" : defs[idx(m)].sub;
+    }
+
+    // Labels are the prototype's, which name what a knob DOES: Fold not Drive, Bias not
+    // Sym, Repeats not Fb, Decay not Fb.
+    const std::vector<RackDialDef>& rackDialDefs()
+    {
+        static const std::vector<RackDialDef> v =
+        {
+            { ModuleId::flt, ParamID::fltCut,   "Cut"     },
+            { ModuleId::flt, ParamID::fltRes,   "Res"     },
+
+            { ModuleId::lfo, ParamID::lfoRate,  "Rate"    },
+            { ModuleId::lfo, ParamID::lfoDepth, "Depth"   },
+
+            { ModuleId::phs, ParamID::phsRate,  "Rate"    },
+            { ModuleId::phs, ParamID::phsDepth, "Depth"   },   // had no control
+            { ModuleId::phs, ParamID::phsFb,    "Fdbk"    },
+            { ModuleId::phs, ParamID::phsMix,   "Mix"     },
+
+            { ModuleId::cho, ParamID::choRate,  "Rate"    },
+            { ModuleId::cho, ParamID::choDepth, "Depth"   },
+            { ModuleId::cho, ParamID::choMix,   "Mix"     },
+
+            { ModuleId::cmb, ParamID::cmbTune,  "Tune"    },
+            { ModuleId::cmb, ParamID::cmbFb,    "Decay"   },
+            { ModuleId::cmb, ParamID::cmbMix,   "Mix"     },
+
+            { ModuleId::fld, ParamID::fldDrive, "Fold"    },
+            { ModuleId::fld, ParamID::fldSym,   "Bias"    },
+            { ModuleId::fld, ParamID::fldMix,   "Mix"     },
+
+            { ModuleId::vow, ParamID::vowMorph, "Vowel"   },
+            { ModuleId::vow, ParamID::vowSharp, "Sharp"   },
+            { ModuleId::vow, ParamID::vowMix,   "Mix"     },
+
+            { ModuleId::ech, ParamID::echTime,  "Time"    },
+            { ModuleId::ech, ParamID::echFb,    "Repeats" },
+            { ModuleId::ech, ParamID::echWow,   "Wow"     },   // had no control
+            { ModuleId::ech, ParamID::echMix,   "Mix"     },
+
+            // All SIX bands. 35Hz, 420Hz and 5.2k had no control at all, so the DSP read
+            // them every block and nothing could move them off 0 dB.
+            { ModuleId::eq,  ParamID::eqGain0,  "35"      },
+            { ModuleId::eq,  ParamID::eqGain1,  "110"     },
+            { ModuleId::eq,  ParamID::eqGain2,  "420"     },
+            { ModuleId::eq,  ParamID::eqGain3,  "1.6k"    },
+            { ModuleId::eq,  ParamID::eqGain4,  "5.2k"    },
+            { ModuleId::eq,  ParamID::eqGain5,  "9k"      },
+
+            { ModuleId::out, ParamID::outLvl,   "Level"   },
+        };
+        return v;
+    }
+
+    // Choice params, so they are dropdowns in the rack header rather than dials.
+    const std::vector<const char*>& rackDropdownParamIds()
+    {
+        static const std::vector<const char*> v = { ParamID::fltType, ParamID::lfoShape };
+        return v;
+    }
+
+    // Must stay in the order PluginProcessor::readRackDials() unpacks them.
+    const std::vector<const char*>& rackDspParamIds()
+    {
+        static const std::vector<const char*> v =
+        {
+            ParamID::fltCut,  ParamID::fltRes,   ParamID::fltType,
+            ParamID::lfoRate, ParamID::lfoDepth, ParamID::lfoShape,
+            ParamID::phsRate, ParamID::phsDepth, ParamID::phsFb,  ParamID::phsMix,
+            ParamID::choRate, ParamID::choDepth, ParamID::choMix,
+            ParamID::cmbTune, ParamID::cmbFb,    ParamID::cmbMix,
+            ParamID::fldDrive, ParamID::fldSym,  ParamID::fldMix,
+            ParamID::vowMorph, ParamID::vowSharp, ParamID::vowMix,
+            ParamID::echTime, ParamID::echFb,    ParamID::echWow, ParamID::echMix,
+            ParamID::outLvl,
+            ParamID::eqGain0, ParamID::eqGain1,  ParamID::eqGain2,
+            ParamID::eqGain3, ParamID::eqGain4,  ParamID::eqGain5,
+        };
+        return v;
     }
 
     ModuleId moduleFromSlug(juce::StringRef slug) noexcept

@@ -64,43 +64,13 @@ void RackView::addDial(juce::AudioProcessorValueTreeState& apvts, ModuleId owner
 
 void RackView::buildModuleDials(juce::AudioProcessorValueTreeState& apvts)
 {
-    // Two or three dials per module: the ones you actually reach for while patching. The
-    // rest remain full host parameters — nothing here is a control the DAW can't see.
-    addDial(apvts, ModuleId::flt, ParamID::fltCut,   "Cut");
-    addDial(apvts, ModuleId::flt, ParamID::fltRes,   "Res");
-
-    addDial(apvts, ModuleId::lfo, ParamID::lfoRate,  "Rate");
-    addDial(apvts, ModuleId::lfo, ParamID::lfoDepth, "Depth");
-
-    addDial(apvts, ModuleId::phs, ParamID::phsRate,  "Rate");
-    addDial(apvts, ModuleId::phs, ParamID::phsFb,    "Fb");
-    addDial(apvts, ModuleId::phs, ParamID::phsMix,   "Mix");
-
-    addDial(apvts, ModuleId::cho, ParamID::choRate,  "Rate");
-    addDial(apvts, ModuleId::cho, ParamID::choDepth, "Depth");
-    addDial(apvts, ModuleId::cho, ParamID::choMix,   "Mix");
-
-    addDial(apvts, ModuleId::cmb, ParamID::cmbTune,  "Tune");
-    addDial(apvts, ModuleId::cmb, ParamID::cmbFb,    "Fb");
-    addDial(apvts, ModuleId::cmb, ParamID::cmbMix,   "Mix");
-
-    addDial(apvts, ModuleId::fld, ParamID::fldDrive, "Drive");
-    addDial(apvts, ModuleId::fld, ParamID::fldSym,   "Sym");
-    addDial(apvts, ModuleId::fld, ParamID::fldMix,   "Mix");
-
-    addDial(apvts, ModuleId::vow, ParamID::vowMorph, "Vowel");
-    addDial(apvts, ModuleId::vow, ParamID::vowSharp, "Sharp");
-    addDial(apvts, ModuleId::vow, ParamID::vowMix,   "Mix");
-
-    addDial(apvts, ModuleId::ech, ParamID::echTime,  "Time");
-    addDial(apvts, ModuleId::ech, ParamID::echFb,    "Fb");
-    addDial(apvts, ModuleId::ech, ParamID::echMix,   "Mix");
-
-    addDial(apvts, ModuleId::eq,  ParamID::eqGain1,  "110");
-    addDial(apvts, ModuleId::eq,  ParamID::eqGain3,  "1.6k");
-    addDial(apvts, ModuleId::eq,  ParamID::eqGain5,  "9k");
-
-    addDial(apvts, ModuleId::out, ParamID::outLvl,   "Level");
+    // ONE table, in RackGraph.cpp, looped here. It used to be this list written out by hand,
+    // and five parameters the DSP reads every block (phsDepth, echWow and three of the six
+    // EQ bands) simply were not in it — so nothing on screen could move them and they sat at
+    // their defaults forever. Building the knobs FROM the table means the list and the panel
+    // cannot disagree; a test then checks the table covers every rack DSP parameter.
+    for (const auto& d : rackDialDefs())
+        addDial(apvts, d.owner, d.paramId, d.label);
 }
 
 void RackView::timerCallback()
@@ -319,6 +289,14 @@ void RackView::paint(juce::Graphics& g)
         g.setFont (juce::FontOptions (8.0f));
         g.drawText (moduleStateText (st), r.reduced (8.0f, 4.0f).removeFromTop (12.0f),
                     juce::Justification::topRight);
+
+        // The one-line description under the name, as in the prototype. Without it the rack
+        // is eleven boxes of unlabelled dials and you have to turn one to find out what the
+        // module is for.
+        g.setColour (kSub.withAlpha (st == ModuleState::off ? 0.35f : 0.7f));
+        g.setFont (juce::FontOptions (8.0f));
+        g.drawText (moduleSub (s.m), r.reduced (8.0f, 4.0f).withTrimmedTop (12.0f).removeFromTop (10.0f),
+                    juce::Justification::topLeft);
 
         // The LFO draws its own moving value along the bottom edge, so its rate and depth
         // are visible rather than implied. Below the dials, not across them.

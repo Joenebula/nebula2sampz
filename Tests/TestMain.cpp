@@ -1304,6 +1304,38 @@ int main()
             check(layer.activeVoiceCount() > 0, "sample: the root plays slice 1");
         }
 
+        // Every rack parameter the DSP reads must have something on screen that moves it.
+        //
+        // phsDepth, echWow and three of the six EQ bands (35Hz, 420Hz, 5.2k) were read every
+        // block by readRackDials() and had no control anywhere in the editor, so they sat at
+        // their defaults forever. Third time this shape has appeared in this project: the
+        // seven orphaned grid lanes, the smpVol control, and now these.
+        //
+        // "It has a parameter" is not "you can use it". This asks the second question.
+        {
+            using namespace Nebula2;
+            const auto& dials = rackDialDefs();
+            const auto& drops = rackDropdownParamIds();
+
+            auto reachable = [&] (const char* id)
+            {
+                for (const auto& d : dials) if (String(d.paramId) == String(id)) return true;
+                for (auto* c : drops)       if (String(c)         == String(id)) return true;
+                return false;
+            };
+
+            StringArray orphans;
+            for (auto* id : rackDspParamIds())
+                if (! reachable(id)) orphans.add(String(id));
+
+            check(orphans.isEmpty(),
+                  "rack: every DSP parameter has a control - orphans: " + orphans.joinIntoString(", "));
+
+            // ...and nothing on the panel points at a parameter that doesn't exist.
+            check(rackDialDefs().size() + rackDropdownParamIds().size() == rackDspParamIds().size(),
+                  "rack: the dial table and the DSP list are the same size (no strays either way)");
+        }
+
         // The PREVIEW button must describe what it will do, in all four states. It used to
         // read "Play" always, so starting the DAW left it saying Play and it looked broken;
         // and because the preview flag is NOT cleared when the host takes over, the naive

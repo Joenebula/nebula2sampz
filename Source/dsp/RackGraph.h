@@ -44,7 +44,24 @@ namespace Nebula2
 
     const char* moduleSlug(ModuleId m) noexcept;      // "flt"
     const char* moduleName(ModuleId m) noexcept;      // "Ladder"
+    const char* moduleSub(ModuleId m) noexcept;       // "filter / cv" - the line beneath it
     bool moduleExists(juce::StringRef slug) noexcept;
+
+    // --- rack dials: ONE table, built from, not asserted about ---
+    //
+    // RackView loops this to create its knobs, so "the list" and "what is on screen" cannot
+    // disagree. They did: phsDepth, echWow and three of the six EQ bands were read by the
+    // DSP every block with no control anywhere in the editor, so they sat at their defaults
+    // forever. Exactly the seven-orphaned-grid-lanes bug, in a different panel.
+    struct RackDialDef { ModuleId owner; const char* paramId; const char* label; };
+    const std::vector<RackDialDef>& rackDialDefs();
+
+    // Every rack parameter the audio thread reads. The test pairs this against the table
+    // above (plus the two header dropdowns) so a new DSP parameter with no control fails.
+    const std::vector<const char*>& rackDspParamIds();
+
+    // The rack params reachable through the header dropdowns rather than a dial.
+    const std::vector<const char*>& rackDropdownParamIds();
     ModuleId moduleFromSlug(juce::StringRef slug) noexcept;   // ModuleId::count if unknown
 
     enum class Jack { in, out, cv };

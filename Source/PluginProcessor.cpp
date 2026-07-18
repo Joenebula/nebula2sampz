@@ -53,24 +53,15 @@ Nebula2AudioProcessor::Nebula2AudioProcessor()
     rackOnParam = apvts.getRawParameterValue(Nebula2::ParamID::rackOn);
     {
         // Cached in the same order readRackDials() unpacks them. One list, one order — the
-        // alternative is 31 named pointers and 31 chances to wire the wrong one.
-        const char* ids[] = {
-            Nebula2::ParamID::fltCut,  Nebula2::ParamID::fltRes,  Nebula2::ParamID::fltType,
-            Nebula2::ParamID::lfoRate, Nebula2::ParamID::lfoDepth, Nebula2::ParamID::lfoShape,
-            Nebula2::ParamID::phsRate, Nebula2::ParamID::phsDepth, Nebula2::ParamID::phsFb,
-            Nebula2::ParamID::phsMix,
-            Nebula2::ParamID::choRate, Nebula2::ParamID::choDepth, Nebula2::ParamID::choMix,
-            Nebula2::ParamID::cmbTune, Nebula2::ParamID::cmbFb,   Nebula2::ParamID::cmbMix,
-            Nebula2::ParamID::fldDrive, Nebula2::ParamID::fldSym, Nebula2::ParamID::fldMix,
-            Nebula2::ParamID::vowMorph, Nebula2::ParamID::vowSharp, Nebula2::ParamID::vowMix,
-            Nebula2::ParamID::echTime, Nebula2::ParamID::echFb,   Nebula2::ParamID::echWow,
-            Nebula2::ParamID::echMix,
-            Nebula2::ParamID::outLvl,
-            Nebula2::ParamID::eqGain0, Nebula2::ParamID::eqGain1, Nebula2::ParamID::eqGain2,
-            Nebula2::ParamID::eqGain3, Nebula2::ParamID::eqGain4, Nebula2::ParamID::eqGain5,
-        };
-        static_assert(sizeof(ids) / sizeof(ids[0]) == 33, "rackDialParams size must match this list");
-        for (size_t i = 0; i < rackDialParams.size(); ++i)
+        // alternative is 33 named pointers and 33 chances to wire the wrong one.
+        //
+        // The list itself now lives in RackGraph (rackDspParamIds) so the editor's dial
+        // table can be tested against it. It was local to this constructor, which meant
+        // nothing outside could ask "is every one of these reachable?" — and five of them
+        // were not.
+        const auto& ids = Nebula2::rackDspParamIds();
+        jassert(ids.size() == rackDialParams.size());
+        for (size_t i = 0; i < rackDialParams.size() && i < ids.size(); ++i)
             rackDialParams[i] = apvts.getRawParameterValue(ids[i]);
     }
 }
