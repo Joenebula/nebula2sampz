@@ -16,6 +16,8 @@ namespace Nebula2
         constexpr float grid = 0, transient = 1;
         // sliceCount: 4/8/16/32/64
         constexpr float c8 = 1, c16 = 2, c32 = 3;
+        // dlyMode
+        constexpr float pingpong = 0, dub = 1, warp = 2;
     }
 
     const std::vector<Preset>& getFactoryPresets()
@@ -138,13 +140,62 @@ namespace Nebula2
               "1800 4 30 60 40 0 130 40,"
               "300 5 15 40 20 0 70 60,"
               "600 8 45 90 70 30 150 80" },
+
+            { "Morph: Rise & Wreck", {
+                { padOn, 1.0f }, { padX, 0.0f }, { padY, 1.0f } },
+              "",
+              // clean/open -> phasey -> vowel-dark -> shattered
+              "16000 1 0 0 0 0 100 5,"
+              "5000 2 40 60 30 0 120 15,"
+              "700 4 25 0 60 0 90 40,"
+              "500 7 90 40 90 90 150 70" },
+
+            // --- Grid sequencer presets (the "no grid effects" gap) ---
+            // Each sets Grid On, panel amounts the pattern gates toward, and a pattern in
+            // FxGrid's steps:row,row format (rows Drive/Crush/Squeeze/Tone/Width/Reverb/Delay).
+
+            { "Grid: Drive Stutter", {
+                { gridOn, 1.0f }, { gridSteps, 1.0f }, { drive, 85.0f }, { driveChar, Ch::tube },
+                { crush, 45.0f }, { tone, 90.0f } },
+              "", "",
+              "16:30303030303030300000000000000000,00003000000030000000000000000000,00000000000000000000000000000000,00000000000000000000000000000000,00000000000000000000000000000000,00000000000000000000000000000000,00000000000000000000000000000000" },
+
+            { "Grid: Space Throws", {
+                { gridOn, 1.0f }, { gridSteps, 1.0f }, { revMix, 65.0f }, { revChar, Ch::plate },
+                { dlyMix, 55.0f }, { dlyFb, 60.0f }, { dlySync, Ch::s8d }, { dlyMode, Ch::pingpong } },
+              "", "",
+              "16:00000000000000000000000000000000,00000000000000000000000000000000,00000000000000000000000000000000,00000000000000000000000000000000,00000000000000000000000000000000,30000000300000000000000000000000,00003000000030000000000000000000" },
+
+            { "Grid: Tone Gate", {
+                { gridOn, 1.0f }, { gridSteps, 1.0f }, { tone, 18.0f }, { drive, 30.0f },
+                { width, 120.0f } },
+              "", "",
+              "16:00000000000000000000000000000000,00000000000000000000000000000000,00000000000000000000000000000000,33003300330033000000000000000000,00000000000000000000000000000000,00000000000000000000000000000000,00000000000000000000000000000000" },
+
+            // --- More Reverb / Delay (using the new modes, Size and Haunt) ---
+
+            { "Delay: Dub Chamber", {
+                { dlyMix, 60.0f }, { dlyFb, 72.0f }, { dlySync, Ch::s8d }, { dlyMode, Ch::dub },
+                { revMix, 28.0f }, { revChar, Ch::plate }, { revSize, 55.0f }, { tone, 80.0f } } },
+
+            { "Delay: Warp Tape", {
+                { dlyMix, 55.0f }, { dlyFb, 66.0f }, { dlySync, Ch::s8 }, { dlyMode, Ch::warp },
+                { revMix, 18.0f }, { revChar, Ch::room }, { width, 130.0f } } },
+
+            { "Reverb: Cathedral Swell", {
+                { revMix, 68.0f }, { revChar, Ch::cathedral }, { revSize, 92.0f },
+                { dlyMix, 15.0f }, { dlySync, Ch::s4 }, { tone, 85.0f } } },
+
+            { "Space: Haunted Hall", {
+                { haunt, 60.0f }, { revMix, 58.0f }, { revChar, Ch::hall }, { revSize, 82.0f },
+                { dlyMix, 22.0f }, { dlyFb, 45.0f }, { dlyMode, Ch::warp }, { tone, 70.0f } } },
         };
         return presets;
     }
 
     void applyPreset(juce::AudioProcessorValueTreeState& apvts, int index,
                      RackGraph& rack, juce::SpinLock& rackLock,
-                     std::array<MorphScene, 4>& scenes)
+                     std::array<MorphScene, 4>& scenes, FxGrid& grid)
     {
         const auto& presets = getFactoryPresets();
         if (index < 0 || index >= (int) presets.size()) return;
@@ -172,5 +223,11 @@ namespace Nebula2
         scenes = juce::String(preset.morphScenes).isNotEmpty()
                      ? morphScenesFromString(preset.morphScenes)
                      : defaultMorphScenes();
+
+        // The grid pattern, same total-recall rule: "" clears it, a string restores it.
+        if (juce::String(preset.gridPattern).isNotEmpty())
+            grid.fromString(preset.gridPattern);
+        else
+            grid.clearAll();
     }
 }

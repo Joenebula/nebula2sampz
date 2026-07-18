@@ -123,7 +123,7 @@ void Nebula2AudioProcessor::setCurrentProgram(int index)
     currentProgram = index;
     // Resets every param to default, then applies the preset — INCLUDING the rack patch
     // and morph scenes, which live outside the APVTS and would otherwise survive a recall.
-    Nebula2::applyPreset(apvts, index, rackGraph, rackLock, morphScenes);
+    Nebula2::applyPreset(apvts, index, rackGraph, rackLock, morphScenes, grid);
 }
 
 int Nebula2AudioProcessor::sliceCountFromChoice(int choiceIndex) noexcept

@@ -1578,6 +1578,7 @@ int main()
         RackGraph pRack;
         juce::SpinLock pRackLock;
         auto pScenes = defaultMorphScenes();
+        FxGrid pGrid;
 
         check(presets.size() >= 10, "presets: a usable factory set exists");
 
@@ -1629,7 +1630,7 @@ int main()
                 if (juce::String(presets[(size_t) i].name) == "Tube Drive") tubeIdx = i;
             check(tubeIdx > 0, "presets: Tube Drive present");
 
-            applyPreset(dp.apvts, tubeIdx, pRack, pRackLock, pScenes);
+            applyPreset(dp.apvts, tubeIdx, pRack, pRackLock, pScenes, pGrid);
 
             const float drive = *dp.apvts.getRawParameterValue(ParamID::drive);
             const float crush = *dp.apvts.getRawParameterValue(ParamID::crush);
@@ -1649,15 +1650,15 @@ int main()
                 if (juce::String(presets[(size_t) i].name) == "Tube Drive") tubeIdx = i;
             }
 
-            applyPreset(dp.apvts, tubeIdx, pRack, pRackLock, pScenes);
+            applyPreset(dp.apvts, tubeIdx, pRack, pRackLock, pScenes, pGrid);
             const float driveA = *dp.apvts.getRawParameterValue(ParamID::drive);
             const float dlyA   = *dp.apvts.getRawParameterValue(ParamID::dlyMix);
 
-            applyPreset(dp.apvts, dubIdx, pRack, pRackLock, pScenes);
+            applyPreset(dp.apvts, dubIdx, pRack, pRackLock, pScenes, pGrid);
             const float dlyB = *dp.apvts.getRawParameterValue(ParamID::dlyMix);
             check(dlyB > dlyA, "presets: Dub Echo actually changes the delay");
 
-            applyPreset(dp.apvts, tubeIdx, pRack, pRackLock, pScenes);
+            applyPreset(dp.apvts, tubeIdx, pRack, pRackLock, pScenes, pGrid);
             const float driveBack = *dp.apvts.getRawParameterValue(ParamID::drive);
             const float dlyBack   = *dp.apvts.getRawParameterValue(ParamID::dlyMix);
             check(std::abs(driveBack - driveA) < 0.01f, "presets: A -> B -> A restores A exactly");
@@ -1668,7 +1669,7 @@ int main()
         {
             DummyProcessor dp;
             dp.apvts.getParameter(ParamID::drive)->setValueNotifyingHost(1.0f);
-            applyPreset(dp.apvts, 0, pRack, pRackLock, pScenes);   // Init
+            applyPreset(dp.apvts, 0, pRack, pRackLock, pScenes, pGrid);   // Init
             check(*dp.apvts.getRawParameterValue(ParamID::drive) < 1.0f, "presets: Init returns everything to default");
         }
     }
@@ -2495,6 +2496,7 @@ int main()
         RackGraph rack;
         juce::SpinLock rackLock;
         auto scenes = defaultMorphScenes();
+        FxGrid grid;
 
         const auto& presets = getFactoryPresets();
         check(! presets.empty(), "presets: there are factory presets");
@@ -2556,9 +2558,51 @@ int main()
                 if (String(presets[(size_t) i].name) == "Init") initIdx = i;
             check(initIdx >= 0, "presets: there's an Init preset");
 
-            applyPreset(proc.apvts, initIdx, rack, rackLock, scenes);
+            applyPreset(proc.apvts, initIdx, rack, rackLock, scenes, grid);
             check(! rack.isLive(),
                   "presets: loading a preset with no patch CLEARS the rack — recall is total");
+        }
+
+        // Grid presets: loading one sets a pattern, and Init CLEARS it (total recall).
+        {
+            int gridIdx = -1;
+            for (int i = 0; i < (int) presets.size(); ++i)
+                if (String(presets[(size_t) i].name).startsWith("Grid:")) { gridIdx = i; break; }
+            check(gridIdx >= 0, "presets: there are grid presets");
+
+            applyPreset(proc.apvts, gridIdx, rack, rackLock, scenes, grid);
+            bool anyCell = false;
+            for (int r = 0; r < FxGrid::numRows; ++r)
+                for (int s = 0; s < 32; ++s) if (grid.getCell(r, s) > 0) anyCell = true;
+            check(anyCell, "presets: a grid preset actually lays down a pattern");
+            check(proc.apvts.getRawParameterValue(ParamID::gridOn)->load() > 0.5f,
+                  "presets: a grid preset turns the grid on");
+
+            int initIdx2 = 0;
+            for (int i = 0; i < (int) presets.size(); ++i)
+                if (String(presets[(size_t) i].name) == "Init") initIdx2 = i;
+            applyPreset(proc.apvts, initIdx2, rack, rackLock, scenes, grid);
+            bool cleared = true;
+            for (int r = 0; r < FxGrid::numRows; ++r)
+                for (int s = 0; s < 32; ++s) if (grid.getCell(r, s) > 0) cleared = false;
+            check(cleared, "presets: Init clears the grid pattern — recall is total");
+        }
+
+        // Every grid preset's pattern parses to real cells (a malformed string would apply
+        // nothing and the "grid effect" would silently do nothing).
+        {
+            bool ok = true; String bad;
+            for (const auto& p : presets)
+            {
+                if (String(p.gridPattern).isEmpty()) continue;
+                FxGrid g; g.fromString(p.gridPattern);
+                bool any = false;
+                for (int r = 0; r < FxGrid::numRows; ++r)
+                    for (int s = 0; s < 32; ++s) if (g.getCell(r, s) > 0) any = true;
+                if (! any) { ok = false; if (bad.isEmpty()) bad = p.name; }
+            }
+            check(ok, "presets: every grid pattern parses to real cells"
+                      + (bad.isEmpty() ? String() : " (empty: " + bad + ")"));
         }
 
         // And the reverse: loading a rack preset must actually wire it.
@@ -2568,7 +2612,7 @@ int main()
                 if (String(presets[(size_t) i].name).startsWith("Rack:")) { rackIdx = i; break; }
             check(rackIdx >= 0, "presets: there are rack presets");
 
-            applyPreset(proc.apvts, rackIdx, rack, rackLock, scenes);
+            applyPreset(proc.apvts, rackIdx, rack, rackLock, scenes, grid);
             check(rack.isLive(), "presets: loading a rack preset wires the rack");
             check(proc.apvts.getRawParameterValue(ParamID::rackOn)->load() > 0.5f,
                   "presets: a rack preset turns the rack on — it can't be heard otherwise");
@@ -2581,7 +2625,7 @@ int main()
             int initIdx = 0;
             for (int i = 0; i < (int) presets.size(); ++i)
                 if (String(presets[(size_t) i].name) == "Init") initIdx = i;
-            applyPreset(proc.apvts, initIdx, rack, rackLock, scenes);
+            applyPreset(proc.apvts, initIdx, rack, rackLock, scenes, grid);
             check(std::abs(scenes[0].cut - 12345.0f) > 1.0f,
                   "presets: a preset with no scenes restores the seed scenes, not yours");
         }
@@ -2590,7 +2634,7 @@ int main()
         {
             rack.addCable(parsePort("src:out"), parsePort("eq:in"));
             rack.addCable(parsePort("eq:out"), parsePort("out:in"));
-            applyPreset(proc.apvts, 9999, rack, rackLock, scenes);
+            applyPreset(proc.apvts, 9999, rack, rackLock, scenes, grid);
             check(rack.isLive(), "presets: a bad index changes nothing (no half-apply)");
         }
     }

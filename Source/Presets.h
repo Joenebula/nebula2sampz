@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "dsp/RackGraph.h"
 #include "dsp/MorphPad.h"
+#include "dsp/FxGrid.h"
 #include <vector>
 
 namespace Nebula2
@@ -31,6 +32,11 @@ namespace Nebula2
         // or it isn't recall.
         const char* rackPatch = "";
         const char* morphScenes = "";
+
+        // The FX-grid pattern, in FxGrid's own "steps:row,row,..." format (cells 0..3,
+        // rows Drive/Crush/Squeeze/Tone/Width/Reverb/Delay). "" clears the grid — same rule
+        // as the others: recall is total. Set gridOn in `values` to actually run it.
+        const char* gridPattern = "";
     };
 
     const std::vector<Preset>& getFactoryPresets();
@@ -46,5 +52,5 @@ namespace Nebula2
     // became a lie.
     void applyPreset(juce::AudioProcessorValueTreeState& apvts, int index,
                      RackGraph& rack, juce::SpinLock& rackLock,
-                     std::array<MorphScene, 4>& scenes);
+                     std::array<MorphScene, 4>& scenes, FxGrid& grid);
 }
