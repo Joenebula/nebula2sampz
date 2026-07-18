@@ -31,6 +31,7 @@ private:
 
     Nebula2AudioProcessor& processorRef;
     float lastX = -1.0f, lastY = -1.0f;
+    bool  lastOn = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MorphPadView)
 };

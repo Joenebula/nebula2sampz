@@ -31,6 +31,7 @@ private:
 
     Nebula2AudioProcessor& processorRef;
     int lastStep = -2;
+    bool lastOn = false;                   // so the "Grid is OFF" notice repaints on toggle
     int paintLevel = 3;                    // what a drag paints
 
     static constexpr int labelW = 62;

@@ -42,10 +42,15 @@ void MorphPadView::effectivePos(float& x, float& y) const
 
 void MorphPadView::timerCallback()
 {
+    // Track the ON state too — the "pad is off" notice must appear/vanish the moment you
+    // tick the box, not only when the dot happens to move.
+    auto* on = processorRef.getValueTreeState().getRawParameterValue(Nebula2::ParamID::padOn);
+    const bool nowOn = on != nullptr && on->load() > 0.5f;
+
     float x, y; effectivePos(x, y);
-    if (std::abs(x - lastX) > 0.0005f || std::abs(y - lastY) > 0.0005f)
+    if (nowOn != lastOn || std::abs(x - lastX) > 0.0005f || std::abs(y - lastY) > 0.0005f)
     {
-        lastX = x; lastY = y;
+        lastOn = nowOn; lastX = x; lastY = y;
         repaint();
     }
 }
@@ -110,6 +115,23 @@ void MorphPadView::paint(juce::Graphics& g)
         << "  flg " << (int) scene.flg
         << "  phs " << (int) scene.phs
         << "  sht " << (int) scene.sht;
+
+    // SAY WHEN THE PAD IS OFF. A pad you can drag that changes nothing looks identical to a
+    // working one — the prototype is blunt about this ("pad is off — the sliders own the
+    // sound") and so is this. The user hit exactly this confusion.
+    {
+        auto* on = processorRef.getValueTreeState().getRawParameterValue(Nebula2::ParamID::padOn);
+        if (on == nullptr || on->load() <= 0.5f)
+        {
+            g.setColour(kWell.withAlpha(0.62f));
+            g.fillAll();
+            g.setColour(juce::Colour(0xffff6a4d));
+            g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+            g.drawText("Pad is OFF - it won't touch the sound. Tick \"Morph On\".",
+                       getLocalBounds(), juce::Justification::centred);
+            return;
+        }
+    }
 
     auto strip = getLocalBounds().removeFromBottom(16).reduced(78, 0);   // clear of the corner labels
     g.setColour(kWell.withAlpha(0.85f));                                 // so a dot behind it can't

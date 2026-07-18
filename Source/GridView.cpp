@@ -18,7 +18,13 @@ GridView::GridView(Nebula2AudioProcessor& p) : processorRef(p)
 void GridView::timerCallback()
 {
     const int s = processorRef.getCurrentGridStep();
-    if (s != lastStep) { lastStep = s; repaint(); }
+
+    // Track the ON state so the "Grid is OFF" notice appears/vanishes the instant you tick
+    // the box — when the grid is off there's no playhead moving to trigger a repaint.
+    auto* on = processorRef.getValueTreeState().getRawParameterValue(Nebula2::ParamID::gridOn);
+    const bool nowOn = on != nullptr && on->load() > 0.5f;
+
+    if (s != lastStep || nowOn != lastOn) { lastStep = s; lastOn = nowOn; repaint(); }
 }
 
 float GridView::panelAmountFor(int row) const
@@ -157,6 +163,43 @@ void GridView::paint(juce::Graphics& g)
                 g.setColour(juce::Colours::white.withAlpha(0.28f));
                 g.fillRect(cell);
             }
+        }
+    }
+
+    // SAY WHY NOTHING IS HAPPENING. A painted grid with "Grid On" unchecked looks exactly
+    // like a working one — the user hit this repeatedly. The prototype is blunt about it
+    // ("pad is off — the sliders own the sound") and so is this now.
+    auto* on = processorRef.getValueTreeState().getRawParameterValue(Nebula2::ParamID::gridOn);
+    const bool gridOn = on != nullptr && on->load() > 0.5f;
+    if (! gridOn)
+    {
+        auto strip = getLocalBounds().removeFromBottom(18);
+        g.setColour(kWell.withAlpha(0.92f));
+        g.fillRect(strip);
+        g.setColour(juce::Colour(0xffff6a4d));
+        g.setFont(juce::FontOptions(10.0f, juce::Font::bold));
+        g.drawText("Grid is OFF - painted steps won't sound. Tick \"Grid On\".",
+                   strip, juce::Justification::centred);
+    }
+    else
+    {
+        // Grid is on, but a lane at 0% still can't act. Count them and say so.
+        int starvedCount = 0, painted = 0;
+        for (auto r : order)
+        {
+            if (! grid.rowHasAnyCells((int) r)) continue;
+            ++painted;
+            if (rowIsStarved((int) r)) ++starvedCount;
+        }
+        if (painted > 0 && starvedCount == painted)
+        {
+            auto strip = getLocalBounds().removeFromBottom(18);
+            g.setColour(kWell.withAlpha(0.92f));
+            g.fillRect(strip);
+            g.setColour(juce::Colour(0xffff6a4d));
+            g.setFont(juce::FontOptions(10.0f, juce::Font::bold));
+            g.drawText("Every painted lane is at 0% - turn its knob up so the steps have something to gate.",
+                       strip, juce::Justification::centred);
         }
     }
 }
