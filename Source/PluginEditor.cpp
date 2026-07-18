@@ -242,13 +242,23 @@ Nebula2AudioProcessorEditor::~Nebula2AudioProcessorEditor()
     setLookAndFeel(nullptr);
 }
 
+// The grid page is exactly as tall as its lanes need. The old hardcoded 194px was chosen
+// when there were seven lanes; at sixteen it gave each one under 8px and the labels
+// collided into a smear.
+//   panel = 14 title + 24 controls + 8 gap + lanes, plus 24 for the panel's own inset
+//   page  = panel + 16 for the body inset
+int Nebula2AudioProcessorEditor::gridPageHeight()
+{
+    return GridView::preferredHeight() + 14 + 24 + 8 + 24 + 16;
+}
+
 int Nebula2AudioProcessorEditor::contentHeightFor(Page p) const
 {
     switch (p)
     {
         case Page::play:  return 788;   // sample + colour (two knob rows) + space
         case Page::morph: return 320;
-        case Page::grid:  return 210;
+        case Page::grid:  return gridPageHeight();
         case Page::rack:  return 470;
         default:          return 560;
     }
@@ -514,7 +524,7 @@ void Nebula2AudioProcessorEditor::paintContent(juce::Graphics& g)
     }
     else if (page == Page::grid)
     {
-        Nebula2LookAndFeel::drawCard(g, body.removeFromTop(194.0f), "GRID");
+        Nebula2LookAndFeel::drawCard(g, body.removeFromTop((float) (gridPageHeight() - 16)), "GRID");
     }
     else if (page == Page::rack)
     {
@@ -587,7 +597,7 @@ void Nebula2AudioProcessorEditor::layoutContent()
         // --- Grid page ---
         else if (page == Page::grid)
         {
-            auto gp = body.removeFromTop(194).reduced(12);
+            auto gp = body.removeFromTop(gridPageHeight() - 16).reduced(12);
             gp.removeFromTop(14);
             auto gRow = gp.removeFromTop(24);
             gridOnButton.setBounds(gRow.removeFromLeft(96));

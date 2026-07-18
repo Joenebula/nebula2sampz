@@ -80,6 +80,7 @@ private:
     std::array<juce::TextButton, (size_t) Page::numPages> tabs;
     void showPage(Page);
     int contentHeightFor(Page) const;
+    static int gridPageHeight();   // derived from the lane count, never hardcoded
 
     // In-app audition: play the loaded break without rolling the DAW. Reflects the
     // processor's state (which the host transport can clear), so the Timer keeps the

@@ -61,6 +61,16 @@ namespace Nebula2
     struct PanelControlSpec { const char* paramId; const char* label; const char* suffix; };
     const std::vector<PanelControlSpec>& extraColourControls();
 
+    // How tall the grid panel must be. Lives here, not in GridView, for one reason: the
+    // test binary links this file and not the GUI, and a panel height that silently stops
+    // fitting its lanes is exactly the regression worth catching. It was hardcoded at 194px
+    // when there were seven lanes; at sixteen each lane got under 8px and the 10pt names
+    // collided into an unreadable smear.
+    constexpr int gridLaneHeight   = 22;   // >= 16, or the label doesn't fit
+    constexpr int gridNoticeHeight = 20;   // the bottom "why nothing is happening" strip
+
+    int gridPanelHeight();
+
     // The lanes the UI actually SHOWS, in the prototype's grouping (Colour, then Space).
     //
     // This lists only lanes whose effect exists. A lane you can paint that drives nothing

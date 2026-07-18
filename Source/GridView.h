@@ -22,19 +22,25 @@ public:
     void mouseDown(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
 
+    // Height comes from Nebula2::gridPanelHeight() — see FxGrid.h for why it lives there
+    // (the test binary links that file and not the GUI). Adding a lane must widen the
+    // panel, not shrink the rows.
+    static int preferredHeight() { return Nebula2::gridPanelHeight(); }
+
 private:
     void timerCallback() override;
     int rowAt(juce::Point<int> pos) const;
     int stepAt(juce::Point<int> pos) const;
     float panelAmountFor(int row) const;   // the knob behind this row
     bool rowIsStarved(int row) const;      // knob at 0 -> the row cannot sound
+    int laneHeight() const;                // one definition, shared by paint and rowAt
 
     Nebula2AudioProcessor& processorRef;
     int lastStep = -2;
     bool lastOn = false;                   // so the "Grid is OFF" notice repaints on toggle
     int paintLevel = 3;                    // what a drag paints
 
-    static constexpr int labelW = 62;
+    static constexpr int labelW = 74;   // fits "Resonate" plus the 0% flag at 10pt
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(GridView)
 };

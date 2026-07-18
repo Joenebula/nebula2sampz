@@ -105,6 +105,11 @@ namespace Nebula2
         return order;
     }
 
+    int gridPanelHeight()
+    {
+        return (int) gridDisplayOrder().size() * gridLaneHeight + gridNoticeHeight;
+    }
+
     float gridRowNeutral(GridRow r)
     {
         switch (r)

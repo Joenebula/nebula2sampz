@@ -46,13 +46,23 @@ bool GridView::rowIsStarved(int row) const
     return panelAmountFor(row) <= 0.0f;
 }
 
+int GridView::laneHeight() const
+{
+    // ONE definition, used by both paint() and rowAt(). They each had their own copy of
+    // this arithmetic; the moment the two disagree, cells light up under the cursor and
+    // the click edits a different lane.
+    const int n = (int) Nebula2::gridDisplayOrder().size();
+    if (n <= 0) return 0;
+    return juce::jmax(1, (getHeight() - Nebula2::gridNoticeHeight) / n);
+}
+
 int GridView::rowAt(juce::Point<int> pos) const
 {
     // The view lists only IMPLEMENTED lanes (gridDisplayOrder), so a click maps from the
     // visual index back to the lane's storage row.
     const auto& order = Nebula2::gridDisplayOrder();
     const int n = (int) order.size();
-    const int h = n > 0 ? getHeight() / n : 0;
+    const int h = laneHeight();
     if (h <= 0) return -1;
     const int i = pos.y / h;
     return (i >= 0 && i < n) ? (int) order[(size_t) i] : -1;
@@ -102,7 +112,7 @@ void GridView::paint(juce::Graphics& g)
     const auto& order = Nebula2::gridDisplayOrder();
     const int steps = grid.getNumSteps();
     const int rows  = (int) order.size();
-    const int rowH  = juce::jmax(1, getHeight() / juce::jmax(1, rows));
+    const int rowH  = laneHeight();
     const int gridW = getWidth() - labelW;
     if (steps <= 0 || gridW <= 0 || rows <= 0) return;
 

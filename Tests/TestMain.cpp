@@ -3892,6 +3892,21 @@ int main()
                 if (! found) allShown = false;
             }
             check(allShown, "grid: no storage row is missing from the display (no orphan lane)");
+
+        // The panel must be tall enough for the lanes it has. This shipped wrong: the
+        // height was a fixed 194px chosen when there were seven lanes, and at sixteen each
+        // lane got under 8px — the 10pt names overlapped into an unreadable smear. A
+        // hardcoded height silently degrades every time a lane is added, so it is now
+        // derived, and this is the check that it stays derived.
+        {
+            const int rows = (int) order.size();
+            const int lane = (gridPanelHeight() - gridNoticeHeight) / jmax(1, rows);
+            check(lane >= 16,
+                  "grid: each lane gets enough height for its 10pt label — " + String(lane) + "px");
+            check(gridPanelHeight() > 194,
+                  "grid: the panel grew past the old seven-lane height — "
+                  + String(gridPanelHeight()) + "px");
+        }
         }
 
         // ...and the ones that DO exist are shown.
