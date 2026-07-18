@@ -57,8 +57,36 @@ namespace Nebula2
     void Reverb::prepare(const juce::dsp::ProcessSpec& spec)
     {
         sampleRate = spec.sampleRate;
-        conv.prepare(spec);
         dryScratch.setSize((int) spec.numChannels, (int) spec.maximumBlockSize, false, false, true);
+
+        // THE CRASH FIX. Everything below is about not letting Convolution::prepare run
+        // while its background thread is draining the same single-consumer queue.
+        //
+        // Part 1: don't re-prepare unless the convolution genuinely needs it.
+        //
+        // Convolution::prepare cares about the sample rate and the maximum block size. A
+        // host walking block sizes at a fixed rate — which is what pluginval's automation
+        // tests do, and what a DAW does when you change buffer size — used to re-prepare
+        // every time. Preparing at a generous ceiling instead means a smaller block never
+        // re-prepares at all, so the overlap simply cannot arise for the common case.
+        const int wantBlock = juce::jmax((int) spec.maximumBlockSize, preparedBlockFloor);
+        const bool rateChanged  = ! juce::approximatelyEqual(sampleRate, preparedRate);
+        const bool needsBigger  = wantBlock > preparedBlock;
+
+        if (rateChanged || needsBigger || preparedBlock == 0)
+        {
+            // Part 2: for the rare case that DOES re-prepare, make sure no load is in
+            // flight first. A rate change is the realistic trigger, and two in quick
+            // succession is the only way to get here with the background thread busy.
+            waitForIrIdle();
+
+            auto s = spec;
+            s.maximumBlockSize = (juce::uint32) wantBlock;
+            conv.prepare(s);
+
+            preparedRate  = sampleRate;
+            preparedBlock = wantBlock;
+        }
 
         // The IR load is deliberately NOT done here — see reloadIrIfNeeded().
         //
@@ -87,6 +115,27 @@ namespace Nebula2
             irSampleRate = sampleRate;
             irDirty = true;
         }
+    }
+
+    void Reverb::waitForIrIdle() noexcept
+    {
+        // MESSAGE THREAD ONLY. Waits for a queued IR load to land before we touch
+        // Convolution::prepare.
+        //
+        // JUCE exposes no "is the loader idle" flag, so the observable signal is the IR
+        // size changing to the one we asked for. A load that happens to produce the SAME
+        // size is indistinguishable from one still pending — hence the hard timeout, which
+        // is the important part: worst case we wait 200 ms and proceed exactly as before,
+        // which is the current behaviour. Blocking the message thread forever would be far
+        // worse than the crash we are fixing.
+        if (expectedIrSize <= 0) return;
+
+        const auto deadline = juce::Time::getMillisecondCounter() + 200;
+        while ((int) conv.getCurrentIRSize() != expectedIrSize
+               && juce::Time::getMillisecondCounter() < deadline)
+            juce::Thread::sleep(1);
+
+        expectedIrSize = 0;
     }
 
     void Reverb::reloadIrIfNeeded()

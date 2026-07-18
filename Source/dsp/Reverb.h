@@ -46,12 +46,22 @@ namespace Nebula2
 
         int getCurrentIRSize() const noexcept { return (int) conv.getCurrentIRSize(); }
 
+        // Blocks (briefly, with a hard timeout) until a queued IR load has landed. Message
+        // thread only — see the note in the .cpp for why this exists.
+        void waitForIrIdle() noexcept;
+
     private:
         juce::dsp::Convolution conv;
         juce::AudioBuffer<float> dryScratch;
         double sampleRate = 44100.0;
         bool irDirty = true;      // prepare() sets this; reloadIrIfNeeded() clears it
         double irSampleRate = 0.0;   // the rate the current IR was generated at
+        // What Convolution::prepare was last given. Re-preparing is the ONLY thing that can
+        // race its loader thread, so we track this to avoid doing it needlessly.
+        double preparedRate = 0.0;
+        int preparedBlock = 0;
+        static constexpr int preparedBlockFloor = 2048;   // prepare generously, re-prepare rarely
+        int expectedIrSize = 0;      // size the pending load should produce, 0 = nothing pending
         ReverbChar currentChar = ReverbChar::Hall;
         double currentSize = 2.0;      // seconds; the prototype's default Size (~50%)
     };
