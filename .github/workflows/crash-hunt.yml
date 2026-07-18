@@ -22,11 +22,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # RelWithDebInfo, and no inlining or frame-pointer omission. The Release stack from
+      # the last catch was useless for the one thing that mattered: it read
+      #   #8 __clang_call_terminate
+      #   #9 juce::MessageQueue::runLoopCallback()
+      # with the frame that ACTUALLY invoked the empty std::function optimised away. The
+      # abort site tells you the message loop was draining a callback; it does not tell you
+      # whose callback, which is the entire question.
       - name: Configure
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+        run: >
+          cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_CXX_FLAGS="-g -fno-inline -fno-omit-frame-pointer"
 
       - name: Build
-        run: cmake --build build --config Release --parallel
+        run: cmake --build build --config RelWithDebInfo --parallel
 
       - name: Hunt
         run: |
@@ -40,7 +49,17 @@ jobs:
           for i in $(seq 1 "$N"); do
             echo "--- run $i of $N"
             set +e
-            lldb --batch -o run -k "thread backtrace all" -k "quit" \
+            # Break at the THROW, not the abort. By the time terminate() runs, the frame
+            # that invoked the empty std::function is gone — that's why the last stack
+            # named only the message loop. __cxa_throw fires while the throwing frame is
+            # still live, so its backtrace names the caller.
+            #
+            # It stops on every C++ exception, including ones JUCE throws and catches
+            # normally, so each one prints a short stack and continues. The interesting one
+            # is the LAST backtrace before the abort.
+            lldb --batch \
+                 -o "break set -n __cxa_throw -C 'bt 25' -C 'continue'" \
+                 -o run -k "thread backtrace all" -k "quit" \
                  -- "$PV" --strictness-level 10 --validate-in-process \
                           --timeout-ms 600000 --validate "$VST3" > hunt-$i.log 2>&1
             set -e
