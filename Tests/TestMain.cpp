@@ -3474,6 +3474,122 @@ int main()
         }
     }
 
+    // ---- Grid dice: three density levels ----
+    {
+        using namespace Nebula2;
+
+        // Every lane eligible, so the only thing varying is the dice itself.
+        const std::vector<GridRow> all = gridDisplayOrder();
+
+        auto rollStats = [&](RandomDensity d, int seed, int& lanesUsed, int& cellsPainted)
+        {
+            FxGrid g; g.setNumSteps(16);
+            juce::Random rng(seed);
+            randomiseGrid(g, all, d, rng);
+            lanesUsed = 0; cellsPainted = 0;
+            for (int r = 0; r < FxGrid::numRows; ++r)
+            {
+                bool used = false;
+                for (int s = 0; s < 16; ++s)
+                    if (g.getCell(r, s) > 0) { ++cellsPainted; used = true; }
+                if (used) ++lanesUsed;
+            }
+        };
+
+        // Averaged over many rolls, because ONE roll of a random process proves nothing —
+        // Low and High overlap on any single seed.
+        auto meanOver = [&](RandomDensity d, double& meanLanes, double& meanCells)
+        {
+            double l = 0.0, c = 0.0;
+            const int trials = 200;
+            for (int i = 0; i < trials; ++i)
+            {
+                int lanes = 0, cells = 0;
+                rollStats(d, 1000 + i, lanes, cells);
+                l += lanes; c += cells;
+            }
+            meanLanes = l / trials; meanCells = c / trials;
+        };
+
+        double loL = 0, loC = 0, miL = 0, miC = 0, hiL = 0, hiC = 0;
+        meanOver(RandomDensity::Low,  loL, loC);
+        meanOver(RandomDensity::Mid,  miL, miC);
+        meanOver(RandomDensity::High, hiL, hiC);
+
+        check(loL < miL && miL < hiL,
+              "grid dice: more lanes join in as density rises — " + String(loL, 1) + " / "
+              + String(miL, 1) + " / " + String(hiL, 1));
+        check(loC < miC && miC < hiC,
+              "grid dice: more cells painted as density rises — " + String(loC, 1) + " / "
+              + String(miC, 1) + " / " + String(hiC, 1));
+
+        // A dice that visibly does nothing reads as broken, so an empty result is a bug
+        // however unlucky the roll. Checked across many seeds AND at the sparsest setting.
+        {
+            bool everEmpty = false;
+            for (int i = 0; i < 400; ++i)
+            {
+                int lanes = 0, cells = 0;
+                rollStats(RandomDensity::Low, 7000 + i, lanes, cells);
+                if (cells == 0) everEmpty = true;
+            }
+            check(! everEmpty, "grid dice: never rolls an empty grid, even at Low");
+        }
+
+        // It must only touch lanes that can sound. Give it ONE eligible lane and check
+        // nothing else moved — this is what stops the dice wasting its cast on lanes that
+        // are sitting at their neutral and couldn't be heard.
+        {
+            FxGrid g; g.setNumSteps(16);
+            juce::Random rng(99);
+            randomiseGrid(g, { GridRow::Stutter }, RandomDensity::High, rng);
+            bool strayed = false, stutterPainted = false;
+            for (int r = 0; r < FxGrid::numRows; ++r)
+                for (int s = 0; s < 16; ++s)
+                    if (g.getCell(r, s) > 0)
+                    {
+                        if (r == (int) GridRow::Stutter) stutterPainted = true;
+                        else strayed = true;
+                    }
+            check(! strayed, "grid dice: never paints a lane that wasn't offered");
+            check(stutterPainted, "grid dice: does paint the one lane it was given");
+        }
+
+        // Nothing eligible (everything at its neutral) must be a clean no-op, not a crash
+        // and not a pattern nobody can hear.
+        {
+            FxGrid g; g.setNumSteps(16);
+            g.setCell(0, 0, 3);                 // pre-existing content
+            juce::Random rng(1);
+            randomiseGrid(g, {}, RandomDensity::High, rng);
+            bool any = false;
+            for (int r = 0; r < FxGrid::numRows; ++r)
+                for (int s = 0; s < 16; ++s) if (g.getCell(r, s) > 0) any = true;
+            check(! any, "grid dice: with no eligible lane it clears rather than inventing one");
+        }
+
+        // Same seed, same pattern — otherwise none of the above measures anything.
+        {
+            FxGrid a, b; a.setNumSteps(16); b.setNumSteps(16);
+            juce::Random r1(4242), r2(4242);
+            randomiseGrid(a, all, RandomDensity::Mid, r1);
+            randomiseGrid(b, all, RandomDensity::Mid, r2);
+            check(a.toString() == b.toString(), "grid dice: a seed reproduces its pattern");
+        }
+
+        // Cell levels stay in range — 0 clears, 1..3 paint.
+        {
+            FxGrid g; g.setNumSteps(32);
+            juce::Random rng(11);
+            randomiseGrid(g, all, RandomDensity::High, rng);
+            bool inRange = true;
+            for (int r = 0; r < FxGrid::numRows; ++r)
+                for (int s = 0; s < 32; ++s)
+                    if (g.getCell(r, s) < 0 || g.getCell(r, s) > 3) inRange = false;
+            check(inRange, "grid dice: every painted cell is a legal level");
+        }
+    }
+
     // ---- Resonate: the tuned bandpass bank ----
     {
         using namespace Nebula2;

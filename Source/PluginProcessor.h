@@ -95,6 +95,12 @@ public:
     // reopened, and travels in the session. NOT a parameter: it's a property of the screen
     // you're looking at, not of the song — automating it would be nonsense.
     float getUiScale() const noexcept { return uiScale; }
+
+    // Dice density for the grid randomiser. NOT a parameter: automating "how random" does
+    // nothing (the dice only fires on a click), so publishing it would be a knob the host
+    // can move that changes no sound. Persisted alongside uiScale instead.
+    int  getGridDiceDensity() const noexcept { return gridDiceDensity; }
+    void setGridDiceDensity(int d) noexcept { gridDiceDensity = juce::jlimit(0, 2, d); }
     void  setUiScale(float s) noexcept { uiScale = s; }
 
     // Which step is currently sounding (for the UI playhead). -1 if the grid is off.
@@ -195,6 +201,7 @@ private:
 
     int currentProgram = 0;
     float uiScale = 0.0f;      // 0 = never chosen; the editor then follows the screen
+    int gridDiceDensity = 1;   // 0 Low, 1 Mid, 2 High
 
     // In-app audition (see setAudition). auditionActive is set from the editor; the rest is
     // audio-thread only. B4 (83) is the whole-break note.

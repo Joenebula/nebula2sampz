@@ -110,6 +110,89 @@ namespace Nebula2
         return (int) gridDisplayOrder().size() * gridLaneHeight + gridNoticeHeight;
     }
 
+    const char* randomDensityName(RandomDensity d) noexcept
+    {
+        switch (d)
+        {
+            case RandomDensity::Low:  return "Low";
+            case RandomDensity::Mid:  return "Mid";
+            case RandomDensity::High: return "High";
+            default:                  return "?";
+        }
+    }
+
+    void randomiseGrid(FxGrid& grid, const std::vector<GridRow>& eligible,
+                       RandomDensity density, juce::Random& rng)
+    {
+        grid.clearAll();
+        if (eligible.empty()) return;      // nothing can sound; leave it clean
+
+        const int steps = grid.getNumSteps();
+        if (steps <= 0) return;
+        const int q = juce::jmax(1, steps / 4);      // steps per beat
+
+        // How many lanes join in, and how hard they play. Those two ARE what Low/Mid/High
+        // means — the prototype rolled the cast size at random (2..6), which is the same
+        // range with no way to ask for one end of it.
+        int castMin = 0, castMax = 0;
+        float densMin = 0.0f, densMax = 0.0f;
+        switch (density)
+        {
+            case RandomDensity::Low:  castMin = 1; castMax = 2; densMin = 0.08f; densMax = 0.18f; break;
+            case RandomDensity::High: castMin = 5; castMax = 7; densMin = 0.18f; densMax = 0.36f; break;
+            case RandomDensity::Mid:
+            default:                  castMin = 3; castMax = 4; densMin = 0.10f; densMax = 0.22f; break;
+        }
+
+        // Draw the cast WITHOUT replacement, or a lane can be picked twice and the pattern
+        // is quietly thinner than the density asked for.
+        std::vector<GridRow> bag = eligible;
+        const int want = juce::jmin((int) bag.size(),
+                                    castMin + rng.nextInt(juce::jmax(1, castMax - castMin + 1)));
+        std::vector<GridRow> cast;
+        for (int i = 0; i < want && ! bag.empty(); ++i)
+        {
+            const int pick = rng.nextInt((int) bag.size());
+            cast.push_back(bag[(size_t) pick]);
+            bag.erase(bag.begin() + pick);
+        }
+
+        int total = 0;
+        for (auto row : cast)
+        {
+            // Each lane picks a CHARACTER, so the result is rhythmic rather than a wash of
+            // unrelated hits. The prototype's four styles, kept.
+            const float style = rng.nextFloat();
+            const float dens  = densMin + rng.nextFloat() * (densMax - densMin);
+
+            for (int c = 0; c < steps; ++c)
+            {
+                const bool onBeat    = (c % q) == 0;
+                const bool offBeat   = (c % q) == q / 2;
+                const bool lastOfBar = (c % (q * 4)) == (q * 4 - 1);
+
+                bool hit = false;
+                if (style < 0.34f)      hit = onBeat  && rng.nextFloat() < dens * 3.0f;
+                else if (style < 0.62f) hit = offBeat && rng.nextFloat() < dens * 3.0f;
+                else if (style < 0.82f) hit = lastOfBar || rng.nextFloat() < dens * 0.8f;
+                else                    hit = rng.nextFloat() < dens;
+
+                if (hit)
+                {
+                    grid.setCell((int) row, c, 1 + rng.nextInt(3));
+                    ++total;
+                }
+            }
+        }
+
+        // Never hand back an empty grid — indistinguishable from a broken button.
+        if (total == 0 && ! cast.empty())
+        {
+            const auto row = cast[(size_t) rng.nextInt((int) cast.size())];
+            for (int c = 0; c < steps; c += q) grid.setCell((int) row, c, 3);
+        }
+    }
+
     float gridRowNeutral(GridRow r)
     {
         switch (r)

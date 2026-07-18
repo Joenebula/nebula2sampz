@@ -107,6 +107,7 @@ private:
     void showPage(Page);
     int contentHeightFor(Page) const;
     static int gridPageHeight();   // derived from the lane count, never hardcoded
+    void rollGrid();               // the dice: eligible lanes only, at the chosen density
 
     // In-app audition: play the loaded break without rolling the DAW. Reflects the
     // processor's state (which the host transport can clear), so the Timer keeps the
@@ -165,6 +166,9 @@ private:
     juce::Label gridStepsLabel;
     std::unique_ptr<APVTS::ComboBoxAttachment> gridStepsAttachment;
     juce::TextButton gridClearButton { "Clear" };
+    juce::TextButton gridDiceButton { "Randomise" };
+    juce::ComboBox gridDiceBox;          // Low / Mid / High — NOT a parameter (see processor)
+    juce::Label gridDiceLabel;
 
     // Morph pad
     MorphPadView morphPad { processorRef };

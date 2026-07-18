@@ -97,6 +97,27 @@ namespace Nebula2
         return std::abs(panelAmount - gridRowNeutral(r)) < 0.05f;
     }
 
+    // How busy the dice should be. Three settings, because "more random" is not a thing you
+    // can ask for — what actually varies is how many lanes join in and how often they fire.
+    enum class RandomDensity { Low = 0, Mid, High, Count };
+
+    const char* randomDensityName(RandomDensity d) noexcept;
+
+    class FxGrid;
+
+    // Roll a pattern.
+    //
+    // `eligible` is the lanes that can actually sound. The caller filters that (the panel
+    // amounts live in the APVTS, which this file knows nothing about) — and it matters:
+    // the prototype's dice used to fill EVERY lane, which is mush rather than a beat, and
+    // casting a lane sitting at its neutral wastes a slot on something inaudible.
+    //
+    // Takes the RNG by reference so a test can seed it and get the same pattern twice.
+    // Never returns an empty grid when anything is eligible: a dice that visibly does
+    // nothing reads as broken.
+    void randomiseGrid(FxGrid& grid, const std::vector<GridRow>& eligible,
+                       RandomDensity density, juce::Random& rng);
+
     class FxGrid
     {
     public:

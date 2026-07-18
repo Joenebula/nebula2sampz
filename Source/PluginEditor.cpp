@@ -115,6 +115,19 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     gridClearButton.onClick = [this] { processorRef.getGrid().clearAll(); gridView.repaint(); };
     content.addAndMakeVisible(gridClearButton);
 
+    // The dice. Density is a plain combo, not a parameter — automating "how random" would
+    // change nothing, since the roll only happens on a click.
+    gridDiceLabel.setText("Density", juce::dontSendNotification);
+    gridDiceLabel.setColour(juce::Label::textColourId, kSub);
+    content.addAndMakeVisible(gridDiceLabel);
+    gridDiceBox.addItemList({ "Low", "Mid", "High" }, 1);
+    gridDiceBox.setSelectedId(processorRef.getGridDiceDensity() + 1, juce::dontSendNotification);
+    gridDiceBox.onChange = [this] { processorRef.setGridDiceDensity(gridDiceBox.getSelectedId() - 1); };
+    content.addAndMakeVisible(gridDiceBox);
+
+    gridDiceButton.onClick = [this] { rollGrid(); };
+    content.addAndMakeVisible(gridDiceButton);
+
     // --- Morph pad ---
     content.addAndMakeVisible(morphPad);
     padOnButton.setColour(juce::ToggleButton::textColourId, kSub);
@@ -251,6 +264,56 @@ Nebula2AudioProcessorEditor::~Nebula2AudioProcessorEditor()
 // collided into a smear.
 //   panel = 14 title + 24 controls + 8 gap + lanes, plus 24 for the panel's own inset
 //   page  = panel + 16 for the body inset
+void Nebula2AudioProcessorEditor::rollGrid()
+{
+    // Only offer the dice lanes that can actually SOUND. A lane sitting on its neutral
+    // can't be heard however it's painted, so casting one wastes a slot and makes the roll
+    // quietly sparser than the density you asked for. This is the same at-rest rule the
+    // view greys lanes with — read from the live parameter values, which is why the filter
+    // happens here rather than inside randomiseGrid().
+    std::vector<Nebula2::GridRow> eligible;
+    auto& vts = processorRef.getValueTreeState();
+    for (auto r : Nebula2::gridDisplayOrder())
+    {
+        const char* id = Nebula2::gridRowPanelParamId(r);
+        if (id == nullptr) continue;
+        auto* raw = vts.getRawParameterValue(id);
+        if (raw == nullptr) continue;
+        if (! Nebula2::gridRowIsAtRest(r, raw->load())) eligible.push_back(r);
+    }
+
+    if (eligible.empty())
+    {
+        // Nothing could sound, so rolling would paint a grid you can't hear. Say why rather
+        // than appearing to work — the same law the greyed lanes follow.
+        juce::NativeMessageBox::showAsync(
+            juce::MessageBoxOptions()
+                .withIconType(juce::MessageBoxIconType::InfoIcon)
+                .withTitle("Nothing to randomise yet")
+                .withMessage("Every lane is sitting at its resting value, so a pattern "
+                             "wouldn't be audible.\n\nTurn up a lane's knob on the SAMPLE "
+                             "page first — Drive, Stutter, Reverb, whatever you want the "
+                             "dice to play with."),
+            nullptr);
+        return;
+    }
+
+    juce::Random rng;   // time-seeded: a fresh roll each click
+    Nebula2::randomiseGrid(processorRef.getGrid(), eligible,
+                           (Nebula2::RandomDensity) processorRef.getGridDiceDensity(), rng);
+
+    // A pattern you can't hear looks like a broken button, so the roll also switches the
+    // grid on (the prototype does the same).
+    if (auto* p = vts.getParameter(Nebula2::ParamID::gridOn))
+    {
+        p->beginChangeGesture();
+        p->setValueNotifyingHost(1.0f);
+        p->endChangeGesture();
+    }
+
+    gridView.repaint();
+}
+
 int Nebula2AudioProcessorEditor::gridPageHeight()
 {
     return GridView::preferredHeight() + 14 + 24 + 8 + 24 + 16;
@@ -323,6 +386,9 @@ void Nebula2AudioProcessorEditor::showPage(Page p)
     gridStepsBox.setVisible(grid);
     gridStepsLabel.setVisible(grid);
     gridClearButton.setVisible(grid);
+    gridDiceButton.setVisible(grid);
+    gridDiceBox.setVisible(grid);
+    gridDiceLabel.setVisible(grid);
 
     rackView.setVisible(rack);
     rackOnButton.setVisible(rack);
@@ -624,6 +690,11 @@ void Nebula2AudioProcessorEditor::layoutContent()
             gridStepsBox.setBounds(gRow.removeFromLeft(66));
             gRow.removeFromLeft(12);
             gridClearButton.setBounds(gRow.removeFromLeft(62));
+            gRow.removeFromLeft(14);
+            gridDiceButton.setBounds(gRow.removeFromLeft(84));
+            gRow.removeFromLeft(8);
+            gridDiceLabel.setBounds(gRow.removeFromLeft(52));
+            gridDiceBox.setBounds(gRow.removeFromLeft(70));
             gp.removeFromTop(8);
             gridView.setBounds(gp);
         }

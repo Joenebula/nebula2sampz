@@ -571,6 +571,7 @@ void Nebula2AudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 
     auto uiNode = state.getOrCreateChildWithName("UI", nullptr);
     uiNode.setProperty("scale", uiScale, nullptr);
+    uiNode.setProperty("gridDice", gridDiceDensity, nullptr);
 
     if (auto xml = state.createXml())
         copyXmlToBinary(*xml, destData);
@@ -610,7 +611,10 @@ void Nebula2AudioProcessor::setStateInformation(const void* data, int sizeInByte
     }
 
     if (auto uiNode = tree.getChildWithName("UI"); uiNode.isValid())
+    {
         uiScale = (float) uiNode.getProperty("scale", 0.0);
+        gridDiceDensity = juce::jlimit(0, 2, (int) uiNode.getProperty("gridDice", 1));
+    }
 
     apvts.replaceState(tree);
 }
