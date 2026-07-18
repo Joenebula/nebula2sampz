@@ -563,7 +563,7 @@ void Nebula2AudioProcessorEditor::saveGridPatternAs()
 {
     auto* aw = new juce::AlertWindow("Save grid pattern",
                                      "Saved to your Nebula2 folder, so it's there in every "
-                                     "project — not just this one.",
+                                     "project - not just this one.",
                                      juce::MessageBoxIconType::NoIcon);
     aw->addTextEditor("name", gridPatternBox.getText(), "Name");
     aw->addButton("Save",   1, juce::KeyPress(juce::KeyPress::returnKey));
@@ -673,7 +673,7 @@ void Nebula2AudioProcessorEditor::rollGrid()
                 .withTitle("Nothing to randomise yet")
                 .withMessage("Every lane is sitting at its resting value, so a pattern "
                              "wouldn't be audible.\n\nTurn up a lane's knob on the SAMPLE "
-                             "page first — Drive, Stutter, Reverb, whatever you want the "
+                             "page first - Drive, Stutter, Reverb, whatever you want the "
                              "dice to play with."),
             nullptr);
         return;

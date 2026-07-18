@@ -20,7 +20,7 @@ void GridView::timerCallback()
     const int s = processorRef.getCurrentGridStep();
 
     // Track the ON state so the "Grid is OFF" notice appears/vanishes the instant you tick
-    // the box — when the grid is off there's no playhead moving to trigger a repaint.
+    // the box - when the grid is off there's no playhead moving to trigger a repaint.
     auto* on = processorRef.getValueTreeState().getRawParameterValue(Nebula2::ParamID::gridOn);
     const bool nowOn = on != nullptr && on->load() > 0.5f;
 
@@ -30,7 +30,7 @@ void GridView::timerCallback()
 float GridView::panelAmountFor(int row) const
 {
     auto& v = processorRef.getValueTreeState();
-    // The mapping lives in FxGrid, not here — see gridRowPanelParamId(). This was a second
+    // The mapping lives in FxGrid, not here - see gridRowPanelParamId(). This was a second
     // copy of that switch, and a lane can only be proved reachable against one list.
     const char* id = Nebula2::gridRowPanelParamId((Nebula2::GridRow) row);
     if (id == nullptr) return 0.0f;
@@ -40,7 +40,7 @@ float GridView::panelAmountFor(int row) const
 
 bool GridView::rowIsStarved(int row) const
 {
-    // The rule lives in FxGrid so it can be tested — see gridRowIsAtRest(). A lane is
+    // The rule lives in FxGrid so it can be tested - see gridRowIsAtRest(). A lane is
     // starved when its knob sits ON its neutral, whatever that neutral happens to be.
     return Nebula2::gridRowIsAtRest((Nebula2::GridRow) row, panelAmountFor(row));
 }
@@ -53,7 +53,7 @@ int GridView::laneHeight() const
     const int n = (int) Nebula2::gridDisplayOrder().size();
     if (n <= 0) return 0;
     // The note strip and the notice strip both come off the top/bottom before the lanes
-    // get their share — miss either and the lanes drift out of step with the hit test.
+    // get their share - miss either and the lanes drift out of step with the hit test.
     return juce::jmax(1, (getHeight() - noteRowHeight - Nebula2::gridNoticeHeight) / n);
 }
 
@@ -145,7 +145,7 @@ void GridView::paint(juce::Graphics& g)
         const int y = noteRowHeight + i * rowH;
         const bool starved = rowIsStarved(r);
 
-        // Row label. A starved row says so — it cannot sound, so don't pretend.
+        // Row label. A starved row says so - it cannot sound, so don't pretend.
         g.setColour(starved ? kSub.withAlpha(0.4f) : kSub);
         g.setFont(juce::FontOptions(10.0f));
         g.drawText(Nebula2::gridRowName((Nebula2::GridRow) r), 4, y, labelW - 28, rowH,
@@ -175,7 +175,7 @@ void GridView::paint(juce::Graphics& g)
 
             if (level > 0)
             {
-                // Painted cells on a starved row render dim — visible, but visibly unable
+                // Painted cells on a starved row render dim - visible, but visibly unable
                 // to sound. You can still paint; it just tells you the truth.
                 const float a = (float) level / 3.0f;
                 g.setColour(starved ? kAccent.withAlpha(0.18f * a) : kAccent.withAlpha(0.30f + 0.7f * a));
@@ -191,8 +191,8 @@ void GridView::paint(juce::Graphics& g)
     }
 
     // SAY WHY NOTHING IS HAPPENING. A painted grid with "Grid On" unchecked looks exactly
-    // like a working one — the user hit this repeatedly. The prototype is blunt about it
-    // ("pad is off — the sliders own the sound") and so is this now.
+    // like a working one - the user hit this repeatedly. The prototype is blunt about it
+    // ("pad is off - the sliders own the sound") and so is this now.
     auto* on = processorRef.getValueTreeState().getRawParameterValue(Nebula2::ParamID::gridOn);
     const bool gridOn = on != nullptr && on->load() > 0.5f;
     if (! gridOn)
@@ -237,7 +237,7 @@ void GridView::drawNoteRow(juce::Graphics& g, Nebula2::FxGrid& grid,
     g.setFont(juce::FontOptions(10.0f));
     g.drawText("Note", 4, 0, labelW - 6, h, juce::Justification::centredLeft);
 
-    // The key/scale this lane is quantised to — the Resonate controls, which the instrument
+    // The key/scale this lane is quantised to - the Resonate controls, which the instrument
     // already owns. Showing it here is the difference between "why did my note move?" and
     // "of course, we're in C minor".
     auto& vts = processorRef.getValueTreeState();
@@ -260,7 +260,7 @@ void GridView::drawNoteRow(juce::Graphics& g, Nebula2::FxGrid& grid,
         if (semis != 0)
         {
             // A bar whose height reads the pitch, drawn from the middle so up is up and
-            // down is down — a number alone makes a melody impossible to read at a glance.
+            // down is down - a number alone makes a melody impossible to read at a glance.
             const float mid = (float) h * 0.5f;
             const float frac = (float) semis / (float) Nebula2::noteLaneRange;
             const float top = semis > 0 ? mid - frac * mid * 0.8f : mid;

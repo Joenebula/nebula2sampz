@@ -15,6 +15,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # A user-visible string with raw non-ASCII bytes rendered as mojibake in Cubase
+      # ("Main Out a??" instead of an em dash). The task "fix mojibake" was marked done once
+      # and three instances survived it, so the fix here is a CHECK rather than another
+      # sweep: non-ASCII in a string literal must go through juce::String::fromUTF8 with hex
+      # escapes, which no toolchain can misread. Comments are exempt - they are never drawn.
+      - name: No raw non-ASCII in string literals
+        shell: bash
+        run: |
+          if grep -rnP '"[^"]*[^\x00-\x7F][^"]*"' Source/ --include=*.cpp --include=*.h; then
+            echo "::error::Raw non-ASCII in a string literal (lines above)."
+            echo 'Use juce::String::fromUTF8("\xe2\x96\xb6 ...") instead.'
+            exit 1
+          fi
+          echo "OK - no raw non-ASCII in string literals."
+
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 

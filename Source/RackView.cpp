@@ -391,6 +391,6 @@ void RackView::paint(juce::Graphics& g)
     g.setFont (juce::FontOptions (9.0f));
     g.drawText (message.isNotEmpty() ? message
                                      : (live ? "Rack in circuit"
-                                             : "Nothing patched to Main Out — the dry beat is playing"),
+                                             : "Nothing patched to Main Out - the dry beat is playing"),
                 strip, juce::Justification::centredLeft);
 }

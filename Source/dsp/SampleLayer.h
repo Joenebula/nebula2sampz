@@ -21,11 +21,11 @@ namespace Nebula2
     // 3... C3 is the root because the loop is what you reach for first.
     //
     // 60 is C3 in Cubase, Ableton and Logic. Note NAMES are a naming convention, not part of
-    // MIDI, and the other one calls 60 "C4" — so "C3" alone doesn't specify a note. Getting
+    // MIDI, and the other one calls 60 "C4" - so "C3" alone doesn't specify a note. Getting
     // that backwards is what put the loop an octave below the key the user pressed.
     //
     // EVERY OTHER KEY PLAYS SOMETHING. Notes outside the slice range wrap, so there are no
-    // dead keys — you can draw a note anywhere on the piano roll and hear a chop.
+    // dead keys - you can draw a note anywhere on the piano roll and hear a chop.
     //
     // It used to start at C5, and only because notes 36-46 were reserved for a synth-drum
     // layer. That layer was deleted; the reservation outlived it, so a note drawn where any
@@ -41,7 +41,7 @@ namespace Nebula2
     class SampleLayer
     {
     public:
-        // C3 is the LOOP — the whole break — because that is the thing you reach for first.
+        // C3 is the LOOP - the whole break - because that is the thing you reach for first.
         // The slices climb from just above it, so the root and its chops sit together
         // rather than the loop hiding a semitone below where you would look for it.
         //
@@ -73,13 +73,13 @@ namespace Nebula2
         // Message thread. Decodes, slices and tempo-detects, then publishes.
         bool loadFile(const juce::File& file);
 
-        // Message thread. Same, from an in-memory buffer — no file I/O, so the slicing and
+        // Message thread. Same, from an in-memory buffer - no file I/O, so the slicing and
         // playback path is unit-testable.
         void loadBuffer(juce::AudioBuffer<float>&& audio, double sourceSampleRate,
                         const juce::String& name);
 
         // Message thread: re-slices the SAME audio (no re-decode) and republishes.
-        // Allocates — never call from the audio thread.
+        // Allocates - never call from the audio thread.
         void setSliceSettings(const SliceSettings& s);
         SliceSettings getSliceSettings() const noexcept { return slicing; }
 
@@ -91,13 +91,13 @@ namespace Nebula2
         // --- slice ORDER ---
         //
         // A pad plays order[pad], not slice `pad`. Without this indirection the note map is
-        // the arrangement, so there is no way to rearrange a break at all — every beat
+        // the arrangement, so there is no way to rearrange a break at all - every beat
         // randomiser needs it first.
         //
         // Identity by default, so an untouched instrument behaves exactly as before.
         // Written on the message thread, read on the audio thread: entries are atomic ints,
         // and a read racing a write yields the old or the new slice for one note. That's a
-        // different chop, once — not a crash, and far cheaper than locking the audio thread.
+        // different chop, once - not a crash, and far cheaper than locking the audio thread.
         void resetSliceOrder() noexcept;
         void setSliceOrder(const std::vector<int>& order) noexcept;
         std::vector<int> getSliceOrder() const;
@@ -114,7 +114,7 @@ namespace Nebula2
         // these a break can be rearranged but not shaped, so a too-loud snare or a hat that
         // wants pushing left has no answer short of editing the file.
         //
-        // Indexed by SLICE, not by pad — so a setting stays with the sound it was dialled
+        // Indexed by SLICE, not by pad - so a setting stays with the sound it was dialled
         // in for when the break is shuffled, rather than staying with the position.
         //
         // Same threading as the order map: written on the message thread, read on the audio
@@ -156,7 +156,7 @@ namespace Nebula2
 
         void render(juce::AudioBuffer<float>& bus, int startSample, int numSamples) noexcept;
 
-        // HAUNT — the prototype's drone "conjured from your own slices". Picks the longest
+        // HAUNT - the prototype's drone "conjured from your own slices". Picks the longest
         // slice (proxy for the most sustained/tonal material), loops it two octaves down
         // through a soft lowpass, swells the level in slowly, and ADDS it to the bus. The
         // caller routes this into the Space block so the drone gets the reverb/delay.
@@ -170,7 +170,7 @@ namespace Nebula2
         //
         // DIVERGENCE from the prototype, deliberate: the prototype changes playbackRate,
         // so a slice dropped an octave also takes twice as long and smears over the next
-        // step. Here only the grain READ speed is transposed — the grain SPACING stays
+        // step. Here only the grain READ speed is transposed - the grain SPACING stays
         // native, so the chop keeps its length and still lands on the beat. On a grid lane
         // that is the point: a step effect that knocks the pattern out of time is a bug
         // wearing a feature's coat.
@@ -213,14 +213,14 @@ namespace Nebula2
         // --- UI queries (message thread) ---
 
         // Min/max peaks per horizontal bucket, for drawing the waveform. Returns false if
-        // nothing is loaded. Cheap enough to call once per sample change — NOT per frame.
+        // nothing is loaded. Cheap enough to call once per sample change - NOT per frame.
         bool getWaveformPeaks(std::vector<float>& mins, std::vector<float>& maxs, int numBuckets) const;
 
         // Slice boundaries as 0..1 positions across the sample (numSlices + 1 of them).
         std::vector<float> getSliceBoundariesNormalised() const;
 
         // Which slices are sounding right now, as a bitmask over slice index (for lighting
-        // the playing chop). Read per frame — deliberately cheap.
+        // the playing chop). Read per frame - deliberately cheap.
         uint32_t getPlayingSliceMask() const noexcept;
 
         // 0..1 progress through the currently-playing slice, or -1 if nothing is playing.
@@ -284,13 +284,13 @@ namespace Nebula2
         // Superseded SampleData, kept alive until we can PROVE the audio thread has moved
         // on. It used to be a plain vector that only ever grew: since each SampleData holds
         // a shared_ptr to its audio, every break you loaded stayed in memory for the whole
-        // session (~3.5MB per 10-second stereo break — 20 of them is 70MB).
+        // session (~3.5MB per 10-second stereo break - 20 of them is 70MB).
         //
         // Reclaiming safely is the whole difficulty: the audio thread reads `current` as a
         // RAW pointer, so a refcount can't tell us whether a render is mid-flight on one.
         // Hence renderCount, which the audio thread bumps once per render. A retired entry
         // is freed only once the count has advanced past the value it had when it was
-        // retired — i.e. the audio thread has completed a render that started after the
+        // retired - i.e. the audio thread has completed a render that started after the
         // swap, so it cannot still be holding the old pointer. If audio is stopped the
         // count doesn't move and nothing is freed, which is the conservative direction.
         struct Retired
@@ -317,7 +317,7 @@ namespace Nebula2
         // Whole-break playback SEQUENCES the slices when the break has been rearranged.
         //
         // Without this the whole-break note plays the raw file end to end, so the in-app
-        // Play button ignored a shuffle completely — the numbers moved and the sound didn't.
+        // Play button ignored a shuffle completely - the numbers moved and the sound didn't.
         // Individual slice pads always honoured the order; it was only this path that
         // didn't, which is exactly the path the Play button uses.
         //
