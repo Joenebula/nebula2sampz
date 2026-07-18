@@ -74,7 +74,19 @@ namespace Nebula2
         // pluginval's Automation test calls prepareToPlay repeatedly with changing block
         // sizes, which is why it surfaced there and at roughly 1 run in 18 — it needs the
         // background thread to still be busy when the next prepare lands.
-        irDirty = true;
+        // ...and only mark it stale when the IR could ACTUALLY be different.
+        //
+        // The impulse response is generated at the sample rate; the block size has nothing
+        // to do with it. Marking dirty on every prepare meant every prepare queued a load,
+        // so a host walking block sizes at a fixed rate (which is exactly what pluginval's
+        // Automation tests do) kept the background thread permanently busy and left the
+        // race wide open. Deferring the load out of prepare's call stack narrowed the
+        // window; not queueing a pointless load closes most of what was left.
+        if (! juce::approximatelyEqual(sampleRate, irSampleRate) || conv.getCurrentIRSize() <= 1)
+        {
+            irSampleRate = sampleRate;
+            irDirty = true;
+        }
     }
 
     void Reverb::reloadIrIfNeeded()

@@ -50,7 +50,8 @@ namespace Nebula2
         juce::dsp::Convolution conv;
         juce::AudioBuffer<float> dryScratch;
         double sampleRate = 44100.0;
-        bool irDirty = true;   // prepare() sets this; reloadIrIfNeeded() clears it
+        bool irDirty = true;      // prepare() sets this; reloadIrIfNeeded() clears it
+        double irSampleRate = 0.0;   // the rate the current IR was generated at
         ReverbChar currentChar = ReverbChar::Hall;
         double currentSize = 2.0;      // seconds; the prototype's default Size (~50%)
     };
