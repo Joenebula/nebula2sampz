@@ -34,6 +34,9 @@ float GridView::panelAmountFor(int row) const
         case Nebula2::GridRow::Width:   id = Nebula2::ParamID::width;   break;
         case Nebula2::GridRow::Reverb:  id = Nebula2::ParamID::revMix;  break;
         case Nebula2::GridRow::Delay:   id = Nebula2::ParamID::dlyMix;  break;
+        case Nebula2::GridRow::Pump:    id = Nebula2::ParamID::pump;    break;
+        case Nebula2::GridRow::Gate:    id = Nebula2::ParamID::gate;    break;
+        case Nebula2::GridRow::Haunt:   id = Nebula2::ParamID::haunt;   break;
         default: return 0.0f;
     }
     auto* raw = v.getRawParameterValue(id);
@@ -50,10 +53,14 @@ bool GridView::rowIsStarved(int row) const
 
 int GridView::rowAt(juce::Point<int> pos) const
 {
-    const int h = getHeight() / Nebula2::FxGrid::numRows;
+    // The view lists only IMPLEMENTED lanes (gridDisplayOrder), so a click maps from the
+    // visual index back to the lane's storage row.
+    const auto& order = Nebula2::gridDisplayOrder();
+    const int n = (int) order.size();
+    const int h = n > 0 ? getHeight() / n : 0;
     if (h <= 0) return -1;
-    const int r = pos.y / h;
-    return (r >= 0 && r < Nebula2::FxGrid::numRows) ? r : -1;
+    const int i = pos.y / h;
+    return (i >= 0 && i < n) ? (int) order[(size_t) i] : -1;
 }
 
 int GridView::stepAt(juce::Point<int> pos) const
@@ -97,17 +104,19 @@ void GridView::paint(juce::Graphics& g)
     g.fillAll(kWell);
 
     auto& grid = processorRef.getGrid();
+    const auto& order = Nebula2::gridDisplayOrder();
     const int steps = grid.getNumSteps();
-    const int rows  = Nebula2::FxGrid::numRows;
-    const int rowH  = juce::jmax(1, getHeight() / rows);
+    const int rows  = (int) order.size();
+    const int rowH  = juce::jmax(1, getHeight() / juce::jmax(1, rows));
     const int gridW = getWidth() - labelW;
-    if (steps <= 0 || gridW <= 0) return;
+    if (steps <= 0 || gridW <= 0 || rows <= 0) return;
 
     const int playing = processorRef.getCurrentGridStep();
 
-    for (int r = 0; r < rows; ++r)
+    for (int i = 0; i < rows; ++i)
     {
-        const int y = r * rowH;
+        const int r = (int) order[(size_t) i];    // storage row for this visual lane
+        const int y = i * rowH;
         const bool starved = rowIsStarved(r);
 
         // Row label. A starved row says so — it cannot sound, so don't pretend.

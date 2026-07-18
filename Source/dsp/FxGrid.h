@@ -2,6 +2,7 @@
 
 #include <juce_core/juce_core.h>
 #include <array>
+#include <vector>
 
 namespace Nebula2
 {
@@ -20,9 +21,26 @@ namespace Nebula2
     //    from the cell alone, so Shatter at 0% still shattered. Here a cell interpolates
     //    from the effect's NEUTRAL toward YOUR panel amount: drive at 0% stays silent no
     //    matter how many cells you paint. The panel sets the ceiling; the cell scales it.
-    enum class GridRow { Drive = 0, Crush, Squeeze, Tone, Width, Reverb, Delay, Count };
+    // The prototype sequences SIXTEEN lanes. New rows are APPENDED, never reordered — the
+    // serialised pattern is row-indexed, so inserting in the middle would silently reshuffle
+    // every saved grid and every factory preset. Display order is a separate concern
+    // (gridDisplayOrder), so the UI can group them the prototype's way regardless.
+    enum class GridRow
+    {
+        Drive = 0, Crush, Squeeze, Tone, Width, Reverb, Delay,   // the original seven
+        Pump, Resonate, PitchUp, PitchDown, Reverse, Stutter, Shatter, Gate, Haunt,
+        Count
+    };
 
     const char* gridRowName(GridRow r);
+
+    // The lanes the UI actually SHOWS, in the prototype's grouping (Colour, then Space).
+    //
+    // This lists only lanes whose effect exists. A lane you can paint that drives nothing
+    // is a dead control — the exact failure this project keeps hunting — so a row joins
+    // this list the moment its DSP lands, and not before. The enum above is storage and is
+    // append-only; this is presentation.
+    const std::vector<GridRow>& gridDisplayOrder();
 
     // The value each effect sits at when a step is UNpainted (its "off" value). Tone and
     // Width are 100 (open/unchanged); everything else rests at 0.

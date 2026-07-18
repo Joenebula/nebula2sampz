@@ -132,6 +132,7 @@ namespace Nebula2
             PID{ ParamID::driveChar, version }, "Drive Character",
             juce::StringArray{ "Tube", "Fuzz", "Fold" }, 0));
         layout.add(std::make_unique<APF>(PID{ ParamID::pump, version }, "Pump", pct(), 0.0f));
+        layout.add(std::make_unique<APF>(PID{ ParamID::gate, version }, "Gate", pct(), 0.0f));
         layout.add(std::make_unique<APB>(PID{ ParamID::fxOn, version }, "FX On", true));
 
         // --- Space (live) ---

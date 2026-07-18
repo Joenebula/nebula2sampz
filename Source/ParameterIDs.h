@@ -46,6 +46,7 @@ namespace Nebula2::ParamID
     inline constexpr auto tone      = "tone";      // float 0..100  % (100 = open)
     inline constexpr auto width     = "width";     // float 0..200  % (100 = unchanged)
     inline constexpr auto pump      = "pump";      // float 0..100  % (per-beat tempo-synced duck)
+    inline constexpr auto gate      = "gate";      // float 0..100  % (grid-sequenced hard gate)
     inline constexpr auto fxOn      = "fxOn";      // bool
 
     // --- Space (live: parallel reverb + tempo-synced delay send) ---

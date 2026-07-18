@@ -116,6 +116,8 @@ private:
     std::atomic<float>* toneParam { nullptr };
     std::atomic<float>* widthParam { nullptr };
     std::atomic<float>* pumpParam { nullptr };
+    std::atomic<float>* gateParam { nullptr };
+    float gateGain = 1.0f;      // audio thread: smoothed gate level
     std::atomic<float>* fxOnParam { nullptr };
     std::atomic<float>* revMixParam { nullptr };
     std::atomic<float>* revCharParam { nullptr };

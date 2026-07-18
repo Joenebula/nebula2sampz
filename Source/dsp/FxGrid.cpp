@@ -15,8 +15,32 @@ namespace Nebula2
             case GridRow::Width:   return "Width";
             case GridRow::Reverb:  return "Reverb";
             case GridRow::Delay:   return "Delay";
+            case GridRow::Pump:      return "Pump";
+            case GridRow::Resonate:  return "Resonate";
+            case GridRow::PitchUp:   return "Pitch +";
+            case GridRow::PitchDown: return "Pitch -";
+            case GridRow::Reverse:   return "Reverse";
+            case GridRow::Stutter:   return "Stutter";
+            case GridRow::Shatter:   return "Shatter";
+            case GridRow::Gate:      return "Gate";
+            case GridRow::Haunt:     return "Haunt";
             default:               return "?";
         }
+    }
+
+    const std::vector<GridRow>& gridDisplayOrder()
+    {
+        // ONLY lanes whose effect exists — see the header. Add a row here when its DSP
+        // lands, never before, or you ship a lane that paints and does nothing.
+        static const std::vector<GridRow> order = {
+            GridRow::Tone,      // the prototype labels this lane "Filter"
+            GridRow::Drive, GridRow::Crush, GridRow::Squeeze, GridRow::Pump, GridRow::Width,
+            GridRow::Gate,
+            GridRow::Reverb, GridRow::Delay, GridRow::Haunt
+            // Still to come (effects not built yet): Resonate, PitchUp, PitchDown,
+            // Reverse, Stutter, Shatter.
+        };
+        return order;
     }
 
     float gridRowNeutral(GridRow r)

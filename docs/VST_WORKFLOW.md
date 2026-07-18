@@ -229,6 +229,13 @@ feedback path only. Ping-Pong therefore sounds different (wider) than the old sy
 version — that's D7, approved. `dlyMode` param + DELAY-section dropdown. RT-safe across mode
 changes. So D6 and D7 are now both resolved.
 
+**2026-07-18 — CORRECTION: the intermittent failure is probably NOT macOS-only.** A local
+pluginval batch went 2/3, then 14/14 clean on re-runs. I had been reporting the crash as
+"never reproduced on Windows"; that claim was too strong — it's rare enough (~1 in 40) that
+a dozen clean Windows runs proved little. **And I lost the evidence**: that batch piped
+output to /dev/null, so the one failure left no log. Never discard pluginval output again —
+always write it to a file, or an intermittent failure costs a whole reproduction cycle.
+
 **2026-07-18 — Haunt drone done.** Picks the longest slice, loops it two octaves down
 through a 1400 Hz lowpass, swells in, routed into Space so the reverb/delay make a pad. In
 SampleLayer, RT-safe, `haunt` param + DELAY-section knob. This clears the last DSP-only

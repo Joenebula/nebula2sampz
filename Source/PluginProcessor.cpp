@@ -17,6 +17,7 @@ Nebula2AudioProcessor::Nebula2AudioProcessor()
     toneParam      = apvts.getRawParameterValue(Nebula2::ParamID::tone);
     widthParam     = apvts.getRawParameterValue(Nebula2::ParamID::width);
     pumpParam      = apvts.getRawParameterValue(Nebula2::ParamID::pump);
+    gateParam      = apvts.getRawParameterValue(Nebula2::ParamID::gate);
     fxOnParam      = apvts.getRawParameterValue(Nebula2::ParamID::fxOn);
     revMixParam    = apvts.getRawParameterValue(Nebula2::ParamID::revMix);
     revCharParam   = apvts.getRawParameterValue(Nebula2::ParamID::revChar);
@@ -347,7 +348,8 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
         cp.width     = amt(widthParam,   Nebula2::GridRow::Width,   100.0f);
         cp.driveChar = driveCharParam != nullptr ? (int) driveCharParam->load() : 0;
         cp.on        = fxOnParam      != nullptr ? fxOnParam->load() > 0.5f : true;
-        cp.pump      = pumpParam      != nullptr ? pumpParam->load() : 0.0f;
+        // Pump is grid-sequenceable now, like the other Colour lanes.
+        cp.pump      = amt(pumpParam, Nebula2::GridRow::Pump, 0.0f);
         cp.ppq       = transport.ppq;   // so the duck lands on the beat
         cp.bpm       = transport.bpm;
         colourChain.process(buffer, cp);
@@ -419,8 +421,25 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
     // Haunt: a drone conjured from the loaded slices, ADDED before Space so the reverb and
     // delay swallow it (the prototype routes it into spaceIn). Off at 0.
     {
-        const float hauntAmt = hauntParam != nullptr ? hauntParam->load() : 0.0f;
+        // Haunt is grid-sequenceable: paint the lane to swell the drone in and out.
+        const float hauntAmt = amt(hauntParam, Nebula2::GridRow::Haunt, 0.0f);
         sampleLayer.renderHaunt(buffer, 0, numSamples, hauntAmt);
+    }
+
+    // GATE: a hard per-step gate, driven by its grid lane. This is the lane you paint to
+    // chop the beat into rhythmic holes. Neutral (unpainted) = 0 = no gating, so it costs
+    // nothing until you use it. Smoothed so a gate edge doesn't click.
+    {
+        const float gateAmt = juce::jlimit(0.0f, 1.0f,
+                                           amt(gateParam, Nebula2::GridRow::Gate, 0.0f) / 100.0f);
+        const float target = 1.0f - gateAmt;          // 100% = fully closed
+        const float coeff  = 1.0f - std::exp(-1.0f / (0.002f * (float) getSampleRate()));  // ~2ms
+        for (int i = 0; i < numSamples; ++i)
+        {
+            gateGain += (target - gateGain) * coeff;
+            for (int c = 0; c < numChannels; ++c)
+                buffer.setSample(c, i, buffer.getSample(c, i) * gateGain);
+        }
     }
 
     // Space: parallel reverb + tempo-synced delay send (dry is preserved).

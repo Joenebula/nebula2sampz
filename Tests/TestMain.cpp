@@ -3334,6 +3334,59 @@ int main()
         }
     }
 
+    // ---- Grid lanes: 16 storage rows, only the implemented ones shown ----
+    {
+        using namespace Nebula2;
+
+        // Storage order is APPEND-ONLY: the original seven must keep their indices, or every
+        // saved pattern and factory preset silently reshuffles to different effects.
+        check((int) GridRow::Drive == 0 && (int) GridRow::Crush == 1 && (int) GridRow::Squeeze == 2
+              && (int) GridRow::Tone == 3 && (int) GridRow::Width == 4
+              && (int) GridRow::Reverb == 5 && (int) GridRow::Delay == 6,
+              "grid: the original seven rows keep their indices (saved patterns still mean the same effects)");
+        check(FxGrid::numRows == 16, "grid: sixteen lanes of storage, like the prototype");
+
+        // Every DISPLAYED lane must have a real effect behind it. A paintable lane that
+        // drives nothing is the dead-control bug in its purest form, so the display list is
+        // deliberately shorter than the enum until the rest of the DSP lands.
+        const auto& order = gridDisplayOrder();
+        check(! order.empty(), "grid: there are displayed lanes");
+        bool allNamed = true, noDupes = true;
+        std::vector<int> seen;
+        for (auto r : order)
+        {
+            if (juce::String(gridRowName(r)) == "?") allNamed = false;
+            const int idx = (int) r;
+            for (int s : seen) if (s == idx) noDupes = false;
+            seen.push_back(idx);
+        }
+        check(allNamed, "grid: every displayed lane has a name");
+        check(noDupes,  "grid: no lane is listed twice");
+
+        // The lanes whose effects DON'T exist yet must NOT be shown.
+        bool hidesUnbuilt = true;
+        for (auto r : { GridRow::Resonate, GridRow::PitchUp, GridRow::PitchDown,
+                        GridRow::Reverse, GridRow::Stutter, GridRow::Shatter })
+            for (auto shown : order)
+                if (shown == r) hidesUnbuilt = false;
+        check(hidesUnbuilt,
+              "grid: lanes with no effect behind them are NOT displayed (no dead lanes)");
+
+        // The newly-wired lanes ARE shown.
+        auto shows = [&order](GridRow r)
+        {
+            for (auto s : order) if (s == r) return true;
+            return false;
+        };
+        check(shows(GridRow::Pump) && shows(GridRow::Haunt) && shows(GridRow::Gate),
+              "grid: Pump, Haunt and Gate lanes are live");
+
+        // Gate's neutral is 0 (no gating) so an unpainted lane costs nothing.
+        check(gridRowNeutral(GridRow::Gate) == 0.0f, "grid: an unpainted Gate step doesn't gate");
+        check(gridRowNeutral(GridRow::Pump) == 0.0f && gridRowNeutral(GridRow::Haunt) == 0.0f,
+              "grid: Pump/Haunt rest at 0 too");
+    }
+
     // ---- The dead-control gate ----
     // Every parameter the plugin publishes is listed here. Adding a parameter without
     // adding it here FAILS — which forces the question "what actually reads this?".
@@ -3354,7 +3407,7 @@ int main()
             "sliceMode", "sliceCount", "sens",
             "padOn", "padX", "padY", "morphMotion", "morphRate", "morphSize", "morphGlide",
             "gridOn", "gridSteps",
-            "drive", "char", "crush", "squeeze", "tone", "width", "pump", "fxOn",
+            "drive", "char", "crush", "squeeze", "tone", "width", "pump", "gate", "fxOn",
             "revMix", "revSize", "dlyMix", "dlyFb", "dlySync", "dlyMode", "haunt", "spaceOn", "revChar",
             "rackOn",
             "flt.cut", "flt.res", "flt.type",
