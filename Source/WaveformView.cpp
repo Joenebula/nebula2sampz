@@ -77,27 +77,69 @@ void WaveformView::rebuildCache()
     for (size_t i = 1; i + 1 < bounds.size(); ++i)
         g.drawVerticalLine((int) (bounds[i] * (float) w), 0.0f, (float) h);
 
-    // Slice numbers, if there's room
-    if (bounds.size() > 1 && w / (int) (bounds.size() - 1) >= 22)
+    // Slice numbers, if there's room.
+    //
+    // These are the PAD that plays each slice, not the slice's own position. Labelling a
+    // slice with its own index made Shuffle and Suggest look like buttons that did nothing:
+    // the rearrangement was real and audible, but the picture was identical before and
+    // after, so the only way to know was to play the thing. A number that changes when you
+    // press the button is the difference between "it works" and "it looks broken".
+    const int numSlices = (int) bounds.size() - 1;
+    if (numSlices > 0 && w / numSlices >= 22)
     {
-        g.setColour(kSub.withAlpha(0.7f));
-        g.setFont(juce::FontOptions(9.0f));
-        for (size_t i = 0; i + 1 < bounds.size(); ++i)
+        // Invert the order: for slice s, which pad triggers it?
+        std::vector<int> padForSlice((size_t) numSlices, -1);
+        for (int pad = 0; pad < numSlices; ++pad)
         {
-            const int x0 = (int) (bounds[i] * (float) w);
-            g.drawText(juce::String((int) i + 1), x0 + 3, 2, 18, 10, juce::Justification::topLeft);
+            const int s = layer.sliceForPad(pad);
+            if (s >= 0 && s < numSlices && padForSlice[(size_t) s] < 0)
+                padForSlice[(size_t) s] = pad;
+        }
+
+        g.setFont(juce::FontOptions(9.0f));
+        for (int s = 0; s < numSlices; ++s)
+        {
+            const int x0 = (int) (bounds[(size_t) s] * (float) w);
+            const int pad = padForSlice[(size_t) s];
+
+            // A slice no pad reaches (possible after a re-slice to fewer slices) gets a
+            // dash rather than a misleading number.
+            if (pad < 0)
+            {
+                g.setColour(kSub.withAlpha(0.35f));
+                g.drawText("-", x0 + 3, 2, 18, 10, juce::Justification::topLeft);
+                continue;
+            }
+
+            // Lit when this slice has MOVED, so a rearranged break reads as rearranged at
+            // a glance rather than needing to be compared number by number.
+            const bool moved = (pad != s);
+            g.setColour(moved ? kAccent.withAlpha(0.95f) : kSub.withAlpha(0.7f));
+            g.drawText(juce::String(pad + 1), x0 + 3, 2, 18, 10, juce::Justification::topLeft);
         }
     }
 
-    cacheKey = juce::String(w) + "x" + juce::String(h) + "|"
-             + layer.getSampleName() + "|" + juce::String((int) bounds.size());
+    // Includes the slice ORDER (see makeCacheKey), or a shuffle would redraw the stale
+    // picture from cache and the numbers would never move — leaving the button looking dead
+    // for a second, different reason.
+    cacheKey = makeCacheKey();
+}
+
+juce::String WaveformView::makeCacheKey() const
+{
+    // ONE definition, used both to stamp the cache and to decide whether it's stale. These
+    // were two separate expressions that had to agree; adding the slice order to one and
+    // not the other would leave the cache permanently fresh (never redrawn) or permanently
+    // stale (redrawn every frame), and neither announces itself.
+    return juce::String(getWidth()) + "x" + juce::String(getHeight()) + "|"
+         + layer.getSampleName() + "|"
+         + juce::String((int) layer.getSliceBoundariesNormalised().size())
+         + "|" + layer.sliceOrderToString();
 }
 
 void WaveformView::paint(juce::Graphics& g)
 {
-    const juce::String wantKey = juce::String(getWidth()) + "x" + juce::String(getHeight()) + "|"
-                              + layer.getSampleName() + "|"
-                              + juce::String((int) layer.getSliceBoundariesNormalised().size());
+    const juce::String wantKey = makeCacheKey();
 
     if (! cache.isValid() || cacheKey != wantKey)
         rebuildCache();

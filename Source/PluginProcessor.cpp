@@ -307,7 +307,13 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
         grid.setNumSteps(steps);
         step = Nebula2::FxGrid::stepAtPpq(transport.ppq, steps, 0.25);   // 1/16-note steps
     }
-    currentGridStep.store(step);
+    // The PLAYHEAD is a different question from "which step is current". The step is always
+    // derivable from the host's position, even parked — but drawing a lit column while
+    // nothing is moving says "this is playing now", which is a lie, and it looked like
+    // switching the grid on lit a random column. Report a playhead only when something is
+    // actually running.
+    const bool sounding = hostRolling || auditionActive.load();
+    currentGridStep.store(sounding ? step : -1);
 
     // Reads a knob, then lets the grid gate it for this step (pass-through when off).
     const auto amt = [this, gridOn, step](std::atomic<float>* p, Nebula2::GridRow row, float fallback)

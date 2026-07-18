@@ -26,6 +26,7 @@ public:
 private:
     void timerCallback() override;
     void rebuildCache();
+    juce::String makeCacheKey() const;   // one definition: stamped AND compared
 
     Nebula2::SampleLayer& layer;
     juce::Image cache;
