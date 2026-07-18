@@ -16,6 +16,16 @@ FetchContent_MakeAvailable(JUCE)
 
 # Phase 0: empty instrument plugin that loads and makes no sound.
 # COMPANY_NAME / PLUGIN_MANUFACTURER_CODE are placeholders — update before Phase 6 (release).
+#
+# DEFERRED ON PURPOSE (2026-07-18), with the cost understood rather than forgotten: JUCE
+# derives the VST3 unique ID from PLUGIN_MANUFACTURER_CODE + PLUGIN_CODE, so changing the
+# code later CHANGES THE PLUGIN'S IDENTITY. Any DAW project saved against this build will
+# then show Nebula2 as a missing plugin — not corrupted, just unfound, and that instance's
+# settings are gone with it.
+#
+# So: fine to experiment with, don't build a track you want to keep. The four-character
+# manufacturer code has to be the user's own choice — picking one already registered to
+# another vendor causes exactly the collision the field exists to prevent.
 juce_add_plugin(Nebula2
     COMPANY_NAME "YourCompany"
     PLUGIN_MANUFACTURER_CODE Nbla
