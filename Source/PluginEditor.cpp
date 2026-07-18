@@ -168,13 +168,17 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     // --- tabs ---
     // First tab is "SAMPLE", not "PLAY": it selects the sample/colour/space PAGE, and a tab
     // labelled PLAY read like an audition button (that's now the real ▶ Play in the header).
-    const char* names[] = { "SAMPLE", "MORPH", "GRID", "RACK" };
+    //
+    // Tab ORDER is presentation and lives in tabOrder(); the Page enum is identity. Reading
+    // the enum as the running order is what made "put GRID before MORPH" look like a change
+    // to the page identities rather than to a list of four entries.
     for (size_t i = 0; i < tabs.size(); ++i)
     {
         auto& t = tabs[i];
-        t.setButtonText(names[i]);
+        const Page p = tabOrder()[i];
+        t.setButtonText(tabName(p));
         t.setClickingTogglesState(false);
-        t.onClick = [this, i] { showPage((Page) i); };
+        t.onClick = [this, p] { showPage(p); };
         addAndMakeVisible(t);
     }
 
@@ -268,8 +272,10 @@ void Nebula2AudioProcessorEditor::showPage(Page p)
 {
     page = p;
 
+    // Highlight by POSITION in the running order, not by enum value — those are no longer
+    // the same number.
     for (size_t i = 0; i < tabs.size(); ++i)
-        tabs[i].setToggleState(i == (size_t) p, juce::dontSendNotification);
+        tabs[i].setToggleState(tabOrder()[i] == p, juce::dontSendNotification);
 
     // Only the current page's controls exist on screen. Hiding rather than rebuilding
     // keeps every attachment live, so a knob on a hidden page still tracks host

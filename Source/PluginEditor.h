@@ -8,6 +8,7 @@
 #include "RackView.h"
 #include "Nebula2LookAndFeel.h"
 #include "Theme.h"
+#include <array>
 
 // A functional control surface: every live parameter, attached to the APVTS so the host
 // and the UI can never disagree (law: one source of truth — the visual derives from state).
@@ -75,7 +76,32 @@ private:
     // scroll was a stop-gap for exactly that. Tabs beat scrolling here because the blocks
     // are separate jobs (choose a break / colour it / patch a rack), not one long list you
     // read top to bottom.
+    // Page IDENTITY. Never reordered — the layout, paint and height switches all key off
+    // these, and the running order is a separate list (tabOrder) so the tabs can be
+    // rearranged without touching what any page means.
     enum class Page { play, morph, grid, rack, numPages };
+
+    // Left-to-right running order of the tabs. GRID sits before MORPH: you build a pattern
+    // and then shape it, so the grid is the earlier job.
+    static const std::array<Page, 4>& tabOrder()
+    {
+        static const std::array<Page, 4> order { Page::play, Page::grid, Page::morph, Page::rack };
+        return order;
+    }
+
+    static const char* tabName(Page p)
+    {
+        switch (p)
+        {
+            // "SAMPLE", not "PLAY": it selects the sample/colour/space PAGE, and a tab
+            // labelled PLAY read like an audition button (that's the ▶ Play in the header).
+            case Page::play:  return "SAMPLE";
+            case Page::grid:  return "GRID";
+            case Page::morph: return "MORPH";
+            case Page::rack:  return "RACK";
+            default:          return "?";
+        }
+    }
     Page page = Page::play;
     std::array<juce::TextButton, (size_t) Page::numPages> tabs;
     void showPage(Page);
