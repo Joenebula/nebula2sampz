@@ -3659,6 +3659,85 @@ int main()
         }
     }
 
+    // ---- Note lane ----
+    {
+        using namespace Nebula2;
+
+        // Quantisation. Minor is 0,3,7,10,12,15,19,22 -> pitch classes {0,3,7,10}.
+        check(quantiseToScale(0, ResoScale::Minor) == 0, "note lane: the root stays put");
+        check(quantiseToScale(3, ResoScale::Minor) == 3, "note lane: an in-scale note is untouched");
+        {
+            bool allIn = true;
+            for (int v = -12; v <= 12; ++v)
+            {
+                const int q = quantiseToScale(v, ResoScale::Minor);
+                const int pc = ((q % 12) + 12) % 12;
+                if (! (pc == 0 || pc == 3 || pc == 7 || pc == 10)) allIn = false;
+            }
+            check(allIn, "note lane: every offset in range quantises INTO the minor scale");
+        }
+
+        // Ties resolve DOWN. Preferring up would round every ambiguous pitch the same way
+        // and a dragged line creeps sharp across its length.
+        check(quantiseToScale(1, ResoScale::Minor) == 0,
+              "note lane: a tie resolves downward, so a line doesn't drift sharp");
+
+        check(quantiseToScale(99, ResoScale::Minor) <= noteLaneRange
+               && quantiseToScale(-99, ResoScale::Minor) >= -noteLaneRange,
+              "note lane: quantised pitches stay inside +/- an octave");
+
+        // Different scales must genuinely disagree, or the Scale control does nothing here.
+        {
+            bool differs = false;
+            for (int v = -12; v <= 12 && ! differs; ++v)
+                if (quantiseToScale(v, ResoScale::Minor) != quantiseToScale(v, ResoScale::Major))
+                    differs = true;
+            check(differs, "note lane: minor and major quantise differently");
+        }
+
+        // Names are rooted at A, because resoKey 0 IS A (the resonator's root is A1).
+        // Rooted at C instead, every name would read three semitones out.
+        check(noteLaneName(0, 0) == "A", "note lane: key A, offset 0, reads A");
+        check(noteLaneName(3, 0) == "C", "note lane: three semitones above A is C");
+        check(noteLaneName(0, 3) == "C", "note lane: key index 3 IS C");
+
+        {
+            FxGrid g; g.setNumSteps(16);
+            check(! g.anyNotes(), "note lane: a fresh grid has no notes");
+            g.setNote(4, 7);
+            check(g.getNote(4) == 7 && g.anyNotes(), "note lane: a note is stored and read back");
+            g.setNote(5, 99);
+            check(g.getNote(5) == noteLaneRange, "note lane: an out-of-range note clamps");
+            g.setNote(-1, 5); g.setNote(9999, 5);
+            check(g.getNote(4) == 7, "note lane: bad indices are ignored");
+
+            FxGrid h;
+            h.notesFromString(g.notesToString());
+            check(h.getNote(4) == 7, "note lane: notes survive a save/restore round trip");
+
+            h.notesFromString("garbage,,,");
+            check(! h.anyNotes(),
+                  "note lane: a corrupt saved lane clears rather than inventing a line of zeroes");
+
+            g.clearNotes();
+            check(! g.anyNotes(), "note lane: clear empties it");
+        }
+
+        // The note lane is SEPARATE from the effect cells. Clear on the grid must not wipe
+        // a melody, and clearing notes must not wipe the pattern.
+        {
+            FxGrid g; g.setNumSteps(16);
+            g.setCell((int) GridRow::Drive, 2, 3);
+            g.setNote(2, 5);
+            g.clearAll();
+            check(g.getNote(2) == 5, "note lane: clearing the effect grid leaves the notes alone");
+            g.setCell((int) GridRow::Drive, 2, 3);
+            g.clearNotes();
+            check(g.getCell((int) GridRow::Drive, 2) == 3,
+                  "note lane: clearing the notes leaves the effect grid alone");
+        }
+    }
+
     // ---- Input trim ----
     // Was a two-layer mixer (Sample / Drums / Solo) until the drum synth was removed. With
     // one source there is nothing to balance and a Solo cannot act, so both went. What is

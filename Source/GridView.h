@@ -21,11 +21,16 @@ public:
     void paint(juce::Graphics&) override;
     void mouseDown(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
+    void mouseUp(const juce::MouseEvent&) override;
 
     // Height comes from Nebula2::gridPanelHeight() — see FxGrid.h for why it lives there
     // (the test binary links that file and not the GUI). Adding a lane must widen the
     // panel, not shrink the rows.
-    static int preferredHeight() { return Nebula2::gridPanelHeight(); }
+    static int preferredHeight() { return Nebula2::gridPanelHeight() + noteRowHeight; }
+
+    // The melodic lane sits ABOVE the effect lanes, in its own strip: it carries a pitch,
+    // not a 0..3 level, so drawing it as another grid row would invite clicking it like one.
+    static constexpr int noteRowHeight = 30;
 
 private:
     void timerCallback() override;
@@ -34,6 +39,9 @@ private:
     float panelAmountFor(int row) const;   // the knob behind this row
     bool rowIsStarved(int row) const;      // knob at 0 -> the row cannot sound
     int laneHeight() const;                // one definition, shared by paint and rowAt
+    void drawNoteRow(juce::Graphics&, Nebula2::FxGrid&, int steps, int gridW, int playing);
+    void setNoteFromMouse(juce::Point<int> pos);
+    bool editingNotes = false;
 
     Nebula2AudioProcessor& processorRef;
     int lastStep = -2;

@@ -18,11 +18,12 @@ namespace Nebula2
     // hand-written inverse operation. The strings are small (a grid is ~500 bytes).
     struct Snapshot
     {
-        juce::String grid, sliceOrder, sliceFx, rack, scenes;
+        juce::String grid, gridNotes, sliceOrder, sliceFx, rack, scenes;
 
         bool operator== (const Snapshot& o) const noexcept
         {
-            return grid == o.grid && sliceOrder == o.sliceOrder && sliceFx == o.sliceFx
+            return grid == o.grid && gridNotes == o.gridNotes
+                && sliceOrder == o.sliceOrder && sliceFx == o.sliceFx
                 && rack == o.rack && scenes == o.scenes;
         }
     };

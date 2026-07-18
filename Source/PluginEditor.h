@@ -195,6 +195,8 @@ private:
     juce::Label gridPatternLabel;
     juce::TextButton gridSaveButton { "Save" };
     juce::TextButton gridDeleteButton { "Delete" };
+    juce::TextButton noteDiceButton { "Notes" };
+    juce::TextButton noteClearButton { "No Notes" };
     void refreshGridPatternMenu();
     void saveGridPatternAs();
 

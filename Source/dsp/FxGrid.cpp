@@ -293,3 +293,86 @@ namespace Nebula2
         }
     }
 }
+
+namespace Nebula2
+{
+    int quantiseToScale(int semitones, ResoScale scale) noexcept
+    {
+        const int pv = juce::jlimit(-noteLaneRange, noteLaneRange, semitones);
+
+        const auto& degrees = resoScaleDegrees(scale);
+        auto inScale = [&degrees](int v)
+        {
+            const int pc = ((v % 12) + 12) % 12;
+            for (int d : degrees) if ((((d % 12) + 12) % 12) == pc) return true;
+            return false;
+        };
+
+        // Search outward, DOWN first on a tie. The prototype's order, and the one that stops
+        // a dragged line creeping sharp: preferring up would round every ambiguous pitch the
+        // same direction and the whole part drifts.
+        for (int dd = 0; dd <= 6; ++dd)
+        {
+            if (pv - dd >= -noteLaneRange && inScale(pv - dd)) return pv - dd;
+            if (pv + dd <=  noteLaneRange && inScale(pv + dd)) return pv + dd;
+        }
+        return 0;
+    }
+
+    juce::String noteLaneName(int semitones, int keySemis)
+    {
+        static const char* names[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+        // Root is A: resoKey 0 means A, because the resonator bank's root is A1. Adding 9
+        // rotates A to its place in a C-based name table.
+        const int idx = ((9 + keySemis + (((semitones % 12) + 12) % 12)) % 12 + 12) % 12;
+        return names[idx];
+    }
+
+    void FxGrid::setNote(int step, int semitones) noexcept
+    {
+        if (step < 0 || step >= maxSteps) return;
+        notes[(size_t) step] = (int8_t) juce::jlimit(-noteLaneRange, noteLaneRange, semitones);
+    }
+
+    int FxGrid::getNote(int step) const noexcept
+    {
+        if (step < 0 || step >= maxSteps) return 0;
+        return (int) notes[(size_t) step];
+    }
+
+    void FxGrid::clearNotes() noexcept { notes.fill(0); }
+
+    bool FxGrid::anyNotes() const noexcept
+    {
+        for (int s = 0; s < numSteps; ++s) if (notes[(size_t) s] != 0) return true;
+        return false;
+    }
+
+    juce::String FxGrid::notesToString() const
+    {
+        juce::String out;
+        for (int s = 0; s < maxSteps; ++s)
+        {
+            if (s > 0) out << ",";
+            out << (int) notes[(size_t) s];
+        }
+        return out;
+    }
+
+    void FxGrid::notesFromString(const juce::String& s)
+    {
+        clearNotes();
+        if (s.isEmpty()) return;
+
+        auto toks = juce::StringArray::fromTokens(s, ",", "");
+        for (int i = 0; i < juce::jmin(toks.size(), maxSteps); ++i)
+        {
+            // Same rule as everywhere else here: a non-numeric token means the data is
+            // corrupt, and the honest reading of corrupt data is "no notes" rather than a
+            // line of zeroes that looks deliberate.
+            const auto t = toks[i].trim();
+            if (t.isEmpty() || ! t.containsOnly("-0123456789")) { clearNotes(); return; }
+            setNote(i, t.getIntValue());
+        }
+    }
+}

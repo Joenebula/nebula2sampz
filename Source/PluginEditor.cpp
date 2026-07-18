@@ -277,6 +277,37 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
         gridView.repaint();
     };
 
+    // Random notes IN KEY. A melodic dice that ignored the scale would mostly produce
+    // something you would immediately undo.
+    noteDiceButton.onClick = [this]
+    {
+        processorRef.pushHistory();
+        auto& grid = processorRef.getGrid();
+        auto* scaleP = processorRef.getValueTreeState().getRawParameterValue(Nebula2::ParamID::resoScale);
+        const auto scale = (Nebula2::ResoScale) juce::jlimit(
+            0, (int) Nebula2::ResoScale::Count - 1, scaleP != nullptr ? (int) scaleP->load() : 0);
+
+        juce::Random rng;
+        for (int s = 0; s < grid.getNumSteps(); ++s)
+        {
+            // Sparse on purpose: a note on every step is a scale run, not a riff.
+            if (rng.nextFloat() < 0.45f)
+                grid.setNote(s, Nebula2::quantiseToScale(rng.nextInt(25) - 12, scale));
+            else
+                grid.setNote(s, 0);
+        }
+        gridView.repaint();
+    };
+    content.addAndMakeVisible(noteDiceButton);
+
+    noteClearButton.onClick = [this]
+    {
+        processorRef.pushHistory();
+        processorRef.getGrid().clearNotes();
+        gridView.repaint();
+    };
+    content.addAndMakeVisible(noteClearButton);
+
     gridSaveButton.onClick  = [this] { saveGridPatternAs(); };
     gridDeleteButton.onClick = [this]
     {
@@ -726,6 +757,8 @@ void Nebula2AudioProcessorEditor::showPage(Page p)
     gridPatternLabel.setVisible(grid);
     gridSaveButton.setVisible(grid);
     gridDeleteButton.setVisible(grid);
+    noteDiceButton.setVisible(grid);
+    noteClearButton.setVisible(grid);
 
     rackView.setVisible(rack);
     rackOnButton.setVisible(rack);
@@ -1057,6 +1090,10 @@ void Nebula2AudioProcessorEditor::layoutContent()
             gridSaveButton.setBounds(gRow2.removeFromLeft(54));
             gRow2.removeFromLeft(4);
             gridDeleteButton.setBounds(gRow2.removeFromLeft(60));
+            gRow2.removeFromLeft(10);
+            noteDiceButton.setBounds(gRow2.removeFromLeft(62));
+            gRow2.removeFromLeft(4);
+            noteClearButton.setBounds(gRow2.removeFromLeft(76));
 
             gp.removeFromTop(8);
             gridView.setBounds(gp);

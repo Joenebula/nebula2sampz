@@ -350,7 +350,13 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
     {
         const float up   = amt(pitchUpParam,   Nebula2::GridRow::PitchUp,   0.0f);
         const float down = amt(pitchDownParam, Nebula2::GridRow::PitchDown, 0.0f);
-        sampleLayer.setPitchOffsetSemitones((up - down) * 0.12f);   // 100% -> 12 semitones
+        //
+        // The NOTE LANE adds to this: it is a musical transpose in semitones on the step,
+        // where Pitch +/- is a percentage of an octave. They sum, because a user who has
+        // painted both plainly wants both — and because silently letting one win would be
+        // a control that stops working depending on another one.
+        const float noteSemis = (gridOn && step >= 0) ? (float) grid.getNote(step) : 0.0f;
+        sampleLayer.setPitchOffsetSemitones((up - down) * 0.12f + noteSemis);
     }
 
     // Both layers render in sub-blocks split at MIDI event positions, so hits land
@@ -605,6 +611,7 @@ void Nebula2AudioProcessor::getStateInformation(juce::MemoryBlock& destData)
     // or a reopened project comes back with an empty pattern.
     auto gridNode = state.getOrCreateChildWithName("GRID", nullptr);
     gridNode.setProperty("cells", grid.toString(), nullptr);
+    gridNode.setProperty("notes", grid.notesToString(), nullptr);
 
     // Morph scenes are structured data too (see MorphPad.h) — save them explicitly.
     auto morphNode = state.getOrCreateChildWithName("MORPH", nullptr);
@@ -659,7 +666,10 @@ void Nebula2AudioProcessor::setStateInformation(const void* data, int sizeInByte
     }
 
     if (auto gridNode = tree.getChildWithName("GRID"); gridNode.isValid())
+    {
         grid.fromString(gridNode.getProperty("cells").toString());
+        grid.notesFromString(gridNode.getProperty("notes").toString());
+    }
 
     if (auto morphNode = tree.getChildWithName("MORPH"); morphNode.isValid())
         morphScenes = Nebula2::morphScenesFromString(morphNode.getProperty("scenes").toString());
@@ -695,6 +705,7 @@ Nebula2::Snapshot Nebula2AudioProcessor::captureSnapshot() const
 {
     Nebula2::Snapshot s;
     s.grid       = grid.toString();
+    s.gridNotes  = grid.notesToString();
     s.sliceOrder = sampleLayer.sliceOrderToString();
     s.sliceFx    = sampleLayer.sliceSettingsToString();
     s.scenes     = Nebula2::morphScenesToString(morphScenes);
@@ -710,6 +721,7 @@ Nebula2::Snapshot Nebula2AudioProcessor::captureSnapshot() const
 void Nebula2AudioProcessor::applySnapshot(const Nebula2::Snapshot& s)
 {
     grid.fromString(s.grid);
+    grid.notesFromString(s.gridNotes);
     sampleLayer.sliceOrderFromString(s.sliceOrder);
     sampleLayer.sliceSettingsFromString(s.sliceFx);
     morphScenes = Nebula2::morphScenesFromString(s.scenes);

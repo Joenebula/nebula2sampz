@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_core/juce_core.h>
+#include "Resonator.h"   // ResoScale: the note lane quantises to the resonator's key/scale
 #include <cmath>
 #include <array>
 #include <vector>
@@ -97,6 +98,26 @@ namespace Nebula2
         return std::abs(panelAmount - gridRowNeutral(r)) < 0.05f;
     }
 
+    // --- the NOTE lane ---
+    //
+    // A melodic lane over the same steps: each step carries a transpose in semitones, and
+    // the chop landing there plays at that pitch. Unlike the effect lanes this isn't a
+    // 0..3 level, so it lives beside the grid rather than in it.
+    //
+    // Pitches are QUANTISED to the Resonate key and scale, which the instrument already
+    // owns — one source of truth for "what key is this in", rather than a second key
+    // selector that could disagree with the resonator bank ringing underneath it.
+    constexpr int noteLaneRange = 12;   // +/- one octave, the prototype's range
+
+    // Snap a semitone offset to the nearest degree of `scale`. Searches outward from the
+    // requested pitch, preferring DOWN on a tie — the prototype's order, and the one that
+    // keeps a line from drifting sharp as you drag.
+    int quantiseToScale(int semitones, ResoScale scale) noexcept;
+
+    // Note name for a lane value, given the key. Root is A (see ParamID::resoKey — index 0
+    // is A because the resonator's root is A1), so a lane value of 0 in key C reads "C".
+    juce::String noteLaneName(int semitones, int keySemis);
+
     // Steps per beat. A CONSTANT, not numSteps/4: the sequencer clocks a step every 0.25
     // beats (see the stepAtPpq call site), so a step is always a 1/16 and a beat is always
     // four of them. Changing the step COUNT changes how many bars the pattern spans, not
@@ -153,12 +174,25 @@ namespace Nebula2
         // The effect amount for this row at this step, given the knob's value.
         float amountFor(GridRow row, float panelAmount, int step) const noexcept;
 
+        // --- the note lane ---
+        // Semitone transpose per step, 0 = leave the chop alone. Separate from `cells`
+        // because it is a value, not a 0..3 level, and separate from the row storage so
+        // adding it cannot shift any existing lane index.
+        void setNote(int step, int semitones) noexcept;
+        int getNote(int step) const noexcept;
+        void clearNotes() noexcept;
+        bool anyNotes() const noexcept;
+
+        juce::String notesToString() const;
+        void notesFromString(const juce::String& s);
+
         // Serialised for the state chunk (structured data, not a flat parameter).
         juce::String toString() const;
         void fromString(const juce::String& s);
 
     private:
         std::array<std::array<uint8_t, (size_t) maxSteps>, (size_t) numRows> cells {};
+        std::array<int8_t, (size_t) maxSteps> notes {};
         int numSteps = 16;
     };
 }
