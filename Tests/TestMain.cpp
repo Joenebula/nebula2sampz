@@ -24,6 +24,7 @@
 #include "../Source/dsp/SpaceProcessor.h"
 #include "../Source/dsp/SampleLayer.h"
 #include "../Source/dsp/FxGrid.h"
+#include "../Source/dsp/StepFx.h"
 #include "../Source/dsp/MorphPad.h"
 #include "../Source/dsp/MorphEngine.h"
 #include "../Source/dsp/RackGraph.h"
@@ -3334,6 +3335,93 @@ int main()
         }
     }
 
+    // ---- StepFx: Reverse + Stutter (per-step playback effects) ----
+    {
+        using namespace Nebula2;
+        const double sfxSr = 48000.0;
+        const int sfxBlock = 512;
+        juce::dsp::ProcessSpec sfxSpec { sfxSr, (juce::uint32) sfxBlock, 2 };
+        const double stepLen = 0.25 * (60.0 / 120.0) * sfxSr;   // a 1/16 at 120 BPM
+
+        auto ramp = [sfxBlock](float start)
+        {
+            AudioBuffer<float> b(2, sfxBlock);
+            for (int i = 0; i < sfxBlock; ++i)
+            {
+                const float v = start + (float) i * 0.001f;
+                b.setSample(0, i, v); b.setSample(1, i, v);
+            }
+            return b;
+        };
+
+        // At zero, both are a bit-exact pass-through — they must cost nothing until used.
+        {
+            StepFx fx; fx.prepare(sfxSpec); fx.reset();
+            auto b = ramp(0.0f);
+            const auto ref = b;
+            fx.process(b, stepLen, -1, 0.0f, 0.0f);
+            bool same = true;
+            for (int i = 0; i < sfxBlock; ++i)
+                if (b.getSample(0, i) != ref.getSample(0, i)) same = false;
+            check(same, "stepfx: reverse+stutter at 0 are a bit-exact pass-through");
+        }
+
+        // Reverse must genuinely alter the signal once there's history to read backwards.
+        {
+            StepFx fx; fx.prepare(sfxSpec); fx.reset();
+            for (int n = 0; n < 20; ++n) { auto b = ramp((float) n); fx.process(b, stepLen, -1, 0.0f, 0.0f); }
+            auto dryRef = ramp(50.0f);
+            auto wet = ramp(50.0f);
+            fx.process(wet, stepLen, -1, 1.0f, 0.0f);
+            double diff = 0.0;
+            for (int i = 0; i < sfxBlock; ++i) diff += std::abs(wet.getSample(0, i) - dryRef.getSample(0, i));
+            check(diff > 1.0, "stepfx: reverse genuinely changes the signal (reads history backwards)");
+        }
+
+        // Stutter likewise, by repeating an earlier chunk.
+        {
+            StepFx fx; fx.prepare(sfxSpec); fx.reset();
+            for (int n = 0; n < 20; ++n) { auto b = ramp((float) n); fx.process(b, stepLen, -1, 0.0f, 0.0f); }
+            auto dryRef = ramp(50.0f);
+            auto wet = ramp(50.0f);
+            fx.process(wet, stepLen, -1, 0.0f, 1.0f);
+            double diff = 0.0;
+            for (int i = 0; i < sfxBlock; ++i) diff += std::abs(wet.getSample(0, i) - dryRef.getSample(0, i));
+            check(diff > 1.0, "stepfx: stutter genuinely changes the signal (repeats a chunk)");
+        }
+
+        // Both at full, across many steps: finite and bounded.
+        {
+            StepFx fx; fx.prepare(sfxSpec); fx.reset();
+            bool ok = true;
+            for (int n = 0; n < 80; ++n)
+            {
+                AudioBuffer<float> b(2, sfxBlock);
+                for (int i = 0; i < sfxBlock; ++i)
+                {
+                    const float v = 0.7f * std::sin((float) (n * sfxBlock + i) * 0.01f);
+                    b.setSample(0, i, v); b.setSample(1, i, v);
+                }
+                fx.process(b, stepLen, n % 16, 1.0f, 1.0f);
+                for (int i = 0; i < sfxBlock; ++i)
+                    if (! std::isfinite(b.getSample(0, i)) || std::abs(b.getSample(0, i)) > 2.0f) ok = false;
+            }
+            check(ok, "stepfx: reverse+stutter together stay finite and bounded");
+        }
+
+        // The ring is preallocated, so processing must not touch the heap.
+        {
+            StepFx fx; fx.prepare(sfxSpec); fx.reset();
+            { auto b = ramp(0.0f); fx.process(b, stepLen, 0, 1.0f, 1.0f); }
+            auto b = ramp(1.0f);
+            rtcheck::Scope watch;
+            for (int i = 0; i < 20; ++i) fx.process(b, stepLen, i % 16, 1.0f, 1.0f);
+            const int n = watch.count();
+            check(n == 0, "rt: StepFx allocates nothing"
+                          + (n == 0 ? String() : " — got " + String(n)));
+        }
+    }
+
     // ---- Grid lanes: 16 storage rows, only the implemented ones shown ----
     {
         using namespace Nebula2;
@@ -3363,14 +3451,25 @@ int main()
         check(allNamed, "grid: every displayed lane has a name");
         check(noDupes,  "grid: no lane is listed twice");
 
-        // The lanes whose effects DON'T exist yet must NOT be shown.
+        // The lanes whose effects DON'T exist yet must NOT be shown. Shrink this list as
+        // each effect lands — it failing after you build one is the test doing its job.
         bool hidesUnbuilt = true;
-        for (auto r : { GridRow::Resonate, GridRow::PitchUp, GridRow::PitchDown,
-                        GridRow::Reverse, GridRow::Stutter, GridRow::Shatter })
+        for (auto r : { GridRow::Resonate, GridRow::PitchUp, GridRow::PitchDown, GridRow::Shatter })
             for (auto shown : order)
                 if (shown == r) hidesUnbuilt = false;
         check(hidesUnbuilt,
               "grid: lanes with no effect behind them are NOT displayed (no dead lanes)");
+
+        // ...and the ones that DO exist are shown.
+        {
+            auto listed = [&order](GridRow r)
+            {
+                for (auto s : order) if (s == r) return true;
+                return false;
+            };
+            check(listed(GridRow::Reverse) && listed(GridRow::Stutter),
+                  "grid: Reverse and Stutter lanes are live");
+        }
 
         // The newly-wired lanes ARE shown.
         auto shows = [&order](GridRow r)
@@ -3407,7 +3506,8 @@ int main()
             "sliceMode", "sliceCount", "sens",
             "padOn", "padX", "padY", "morphMotion", "morphRate", "morphSize", "morphGlide",
             "gridOn", "gridSteps",
-            "drive", "char", "crush", "squeeze", "tone", "width", "pump", "gate", "fxOn",
+            "drive", "char", "crush", "squeeze", "tone", "width", "pump", "gate",
+            "reverse", "stutter", "fxOn",
             "revMix", "revSize", "dlyMix", "dlyFb", "dlySync", "dlyMode", "haunt", "spaceOn", "revChar",
             "rackOn",
             "flt.cut", "flt.res", "flt.type",

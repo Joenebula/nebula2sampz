@@ -18,6 +18,8 @@ Nebula2AudioProcessor::Nebula2AudioProcessor()
     widthParam     = apvts.getRawParameterValue(Nebula2::ParamID::width);
     pumpParam      = apvts.getRawParameterValue(Nebula2::ParamID::pump);
     gateParam      = apvts.getRawParameterValue(Nebula2::ParamID::gate);
+    reverseParam   = apvts.getRawParameterValue(Nebula2::ParamID::reverse);
+    stutterParam   = apvts.getRawParameterValue(Nebula2::ParamID::stutter);
     fxOnParam      = apvts.getRawParameterValue(Nebula2::ParamID::fxOn);
     revMixParam    = apvts.getRawParameterValue(Nebula2::ParamID::revMix);
     revCharParam   = apvts.getRawParameterValue(Nebula2::ParamID::revChar);
@@ -194,6 +196,8 @@ void Nebula2AudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
     morph.reset();
     rackEngine.prepare(spec);
     rackEngine.reset();
+    stepFx.prepare(spec);
+    stepFx.reset();
 
     // Preallocate the layer buses here (never in the audio callback).
     sampleBus.setSize(2, samplesPerBlock, false, false, true);
@@ -353,6 +357,20 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
         cp.ppq       = transport.ppq;   // so the duck lands on the beat
         cp.bpm       = transport.bpm;
         colourChain.process(buffer, cp);
+    }
+
+    // REVERSE / STUTTER: per-step playback effects. They need history (you can't reverse
+    // what hasn't played yet), so StepFx keeps a ring and reads back out of it. Both rest
+    // at 0 = untouched. The step clock free-runs off the tempo so they work with the grid
+    // off too, and re-syncs on a grid step so they land on the beat.
+    {
+        const float revAmt  = juce::jlimit(0.0f, 1.0f,
+                                  amt(reverseParam, Nebula2::GridRow::Reverse, 0.0f) / 100.0f);
+        const float stutAmt = juce::jlimit(0.0f, 1.0f,
+                                  amt(stutterParam, Nebula2::GridRow::Stutter, 0.0f) / 100.0f);
+        const double bpm = transport.bpm > 0.0 ? transport.bpm : 120.0;
+        const double stepLen = 0.25 * (60.0 / bpm) * getSampleRate();   // one 1/16 note
+        stepFx.process(buffer, stepLen, step, revAmt, stutAmt);
     }
 
     // Morph: blend the four scenes at the pad's position and run the multi-effect.

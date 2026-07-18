@@ -8,6 +8,7 @@
 #include "dsp/SpaceProcessor.h"
 #include "dsp/SampleLayer.h"
 #include "dsp/FxGrid.h"
+#include "dsp/StepFx.h"
 #include "dsp/MorphEngine.h"
 #include "dsp/RackGraph.h"
 #include "dsp/RackModules.h"
@@ -118,6 +119,9 @@ private:
     std::atomic<float>* pumpParam { nullptr };
     std::atomic<float>* gateParam { nullptr };
     float gateGain = 1.0f;      // audio thread: smoothed gate level
+    std::atomic<float>* reverseParam { nullptr };
+    std::atomic<float>* stutterParam { nullptr };
+    Nebula2::StepFx stepFx;
     std::atomic<float>* fxOnParam { nullptr };
     std::atomic<float>* revMixParam { nullptr };
     std::atomic<float>* revCharParam { nullptr };

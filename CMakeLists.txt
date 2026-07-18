@@ -80,6 +80,8 @@ target_sources(Nebula2 PRIVATE
     Source/dsp/SampleLayer.h
     Source/dsp/FxGrid.cpp
     Source/dsp/FxGrid.h
+    Source/dsp/StepFx.cpp
+    Source/dsp/StepFx.h
     Source/dsp/MorphPad.cpp
     Source/dsp/MorphPad.h
     Source/dsp/MorphEngine.cpp
@@ -162,6 +164,8 @@ target_sources(Nebula2Tests PRIVATE
     Source/dsp/SampleLayer.h
     Source/dsp/FxGrid.cpp
     Source/dsp/FxGrid.h
+    Source/dsp/StepFx.cpp
+    Source/dsp/StepFx.h
     Source/dsp/MorphPad.cpp
     Source/dsp/MorphPad.h
     Source/dsp/MorphEngine.cpp
