@@ -12,6 +12,7 @@
 #include "dsp/MorphEngine.h"
 #include "dsp/RackGraph.h"
 #include "dsp/RackModules.h"
+#include "History.h"
 
 // MIDI-triggered drum voices -> Colour FX -> Space send -> master chain.
 //
@@ -108,6 +109,16 @@ public:
 
     // Most-recent host transport the audio thread saw (for the editor to display later).
     Nebula2::TransportState getTransport() const noexcept { return transport; }
+
+    // --- undo for the non-parameter state ---
+    // The grid, slice order/settings, rack patch and morph scenes live outside the APVTS,
+    // so its UndoManager does not cover them — and they are exactly what the dice rewrite.
+    Nebula2::Snapshot captureSnapshot() const;
+    void applySnapshot(const Nebula2::Snapshot&);
+    void pushHistory() { history.push(captureSnapshot()); }
+    bool undoState();
+    bool redoState();
+    Nebula2::History& getHistory() noexcept { return history; }
 
 private:
     juce::UndoManager undoManager;
@@ -206,6 +217,7 @@ private:
     juce::String pendingSliceOrder;   // applied after the load, never before
     juce::String pendingSliceFx;      // same: loadFile re-slices, which resets these
 
+    Nebula2::History history;
     int currentProgram = 0;
     float uiScale = 0.0f;      // 0 = never chosen; the editor then follows the screen
     int gridDiceDensity = 1;   // 0 Low, 1 Mid, 2 High

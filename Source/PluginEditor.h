@@ -108,11 +108,18 @@ private:
     int contentHeightFor(Page) const;
     static int gridPageHeight();   // derived from the lane count, never hardcoded
     void rollGrid();               // the dice: eligible lanes only, at the chosen density
+    void refreshAfterStateChange();   // after undo/redo: every view re-reads the state
+    void updateUndoButtons();
 
     // In-app audition: play the loaded break without rolling the DAW. Reflects the
     // processor's state (which the host transport can clear), so the Timer keeps the
     // button's label honest rather than trusting the last click.
     juce::TextButton auditionButton { "▶ Play" };
+
+    // Undo for the grid, slice order/settings, rack patch and morph scenes — the state the
+    // dice rewrite in one click, and which the APVTS UndoManager does not cover.
+    juce::TextButton undoButton { "Undo" };
+    juce::TextButton redoButton { "Redo" };
 
     void paintContent(juce::Graphics&);
     void layoutContent();

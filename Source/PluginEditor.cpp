@@ -108,6 +108,7 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     // rearranged at the cue points rather than chopped somewhere arbitrary.
     shuffleButton.onClick = [this]
     {
+        processorRef.pushHistory();
         auto& layer = processorRef.getSampleLayer();
         const int count = layer.getNumSlices();
         if (count <= 1) return;      // nothing to rearrange
@@ -123,6 +124,7 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     // rearrangement that claims to be musical and isn't.
     suggestBeatButton.onClick = [this]
     {
+        processorRef.pushHistory();
         auto& layer = processorRef.getSampleLayer();
         const int count = layer.getNumSlices();
         if (count <= 1) return;
@@ -137,6 +139,7 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
 
     resetOrderButton.onClick = [this]
     {
+        processorRef.pushHistory();
         processorRef.getSampleLayer().resetSliceOrder();
         waveform.repaint();
     };
@@ -220,6 +223,7 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
 
     sliceResetButton.onClick = [this]
     {
+        processorRef.pushHistory();
         const int s = waveform.getSelectedSlice();
         if (s < 0) return;
         auto& l = processorRef.getSampleLayer();
@@ -242,7 +246,7 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
         processorRef.getValueTreeState(), Nebula2::ParamID::gridOn, gridOnButton);
     addCombo(gridStepsBox, gridStepsLabel, Nebula2::ParamID::gridSteps, "Steps",
              { "8", "16", "32" }, gridStepsAttachment);
-    gridClearButton.onClick = [this] { processorRef.getGrid().clearAll(); gridView.repaint(); };
+    gridClearButton.onClick = [this] { processorRef.pushHistory(); processorRef.getGrid().clearAll(); gridView.repaint(); };
     content.addAndMakeVisible(gridClearButton);
 
     // The dice. Density is a plain combo, not a parameter — automating "how random" would
@@ -268,6 +272,7 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     {
         const auto name = gridPatternBox.getText();
         if (name.isEmpty()) return;
+        processorRef.pushHistory();
         auto& grid = processorRef.getGrid();
         // A saved pattern wins over a factory one of the same name — it's the one YOU made.
         if (! Nebula2::loadGridPreset(name, grid))
@@ -306,6 +311,7 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     // "what does the morph actually morph?" is a hard question to answer from the UI.
     morphRandButton.onClick = [this]
     {
+        processorRef.pushHistory();
         juce::Random rng;
         processorRef.getMorphScenes() = Nebula2::randomMorphScenes(rng);
         // Rolling scenes while the pad is off would change nothing audible, which reads as
@@ -334,6 +340,7 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     // then can't hear because the rack is bypassed reads as a broken button.
     rackRandButton.onClick = [this]
     {
+        processorRef.pushHistory();
         {
             const juce::SpinLock::ScopedLockType sl(processorRef.getRackLock());
             juce::Random rng;
@@ -376,6 +383,17 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     };
     addAndMakeVisible(auditionButton);
 
+    undoButton.onClick = [this]
+    {
+        if (processorRef.undoState()) { refreshAfterStateChange(); }
+    };
+    redoButton.onClick = [this]
+    {
+        if (processorRef.redoState()) { refreshAfterStateChange(); }
+    };
+    addAndMakeVisible(undoButton);
+    addAndMakeVisible(redoButton);
+
     // --- tabs ---
     // First tab is "SAMPLE", not "PLAY": it selects the sample/colour/space PAGE, and a tab
     // labelled PLAY read like an audition button (that's now the real ▶ Play in the header).
@@ -395,6 +413,7 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
 
     refreshSampleInfo();
     updateSliceControlStates();
+    updateUndoButtons();
     startTimerHz(8);        // watch for slice-mode changes (incl. from host automation)
 
     // --- zoom ---
@@ -575,6 +594,7 @@ void Nebula2AudioProcessorEditor::refreshSliceEditor()
 
 void Nebula2AudioProcessorEditor::rollGrid()
 {
+    processorRef.pushHistory();
     // Only offer the dice lanes that can actually SOUND. A lane sitting on its neutral
     // can't be heard however it's painted, so casting one wastes a slot and makes the roll
     // quietly sparser than the density you asked for. This is the same at-rest rule the
@@ -943,7 +963,14 @@ void Nebula2AudioProcessorEditor::resized()
     auto header = r.removeFromTop(headerH);
 
     // The in-app Play button sits in the title row, top-right (paint() reserves the space).
-    auditionButton.setBounds(header.reduced(16, 8).removeFromTop(24).removeFromRight(92));
+    {
+        auto top = header.reduced(16, 8).removeFromTop(24);
+        auditionButton.setBounds(top.removeFromRight(92));
+        top.removeFromRight(8);
+        redoButton.setBounds(top.removeFromRight(60));
+        top.removeFromRight(4);
+        undoButton.setBounds(top.removeFromRight(60));
+    }
 
     // Tabs sit under the title.
     auto tabRow = header.withTrimmedTop(38).reduced(14, 4);
@@ -1218,4 +1245,26 @@ void Nebula2AudioProcessorEditor::layoutContent()
     spaceOnButton.setBounds(dRowB.removeFromLeft(110));
     dRowB.removeFromLeft(10);
     spaceRandButton.setBounds(dRowB.removeFromLeft(96));
+}
+
+void Nebula2AudioProcessorEditor::refreshAfterStateChange()
+{
+    // Undo rewrites state that several views cache or draw, so they all have to re-read it.
+    // Missing one here is the "it worked but the screen still shows the old thing" bug —
+    // and the waveform in particular caches its picture, so a plain repaint is not enough.
+    gridView.repaint();
+    morphPad.repaint();
+    rackView.repaint();
+    waveform.sampleChanged();      // clears the cached image, not just a repaint
+    refreshSliceEditor();
+    refreshSampleInfo();
+    updateUndoButtons();
+}
+
+void Nebula2AudioProcessorEditor::updateUndoButtons()
+{
+    // Law 4 again: a button that cannot act says so, rather than looking live and doing
+    // nothing when you press it.
+    undoButton.setEnabled(processorRef.getHistory().canUndo());
+    redoButton.setEnabled(processorRef.getHistory().canRedo());
 }

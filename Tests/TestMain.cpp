@@ -28,6 +28,7 @@
 #include "../Source/dsp/Resonator.h"
 #include "../Source/GridPresets.h"
 #include "../Source/Randomise.h"
+#include "../Source/History.h"
 #include "../Source/dsp/SliceAnalysis.h"
 #include "../Source/dsp/MorphPad.h"
 #include "../Source/dsp/MorphEngine.h"
@@ -3654,6 +3655,84 @@ int main()
             const auto v = sl.getSliceSettings(0);
             check(v.gain <= 1.5f && v.pan >= -1.0f,
                   "slice fx: values clamp and bad indices are ignored");
+        }
+    }
+
+    // ---- Undo history ----
+    {
+        using namespace Nebula2;
+
+        auto snap = [](const char* g) { Snapshot s; s.grid = g; return s; };
+
+        {
+            History h;
+            check(! h.canUndo() && ! h.canRedo(), "history: starts empty");
+
+            Snapshot out;
+            check(! h.undo(snap("now"), out), "history: undo on an empty stack does nothing");
+            check(! h.redo(snap("now"), out), "history: redo on an empty stack does nothing");
+        }
+
+        // The basic loop: push the BEFORE state, mutate, undo returns the before.
+        {
+            History h;
+            h.push(snap("A"));
+            Snapshot out;
+            check(h.undo(snap("B"), out) && out.grid == "A",
+                  "history: undo returns the state from before the action");
+            check(h.redo(snap("A"), out) && out.grid == "B",
+                  "history: redo returns the state you undid away from");
+        }
+
+        // A no-op action must not cost an undo step. Otherwise pressing Clear on an already
+        // empty grid stacks identical snapshots, and undo appears to do nothing — twice.
+        {
+            History h;
+            h.push(snap("A"));
+            h.push(snap("A"));
+            h.push(snap("A"));
+            check(h.undoDepth() == 1, "history: identical consecutive states collapse to one step");
+        }
+
+        // A new action after an undo invalidates redo — you can't redo into a future that
+        // no longer follows from the present.
+        {
+            History h;
+            h.push(snap("A"));
+            Snapshot out;
+            h.undo(snap("B"), out);
+            check(h.canRedo(), "history: redo is available straight after an undo");
+            h.push(snap("C"));
+            check(! h.canRedo(), "history: a new action clears the redo branch");
+        }
+
+        // Depth is capped, and it's the OLDEST that goes.
+        {
+            History h;
+            for (int i = 0; i < History::maxDepth + 20; ++i)
+                h.push(snap(("s" + juce::String(i)).toRawUTF8()));
+            check(h.undoDepth() == History::maxDepth,
+                  "history: depth is capped at " + String(History::maxDepth)
+                  + " — got " + String(h.undoDepth()));
+
+            // The newest must still be there: dropping the recent end would make undo
+            // useless exactly when you need it.
+            Snapshot out;
+            h.undo(snap("now"), out);
+            check(out.grid == "s" + juce::String(History::maxDepth + 19),
+                  "history: the cap drops the OLDEST step, not the newest — got " + out.grid);
+        }
+
+        // A snapshot carries every piece of non-parameter state, or undo silently restores
+        // some of your work and not the rest.
+        {
+            Snapshot a, b;
+            a.grid = "g"; a.sliceOrder = "o"; a.sliceFx = "f"; a.rack = "r"; a.scenes = "s";
+            b = a;
+            check(a == b, "history: an identical snapshot compares equal");
+            b.sliceFx = "different";
+            check(! (a == b),
+                  "history: a difference in ANY field counts — per-slice settings included");
         }
     }
 

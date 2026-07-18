@@ -706,3 +706,49 @@ juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new Nebula2AudioProcessor();
 }
+
+Nebula2::Snapshot Nebula2AudioProcessor::captureSnapshot() const
+{
+    Nebula2::Snapshot s;
+    s.grid       = grid.toString();
+    s.sliceOrder = sampleLayer.sliceOrderToString();
+    s.sliceFx    = sampleLayer.sliceSettingsToString();
+    s.scenes     = Nebula2::morphScenesToString(morphScenes);
+    {
+        // The audio thread reads the patch, so take the same lock the editor does. This is
+        // the message thread, where waiting is allowed.
+        const juce::SpinLock::ScopedLockType sl(const_cast<juce::SpinLock&>(rackLock));
+        s.rack = rackGraph.toString();
+    }
+    return s;
+}
+
+void Nebula2AudioProcessor::applySnapshot(const Nebula2::Snapshot& s)
+{
+    grid.fromString(s.grid);
+    sampleLayer.sliceOrderFromString(s.sliceOrder);
+    sampleLayer.sliceSettingsFromString(s.sliceFx);
+    morphScenes = Nebula2::morphScenesFromString(s.scenes);
+    {
+        auto restored = Nebula2::RackGraph::fromString(s.rack);
+        const juce::SpinLock::ScopedLockType sl(rackLock);
+        rackGraph = restored;
+    }
+}
+
+bool Nebula2AudioProcessor::undoState()
+{
+    // `current` goes onto the redo stack, so undo is reversible rather than a one-way trip.
+    Nebula2::Snapshot out;
+    if (! history.undo(captureSnapshot(), out)) return false;
+    applySnapshot(out);
+    return true;
+}
+
+bool Nebula2AudioProcessor::redoState()
+{
+    Nebula2::Snapshot out;
+    if (! history.redo(captureSnapshot(), out)) return false;
+    applySnapshot(out);
+    return true;
+}
