@@ -163,6 +163,24 @@ on — a block-size change was queueing a load that regenerated an identical IR.
    isn't the test — it's that all of them call prepareToPlay repeatedly. Reading those sites
    together is what showed it was ONE race; I had reported it as two bugs before doing that.
 
+**MEASURED, and still open.** Two fixes in, a settled 45-run Windows batch gives **1 crash**,
+at "Restoring default layout" — the original site. Pre-fix was ~1 in 16 (2 in 31). So the
+rate fell from ~6.3% to ~2.2%, call it 3x, and the bug is NARROWED, NOT FIXED. Both fixes
+were real and both were justified by the stack; neither closed it.
+
+Why it can't be closed by deferring alone: `Convolution::prepare` drains a queue its own
+background thread also drains. ANY IR load followed by a prepare can race — deferring and
+skipping redundant loads shrink the window, they don't remove it. A bus-layout change calls
+prepareToPlay, so "Restoring default layout" is still a live opportunity.
+
+The next thing to try, and it needs care rather than haste: before `conv.prepare()`, wait for
+any in-flight load to land (bounded poll on `getCurrentIRSize()`, message thread, hard
+timeout). That removes the concurrency instead of reducing the chance of it. Get the timeout
+wrong and you hang the message thread, which is worse than the crash — so it wants writing
+carefully, not at the end of a long session. The alternative is dropping
+`juce::dsp::Convolution` for an algorithmic reverb, which removes the entire class of bug and
+is a much bigger change.
+
 **Method note.** I twice drew a firm conclusion from evidence that hadn't settled: once by
 counting a directory a batch was still writing into (the "failing" file appeared to move
 between reads), and once from "the test that used to crash now passes" — which was true, and
