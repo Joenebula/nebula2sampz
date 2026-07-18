@@ -112,13 +112,28 @@ namespace Nebula2::ParamID
 
     inline constexpr auto outLvl   = "out.lvl";    // float 0..100  %
 
-    // EQ band gains, dB. Bands are at fixed frequencies (35/110/420/1600/5200/9000).
-    inline constexpr auto eqGain0  = "eq.0";
-    inline constexpr auto eqGain1  = "eq.1";
-    inline constexpr auto eqGain2  = "eq.2";
-    inline constexpr auto eqGain3  = "eq.3";
-    inline constexpr auto eqGain4  = "eq.4";
-    inline constexpr auto eqGain5  = "eq.5";
+    // --- the parametric EQ: FIVE bands, each fully movable ---
+    //
+    // This replaces six gain-only bands pinned at 35/110/420/1600/5200/9000 Hz. Those could
+    // only cut or boost where the table said; you could not put a notch where the problem
+    // actually was, which is the whole point of a parametric EQ.
+    //
+    // BREAKING: the old "eq.0".."eq.5" IDs are gone. A session saved against them loses its
+    // EQ settings rather than silently mis-applying them, which is the safer of the two.
+    // Done now because nothing has shipped and the release identity is still unset - that
+    // change invalidates saved state anyway, so this rides along for free.
+    inline constexpr int numEqBands = 5;
+
+    // Band 0 is a low shelf, 1-3 are peaks, 4 is a high shelf: the standard five-band
+    // layout, so the ends lift or drop everything past them instead of only a bump.
+    inline constexpr const char* eqFreq[numEqBands] =
+        { "eq.0.f", "eq.1.f", "eq.2.f", "eq.3.f", "eq.4.f" };      // float 20..20000 Hz, log
+    inline constexpr const char* eqGain[numEqBands] =
+        { "eq.0.g", "eq.1.g", "eq.2.g", "eq.3.g", "eq.4.g" };      // float -18..18 dB
+    inline constexpr const char* eqQ[numEqBands] =
+        { "eq.0.q", "eq.1.q", "eq.2.q", "eq.3.q", "eq.4.q" };      // float 0.2..12
+    inline constexpr const char* eqOn[numEqBands] =
+        { "eq.0.on", "eq.1.on", "eq.2.on", "eq.3.on", "eq.4.on" }; // bool
 
     // --- One representative discrete/enum ---
     inline constexpr auto revChar  = "revChar";    // choice: room/hall/plate/cathedral/reverse

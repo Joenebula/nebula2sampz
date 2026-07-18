@@ -47,8 +47,12 @@ namespace Nebula2
         float echTime = 320.0f;   // ms
         float echFb = 55.0f, echWow = 25.0f, echMix = 45.0f;
 
-        // EQ — one gain per band, dB
-        std::array<float, 6> eqGain { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+        // EQ - five movable bands. Frequency and Q are dialled now, not table constants.
+        static constexpr int numEqBands = 5;
+        std::array<float, numEqBands> eqFreq { 60.0f, 250.0f, 1000.0f, 3500.0f, 10000.0f };
+        std::array<float, numEqBands> eqGain { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+        std::array<float, numEqBands> eqQ    { 0.71f, 1.1f, 1.1f, 1.1f, 0.71f };
+        std::array<bool,  numEqBands> eqOn   { true, true, true, true, true };
 
         // Main out
         float outLvl = 100.0f;    // %
@@ -123,7 +127,9 @@ namespace Nebula2
         std::size_t cachedTopologyHash = 0;
 
         // --- per-module state ---
-        std::array<juce::dsp::IIR::Filter<float>, 6> eqL, eqR;
+        // Sized from RackDials, not a literal 6. A stale literal here would leave filters
+        // for bands that no longer exist, or too few for the ones that do.
+        std::array<juce::dsp::IIR::Filter<float>, RackDials::numEqBands> eqL, eqR;
 
         juce::dsp::StateVariableTPTFilter<float> ladder;
 

@@ -2,6 +2,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "PluginProcessor.h"
+#include "EqCurve.h"
 
 // The modular rack's surface: modules with jacks, and cables you drag between them.
 //
@@ -40,6 +41,10 @@ private:
         Nebula2::ModuleId owner = Nebula2::ModuleId::count;
     };
     std::vector<Dial> dials;
+
+    // The EQ's control surface. Not a dial: five bands x four parameters is twenty knobs,
+    // and none of them would answer "where is this band and what is it doing".
+    EqCurve eqCurve;
 
     void addDial(juce::AudioProcessorValueTreeState&, Nebula2::ModuleId,
                  const juce::String& paramID, const juce::String& label);

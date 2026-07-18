@@ -62,6 +62,9 @@ namespace Nebula2
 
     // The rack params reachable through the header dropdowns rather than a dial.
     const std::vector<const char*>& rackDropdownParamIds();
+
+    // The EQ's params, reached by dragging nodes on the curve rather than by any dial.
+    const std::vector<const char*>& eqEditorParamIds();
     ModuleId moduleFromSlug(juce::StringRef slug) noexcept;   // ModuleId::count if unknown
 
     enum class Jack { in, out, cv };

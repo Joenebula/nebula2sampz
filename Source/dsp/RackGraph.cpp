@@ -17,10 +17,9 @@ namespace Nebula2
         const ModuleDef defs[numRackModules] =
         {
             { "src", "Beat Out",      "the mix",            false, true,  false },
-            // NOT the prototype's "drag nodes / wheel = Q / spectrum". That line describes
-            // the movable-band EQ, which is not built yet - printing it would be the UI
-            // advertising an interaction that does nothing. It changes when the bands land.
-            { "eq",  "Parametric EQ", "3-band",             true,  true,  false },
+            // This line was "3-band" until the draggable nodes actually existed, because
+            // the UI must not advertise an interaction that does nothing. They exist now.
+            { "eq",  "Parametric EQ", "drag nodes / wheel = Q", true, true, false },
             { "flt", "Ladder",        "filter / cv",        true,  true,  true  },
             { "phs", "Phaser",        "6-stage sweep",      true,  true,  false },
             { "cho", "Chorus",        "3-voice",            true,  true,  false },
@@ -88,15 +87,9 @@ namespace Nebula2
             { ModuleId::ech, ParamID::echWow,   "Wow"     },   // had no control
             { ModuleId::ech, ParamID::echMix,   "Mix"     },
 
-            // All SIX bands. 35Hz, 420Hz and 5.2k had no control at all, so the DSP read
-            // them every block and nothing could move them off 0 dB.
-            { ModuleId::eq,  ParamID::eqGain0,  "35"      },
-            { ModuleId::eq,  ParamID::eqGain1,  "110"     },
-            { ModuleId::eq,  ParamID::eqGain2,  "420"     },
-            { ModuleId::eq,  ParamID::eqGain3,  "1.6k"    },
-            { ModuleId::eq,  ParamID::eqGain4,  "5.2k"    },
-            { ModuleId::eq,  ParamID::eqGain5,  "9k"      },
-
+            // The EQ has NO dials. Its five bands are dragged on the response curve
+            // instead - see eqEditorParamIds(), which is how the reachability test knows
+            // those twenty parameters have a control.
             { ModuleId::out, ParamID::outLvl,   "Level"   },
         };
         return v;
@@ -106,6 +99,27 @@ namespace Nebula2
     const std::vector<const char*>& rackDropdownParamIds()
     {
         static const std::vector<const char*> v = { ParamID::fltType, ParamID::lfoShape };
+        return v;
+    }
+
+    // The EQ's parameters, reached by dragging nodes on the response curve rather than by
+    // any dial. Listed here so the reachability test can still account for every one of
+    // them: a bespoke editor is a control, but only if it genuinely covers what it claims.
+    // If a band is added to the DSP and not to EqCurve, this list is where it fails.
+    const std::vector<const char*>& eqEditorParamIds()
+    {
+        static const std::vector<const char*> v = []
+        {
+            std::vector<const char*> ids;
+            for (int i = 0; i < ParamID::numEqBands; ++i)
+            {
+                ids.push_back (ParamID::eqFreq[i]);
+                ids.push_back (ParamID::eqGain[i]);
+                ids.push_back (ParamID::eqQ[i]);
+                ids.push_back (ParamID::eqOn[i]);
+            }
+            return ids;
+        }();
         return v;
     }
 
@@ -123,8 +137,6 @@ namespace Nebula2
             ParamID::vowMorph, ParamID::vowSharp, ParamID::vowMix,
             ParamID::echTime, ParamID::echFb,    ParamID::echWow, ParamID::echMix,
             ParamID::outLvl,
-            ParamID::eqGain0, ParamID::eqGain1,  ParamID::eqGain2,
-            ParamID::eqGain3, ParamID::eqGain4,  ParamID::eqGain5,
         };
         return v;
     }

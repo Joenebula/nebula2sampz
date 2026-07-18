@@ -63,6 +63,12 @@ Nebula2AudioProcessor::Nebula2AudioProcessor()
         jassert(ids.size() == rackDialParams.size());
         for (size_t i = 0; i < rackDialParams.size() && i < ids.size(); ++i)
             rackDialParams[i] = apvts.getRawParameterValue(ids[i]);
+
+        // Same trick for the EQ, in eqEditorParamIds order (freq, gain, Q, on per band).
+        const auto& eqIds = Nebula2::eqEditorParamIds();
+        jassert(eqIds.size() == eqParams.size());
+        for (size_t i = 0; i < eqParams.size() && i < eqIds.size(); ++i)
+            eqParams[i] = apvts.getRawParameterValue(eqIds[i]);
     }
 }
 
@@ -101,8 +107,24 @@ void Nebula2AudioProcessor::readRackDials() noexcept
     rackDials.echWow   = v(24, 37.0f);
     rackDials.echMix   = v(25, 50.0f);
     rackDials.outLvl   = v(26, 100.0f);
-    for (int i = 0; i < 6; ++i)
-        rackDials.eqGain[(size_t) i] = v(27 + i, 0.0f);
+
+    // The EQ is cached separately: four parameters per band rather than one, and it is a
+    // bespoke editor rather than a row of dials, so it does not belong in the dial list.
+    for (int i = 0; i < Nebula2::RackDials::numEqBands; ++i)
+    {
+        auto e = [this](int k, float fallback) noexcept
+        {
+            auto* p = eqParams[(size_t) k];
+            return p != nullptr ? p->load() : fallback;
+        };
+        const int b = i * 4;
+        rackDials.eqFreq[(size_t) i] = e(b + 0, 1000.0f);
+        rackDials.eqGain[(size_t) i] = e(b + 1, 0.0f);
+        rackDials.eqQ   [(size_t) i] = e(b + 2, 1.0f);
+        // A bool parameter is stored as 0/1 in a float. >= 0.5 rather than != 0 so a
+        // host that hands back 0.999 still reads as on.
+        rackDials.eqOn  [(size_t) i] = e(b + 3, 1.0f) >= 0.5f;
+    }
 }
 
 int Nebula2AudioProcessor::gridStepsFromChoice(int choiceIndex) noexcept

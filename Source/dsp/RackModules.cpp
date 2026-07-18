@@ -15,18 +15,16 @@ namespace Nebula2
             { "U", { 300.0f,  870.0f, 2240.0f } },
         };
 
-        // The EQ's fixed band layout, from the prototype. Only the gains are dialled.
-        struct EqBand { int type; float f, q; };   // type: 0 peak, 1 lowshelf, 2 highshelf
-        const EqBand eqBands[6] =
+        // Band SHAPE only. Frequency, gain and Q are all dialled now, so the table that
+        // pinned each band to a fixed Hz is gone: the point of a parametric EQ is putting a
+        // band where the problem actually is, and a fixed table cannot do that.
+        //
+        // 0 = peak, 1 = low shelf, 2 = high shelf. The two ends are shelves so they lift or
+        // drop everything past them, rather than making a bump with nothing beyond it.
+        constexpr int eqBandType (int i) noexcept
         {
-            { 1,   35.0f, 0.71f },     // the prototype's band 0 is a highpass, off by default;
-                                       // as a shelf at unity it is the same "does nothing".
-            { 1,  110.0f, 0.71f },
-            { 0,  420.0f, 1.10f },
-            { 0, 1600.0f, 1.10f },
-            { 0, 5200.0f, 1.10f },
-            { 2, 9000.0f, 0.71f },
-        };
+            return i == 0 ? 1 : (i == RackDials::numEqBands - 1 ? 2 : 0);
+        }
 
         float lfoShapeValue(int shape, double phase) noexcept
         {
@@ -87,8 +85,8 @@ namespace Nebula2
 
         juce::dsp::ProcessSpec mono { spec.sampleRate, spec.maximumBlockSize, 1 };
 
-        for (int i = 0; i < 6; ++i) { eqL[i].prepare (mono); eqR[i].prepare (mono); }
-        for (int i = 0; i < 6; ++i) { apL[i].prepare (mono); apR[i].prepare (mono); }
+        for (int i = 0; i < RackDials::numEqBands; ++i) { eqL[i].prepare (mono); eqR[i].prepare (mono); }
+        for (int i = 0; i < 6; ++i) { apL[i].prepare (mono); apR[i].prepare (mono); }   // phaser: 6 stages
         for (int i = 0; i < 3; ++i) { vowL[i].prepare (mono); vowR[i].prepare (mono); }
 
         // Prime every filter's coefficient storage HERE, on the message thread. A default
@@ -98,7 +96,7 @@ namespace Nebula2
         // every later assign is a pure overwrite.
         {
             const auto seed = juce::dsp::IIR::ArrayCoefficients<float>::makeAllPass (sampleRate, 1000.0f, 0.7f);
-            for (int i = 0; i < 6; ++i) { *eqL[i].coefficients = seed;  *eqR[i].coefficients = seed; }
+            for (int i = 0; i < RackDials::numEqBands; ++i) { *eqL[i].coefficients = seed;  *eqR[i].coefficients = seed; }
             for (int i = 0; i < 6; ++i) { *apL[i].coefficients = seed;  *apR[i].coefficients = seed; }
             for (int i = 0; i < 3; ++i) { *vowL[i].coefficients = seed; *vowR[i].coefficients = seed; }
         }
@@ -130,7 +128,8 @@ namespace Nebula2
         scratch.clear();
         dryScratch.clear();
 
-        for (int i = 0; i < 6; ++i) { eqL[i].reset(); eqR[i].reset(); apL[i].reset(); apR[i].reset(); }
+        for (int i = 0; i < RackDials::numEqBands; ++i) { eqL[i].reset(); eqR[i].reset(); }
+        for (int i = 0; i < 6; ++i) { apL[i].reset(); apR[i].reset(); }   // phaser: 6 stages
         for (int i = 0; i < 3; ++i) { vowL[i].reset(); vowR[i].reset(); }
         ladder.reset();
         choDelay.reset(); cmbDelay.reset(); echDelay.reset();
@@ -157,20 +156,31 @@ namespace Nebula2
         {
             case ModuleId::eq:
             {
-                for (int i = 0; i < 6; ++i)
+                for (int i = 0; i < RackDials::numEqBands; ++i)
                 {
-                    const auto& b = eqBands[i];
+                    // Off means off, and it is checked FIRST: a band the user switched out
+                    // must not colour the sound however its other three dials are set.
+                    if (! d.eqOn[(size_t) i]) continue;
+
                     const float g = juce::jlimit (-18.0f, 18.0f, d.eqGain[(size_t) i]);
                     // A band at 0dB is a no-op. Zero means zero: don't run a filter that
                     // can only add phase shift and CPU for nothing.
                     if (std::abs (g) < 0.01f) continue;
 
+                    // Clamped below Nyquist. The frequency is user-movable now, so a project
+                    // opened at a lower sample rate can ask for a band above half the rate,
+                    // and the coefficient maths blows up rather than politely declining.
+                    const float f = juce::jlimit (20.0f, (float) (sampleRate * 0.45),
+                                                  d.eqFreq[(size_t) i]);
+                    const float q = juce::jlimit (0.2f, 12.0f, d.eqQ[(size_t) i]);
+                    const int type = eqBandType (i);
+
                     const float gain = juce::Decibels::decibelsToGain (g);
-                    const auto coeffs = b.type == 1
-                        ? juce::dsp::IIR::ArrayCoefficients<float>::makeLowShelf  (sampleRate, b.f, b.q, gain)
-                        : b.type == 2
-                        ? juce::dsp::IIR::ArrayCoefficients<float>::makeHighShelf (sampleRate, b.f, b.q, gain)
-                        : juce::dsp::IIR::ArrayCoefficients<float>::makePeakFilter (sampleRate, b.f, b.q, gain);
+                    const auto coeffs = type == 1
+                        ? juce::dsp::IIR::ArrayCoefficients<float>::makeLowShelf  (sampleRate, f, q, gain)
+                        : type == 2
+                        ? juce::dsp::IIR::ArrayCoefficients<float>::makeHighShelf (sampleRate, f, q, gain)
+                        : juce::dsp::IIR::ArrayCoefficients<float>::makePeakFilter (sampleRate, f, q, gain);
 
                     *eqL[(size_t) i].coefficients = coeffs;
                     *eqR[(size_t) i].coefficients = coeffs;

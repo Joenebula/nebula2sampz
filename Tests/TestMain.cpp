@@ -11,6 +11,7 @@
 #include "../Source/Presets.h"
 #include "../Source/MasterProcessor.h"
 #include "../Source/Transport.h"
+#include "../Source/dsp/EqCurveMath.h"
 #include "../Source/dsp/ParametricEq.h"
 #include "../Source/dsp/Saturator.h"
 #include "../Source/dsp/Colour.h"
@@ -1304,6 +1305,65 @@ int main()
             check(layer.activeVoiceCount() > 0, "sample: the root plays slice 1");
         }
 
+        // --- the parametric EQ ---
+        {
+            using namespace Nebula2;
+
+            // Frequency maps LOGARITHMICALLY. On a linear axis the bottom two decades of a
+            // 20Hz-20kHz display share the first 5% of the width, and every kick and bass
+            // decision happens in a handful of pixels.
+            check (std::abs (eqFreqToNorm (20.0f)) < 0.001f, "eq: 20 Hz sits at the left edge");
+            check (std::abs (eqFreqToNorm (20000.0f) - 1.0f) < 0.001f, "eq: 20 kHz sits at the right edge");
+            check (std::abs (eqFreqToNorm (632.5f) - 0.5f) < 0.01f,
+                   "eq: the MIDDLE of the display is ~630 Hz, not 10 kHz (log, not linear)");
+
+            // Round trip, or a dragged node drifts away from the cursor.
+            float worst = 0.0f;
+            for (int i = 0; i <= 100; ++i)
+            {
+                const float t = (float) i / 100.0f;
+                worst = juce::jmax (worst, std::abs (eqFreqToNorm (eqNormToFreq (t)) - t));
+            }
+            check (worst < 0.001f, "eq: freq <-> x round-trips, so a node stays under the cursor");
+
+            // Gain: +18 at the TOP. Getting this inverted would make dragging up cut.
+            check (eqGainToNorm (18.0f) < eqGainToNorm (-18.0f),
+                   "eq: boost is ABOVE cut on screen");
+            check (std::abs (eqGainToNorm (0.0f) - 0.5f) < 0.001f, "eq: 0 dB is the centre line");
+            check (std::abs (eqNormToGain (eqGainToNorm (7.5f)) - 7.5f) < 0.01f,
+                   "eq: gain <-> y round-trips");
+
+            // The drawn curve must BE the filter. A peak has to peak at its own centre and
+            // fall away either side, or the picture is decoration sitting near the truth.
+            const float atC = eqBandResponseDb (0, 1000.0f, 1.0f, 12.0f, 1000.0f);
+            check (std::abs (atC - 12.0f) < 0.01f, "eq: a peak gives its full gain at its centre");
+            check (eqBandResponseDb (0, 1000.0f, 1.0f, 12.0f, 4000.0f) < atC * 0.5f,
+                   "eq: a peak falls away two octaves up");
+            check (eqBandResponseDb (0, 1000.0f, 1.0f, 12.0f, 250.0f) < atC * 0.5f,
+                   "eq: and two octaves down");
+
+            // Q must MEAN something: higher Q = narrower.
+            const float wide   = eqBandResponseDb (0, 1000.0f, 0.5f, 12.0f, 2000.0f);
+            const float narrow = eqBandResponseDb (0, 1000.0f, 8.0f, 12.0f, 2000.0f);
+            check (narrow < wide, "eq: raising Q narrows the band");
+
+            // Shelves lift the RIGHT side. A low shelf that boosted the highs would be the
+            // most confusing possible bug: the sound and the picture would both be wrong.
+            check (eqBandResponseDb (1, 200.0f, 0.71f, 12.0f, 50.0f)
+                 > eqBandResponseDb (1, 200.0f, 0.71f, 12.0f, 5000.0f),
+                   "eq: a LOW shelf lifts below its corner");
+            check (eqBandResponseDb (2, 5000.0f, 0.71f, 12.0f, 15000.0f)
+                 > eqBandResponseDb (2, 5000.0f, 0.71f, 12.0f, 200.0f),
+                   "eq: a HIGH shelf lifts above its corner");
+
+            // A band at 0 dB is silent whatever else it is set to.
+            check (std::abs (eqBandResponseDb (0, 1000.0f, 4.0f, 0.0f, 1000.0f)) < 0.001f,
+                   "eq: a band at 0 dB does nothing");
+
+            check (eqFormatHz (180.0f) == "180 Hz", "eq: sub-kHz reads in Hz");
+            check (eqFormatHz (1600.0f) == "1.60 kHz", "eq: kHz reads in kHz");
+        }
+
         // The dice must never come back empty-handed. It used to roll only across lanes the
         // user had already turned up, so on a fresh Init it had nothing to work with and
         // put up a dialog telling you to go to another page. It now picks the lanes itself.
@@ -1384,6 +1444,25 @@ int main()
             // ...and nothing on the panel points at a parameter that doesn't exist.
             check(rackDialDefs().size() + rackDropdownParamIds().size() == rackDspParamIds().size(),
                   "rack: the dial table and the DSP list are the same size (no strays either way)");
+
+            // The EQ's twenty parameters have no dial at all - they are dragged on the
+            // response curve. That is a control, but only if the editor really covers every
+            // one of them, so the claim is written down and checked rather than assumed.
+            check((int) eqEditorParamIds().size() == ParamID::numEqBands * 4,
+                  "eq: the curve editor accounts for freq, gain, Q and on for every band");
+
+            StringArray missingEq;
+            for (int i = 0; i < ParamID::numEqBands; ++i)
+                for (auto* id : { ParamID::eqFreq[i], ParamID::eqGain[i],
+                                  ParamID::eqQ[i], ParamID::eqOn[i] })
+                {
+                    bool found = false;
+                    for (auto* c : eqEditorParamIds()) if (String(c) == String(id)) found = true;
+                    if (! found) missingEq.add(String(id));
+                }
+            check(missingEq.isEmpty(),
+                  "eq: no band parameter is left without a control - missing: "
+                      + missingEq.joinIntoString(", "));
         }
 
         // The PREVIEW button must describe what it will do, in all four states. It used to
@@ -2279,6 +2358,63 @@ int main()
                   "rack folder: preGain defaults to 1 — the no-CV path is unchanged");
         }
 
+        // --- the EQ's per-band on/off, in the AUDIO path ---
+        //
+        // The switch is the user's own requirement, and a switch that only changes the
+        // picture is the worst version of this whole bug class. So this drives real audio
+        // through the engine rather than asking the display what it thinks.
+        {
+            auto rms = [](const juce::AudioBuffer<float>& b)
+            {
+                double s = 0.0;
+                for (int i = 0; i < b.getNumSamples(); ++i)
+                    s += (double) b.getSample(0, i) * b.getSample(0, i);
+                return std::sqrt(s / juce::jmax(1, b.getNumSamples()));
+            };
+
+            RackGraph g;
+            g.addCable(P("src:out"), P("eq:in"));
+            g.addCable(P("eq:out"),  P("out:in"));
+
+            // Band 2 is a peak. Park it right on the tone and boost hard.
+            RackDials on;
+            on.eqFreq[2] = 440.0f; on.eqGain[2] = 18.0f; on.eqQ[2] = 1.0f; on.eqOn[2] = true;
+            RackDials off = on; off.eqOn[2] = false;
+
+            RackEngine ea; ea.prepare(spec); ea.reset();
+            RackEngine eb; eb.prepare(spec); eb.reset();
+            auto ba = makeTone(440.0f), bb = makeTone(440.0f);
+            ea.process(ba, g, on);
+            eb.process(bb, g, off);
+
+            check(rms(ba) > rms(bb) * 1.2,
+                  "eq: a band switched ON boosts its own frequency");
+
+            // The baseline is the SAME rack path with that band at 0 dB, not the raw tone.
+            // The rack also applies the output level and the limiter, so comparing against
+            // the untouched input would fail for reasons that have nothing to do with the
+            // switch - which is exactly how this assertion first failed.
+            RackDials flat = on; flat.eqGain[2] = 0.0f;
+            RackEngine ed; ed.prepare(spec); ed.reset();
+            auto bd = makeTone(440.0f);
+            ed.process(bd, g, flat);
+
+            bool identical = true;
+            for (int i = 0; i < block; ++i)
+                if (bb.getSample(0, i) != bd.getSample(0, i)) identical = false;
+            check(identical,
+                  "eq: a band switched OFF is bit-identical to that band doing nothing");
+
+            // ...and moving the band AWAY from the tone must stop it boosting, or the
+            // frequency dial is decoration.
+            RackDials moved = on; moved.eqFreq[2] = 8000.0f;
+            RackEngine ec; ec.prepare(spec); ec.reset();
+            auto bc = makeTone(440.0f);
+            ec.process(bc, g, moved);
+            check(rms(bc) < rms(ba) * 0.9,
+                  "eq: moving a band off the tone stops it boosting - frequency is real");
+        }
+
         // --- an unpatched rack does NOT silence the track ---
         {
             RackEngine e; e.prepare(spec); e.reset();
@@ -2519,19 +2655,26 @@ int main()
             ParamID::vowMorph, ParamID::vowSharp, ParamID::vowMix,
             ParamID::echTime, ParamID::echFb, ParamID::echWow, ParamID::echMix,
             ParamID::outLvl,
-            ParamID::eqGain0, ParamID::eqGain1, ParamID::eqGain2,
-            ParamID::eqGain3, ParamID::eqGain4, ParamID::eqGain5,
         };
         bool allPresent = true;
         String missing;
         for (const auto* id : dialIDs)
             if (proc.apvts.getParameter(id) == nullptr) { allPresent = false; missing = id; }
+
+        // The EQ's twenty: five bands x freq/gain/Q/on. Published like any other, so the
+        // host sees and can automate every one of them even though the editor is a curve.
+        for (int i = 0; i < ParamID::numEqBands; ++i)
+            for (const auto* id : { ParamID::eqFreq[i], ParamID::eqGain[i],
+                                    ParamID::eqQ[i], ParamID::eqOn[i] })
+                if (proc.apvts.getParameter(id) == nullptr) { allPresent = false; missing = id; }
         check(allPresent, "rack wiring: every rack dial is a real host parameter"
                           + (missing.isEmpty() ? String() : " (missing: " + missing + ")"));
 
-        // The engine reads 33 dial params; the processor caches 33. If those ever disagree
-        // the tail of the list silently reads its fallback instead of your knob.
-        check((sizeof(dialIDs) / sizeof(dialIDs[0])) == 34,   // 33 dials + rackOn
+        // The engine reads 27 dial params; the processor caches 27. If those ever disagree
+        // the tail of the list silently reads its fallback instead of your knob. It was 33
+        // when the EQ was six gain-only bands in this same array; the EQ's twenty are cached
+        // separately now, so this list shrank by six rather than growing by fourteen.
+        check((sizeof(dialIDs) / sizeof(dialIDs[0])) == 28,   // 27 dials + rackOn
               "rack wiring: the dial list is the size the processor expects");
 
         // Defaults must match the engine's, or a fresh rack sounds different from a
@@ -5306,7 +5449,13 @@ int main()
             "vow.morph", "vow.sharp", "vow.mix",
             "ech.time", "ech.fb", "ech.wow", "ech.mix",
             "out.lvl",
-            "eq.0", "eq.1", "eq.2", "eq.3", "eq.4", "eq.5",
+            // Five parametric bands: freq, gain, Q and on each. These replaced "eq.0".."eq.5",
+            // six gain-only bands pinned to fixed frequencies.
+            "eq.0.f", "eq.0.g", "eq.0.q", "eq.0.on",
+            "eq.1.f", "eq.1.g", "eq.1.q", "eq.1.on",
+            "eq.2.f", "eq.2.g", "eq.2.q", "eq.2.on",
+            "eq.3.f", "eq.3.g", "eq.3.q", "eq.3.on",
+            "eq.4.f", "eq.4.g", "eq.4.q", "eq.4.on",
         };
 
         StringArray actual;

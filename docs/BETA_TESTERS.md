@@ -83,6 +83,11 @@ fresh corners — that's also the only way to see what it's blending between.
 **RACK** — patch modules together. **Randomise** builds a chain that's guaranteed to make
 sound.
 
+- The **Parametric EQ** has five movable bands — drag a node to set its frequency and gain,
+  **mouse wheel** over one for Q, and **click** a node to switch that band off. The
+  frequency is shown while you drag it. Band 1 is a low shelf, 5 is a high shelf, 2–4 are
+  peaks. An off band shows as a hollow ring so you can still find it.
+
 ---
 
 ## Things worth knowing

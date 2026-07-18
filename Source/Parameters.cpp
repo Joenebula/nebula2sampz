@@ -241,12 +241,46 @@ namespace Nebula2
 
         layout.add(std::make_unique<APF>(PID{ ParamID::outLvl, version }, "Rack Out", pct(), 100.0f));
 
+        // --- the parametric EQ: five movable bands ---
+        //
+        // Frequency is a SKEWED range, not linear. 20 Hz to 20 kHz linearly would put every
+        // musically useful move in the last sliver of the control: half the travel would be
+        // above 10 kHz, where almost nothing needs adjusting. The midpoint skew puts ~1 kHz
+        // in the middle, which is how every EQ people already know behaves.
+        const auto hz = []
+        {
+            auto r = juce::NormalisableRange<float>(20.0f, 20000.0f, 1.0f);
+            r.setSkewForCentre(1000.0f);
+            return r;
+        };
         const auto dB = [] { return juce::NormalisableRange<float>(-18.0f, 18.0f, 0.1f); };
-        const char* eqIDs[6]   = { ParamID::eqGain0, ParamID::eqGain1, ParamID::eqGain2,
-                                   ParamID::eqGain3, ParamID::eqGain4, ParamID::eqGain5 };
-        const char* eqNames[6] = { "EQ 35Hz", "EQ 110Hz", "EQ 420Hz", "EQ 1.6k", "EQ 5.2k", "EQ 9k" };
-        for (int i = 0; i < 6; ++i)
-            layout.add(std::make_unique<APF>(PID{ eqIDs[i], version }, eqNames[i], dB(), 0.0f));
+        const auto qr = []
+        {
+            auto r = juce::NormalisableRange<float>(0.2f, 12.0f, 0.01f);
+            r.setSkewForCentre(1.0f);      // same reason: wide-to-narrow, not a linear crawl
+            return r;
+        };
+
+        // Defaults spread across the spectrum so the five nodes start somewhere sensible
+        // rather than stacked on top of each other.
+        const float defFreq[ParamID::numEqBands] = { 60.0f, 250.0f, 1000.0f, 3500.0f, 10000.0f };
+        const char* bandName[ParamID::numEqBands] =
+            { "EQ 1 Low Shelf", "EQ 2 Peak", "EQ 3 Peak", "EQ 4 Peak", "EQ 5 High Shelf" };
+
+        for (int i = 0; i < ParamID::numEqBands; ++i)
+        {
+            const juce::String n (bandName[i]);
+            layout.add(std::make_unique<APF>(PID{ ParamID::eqFreq[i], version },
+                                            n + " Freq", hz(), defFreq[i]));
+            layout.add(std::make_unique<APF>(PID{ ParamID::eqGain[i], version },
+                                            n + " Gain", dB(), 0.0f));
+            layout.add(std::make_unique<APF>(PID{ ParamID::eqQ[i], version },
+                                            n + " Q", qr(), i == 0 || i == 4 ? 0.71f : 1.1f));
+            // Bands start ON. A band at 0 dB is already inaudible, so defaulting them off
+            // would mean two clicks to hear anything and no visible difference in between.
+            layout.add(std::make_unique<juce::AudioParameterBool>(
+                PID{ ParamID::eqOn[i], version }, n + " On", true));
+        }
 
         // --- Discrete/enum (representative) ---
         layout.add(std::make_unique<APC>(

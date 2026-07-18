@@ -199,7 +199,10 @@ private:
     juce::SpinLock      rackLock;
     Nebula2::RackDials  rackDials;            // audio thread only; refilled from params each block
     std::atomic<float>* rackOnParam { nullptr };
-    std::array<std::atomic<float>*, 33> rackDialParams {};   // cached, in readRackDials() order
+    std::array<std::atomic<float>*, 27> rackDialParams {};   // cached, in readRackDials() order
+
+    // The EQ's five bands x (freq, gain, Q, on), cached in eqEditorParamIds() order.
+    std::array<std::atomic<float>*, (size_t) Nebula2::RackDials::numEqBands * 4> eqParams {};
     void readRackDials() noexcept;
 
     Nebula2::MasterProcessor masterProcessor;

@@ -52,6 +52,7 @@ target_sources(Nebula2 PRIVATE
     Source/MorphPadView.cpp
     Source/MorphPadView.h
     Source/RackView.cpp
+    Source/EqCurve.cpp
     Source/RackView.h
     Source/Nebula2LookAndFeel.cpp
     Source/Nebula2LookAndFeel.h

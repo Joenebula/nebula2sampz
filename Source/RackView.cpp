@@ -38,10 +38,11 @@ namespace
     }
 }
 
-RackView::RackView(Nebula2AudioProcessor& p) : processorRef(p)
+RackView::RackView(Nebula2AudioProcessor& p) : processorRef(p), eqCurve(p)
 {
     startTimerHz(24);
     buildModuleDials(p.getValueTreeState());
+    addAndMakeVisible(eqCurve);
 }
 
 void RackView::addDial(juce::AudioProcessorValueTreeState& apvts, ModuleId owner,
@@ -132,6 +133,14 @@ void RackView::rebuildLayout()
             mine[i]->slider->setBounds (cell.toNearestInt());
         }
     }
+
+    // The EQ has no dials at all - its whole control surface is the curve, which fills the
+    // module body between the jack columns.
+    eqCurve.setBounds (modBounds[(int) ModuleId::eq]
+                           .reduced (18.0f, 0.0f)
+                           .withTrimmedTop (26.0f)      // clear of the name and its subtitle
+                           .withTrimmedBottom (4.0f)
+                           .toNearestInt());
 }
 
 juce::Point<float> RackView::posOf(const Port& port) const
