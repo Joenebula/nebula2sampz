@@ -155,6 +155,8 @@ private:
                                                sliceModeAttachment, sliceCountAttachment;
     Knob sensitivity;
 
+    juce::TextButton colourRandButton { "Randomise" };
+    juce::TextButton spaceRandButton { "Randomise" };
     juce::ToggleButton spaceOnButton { "Space On" };
     std::unique_ptr<APVTS::ButtonAttachment> spaceOnAttachment;
 

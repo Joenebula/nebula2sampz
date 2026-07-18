@@ -2,6 +2,7 @@
 #include "ParameterIDs.h"
 #include "GridPresets.h"
 #include "dsp/SliceAnalysis.h"
+#include "Randomise.h"
 
 namespace
 {
@@ -55,6 +56,20 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
              resoKeyAttachment);
     addCombo(resoScaleBox, resoScaleLabel, Nebula2::ParamID::resoScale, "Scale",
              { "Minor", "Major", "Phrygian", "Fifths" }, resoScaleAttachment);
+
+    colourRandButton.onClick = [this]
+    {
+        juce::Random rng;
+        Nebula2::applyRolls(processorRef.getValueTreeState(), Nebula2::randomColourValues(rng));
+    };
+    content.addAndMakeVisible(colourRandButton);
+
+    spaceRandButton.onClick = [this]
+    {
+        juce::Random rng;
+        Nebula2::applyRolls(processorRef.getValueTreeState(), Nebula2::randomSpaceValues(rng));
+    };
+    content.addAndMakeVisible(spaceRandButton);
 
     addCombo(charBox, charLabel, Nebula2::ParamID::driveChar, "Character",
              { "Tube", "Fuzz", "Fold" }, charAttachment);
@@ -522,7 +537,8 @@ void Nebula2AudioProcessorEditor::showPage(Page p)
         &sliceModeBox, &sliceCountBox, &sliceModeLabel, &sliceCountLabel,
         &charBox, &charLabel, &revCharBox, &revCharLabel,
         &dlySyncBox, &dlySyncLabel, &dlyModeBox, &dlyModeLabel, &fxOnButton, &limiterButton, &spaceOnButton,
-        &resoKeyBox, &resoKeyLabel, &resoScaleBox, &resoScaleLabel
+        &resoKeyBox, &resoKeyLabel, &resoScaleBox, &resoScaleLabel,
+        &colourRandButton, &spaceRandButton
     };
     for (auto* c : playChildren) c->setVisible(play);
 
@@ -988,6 +1004,8 @@ void Nebula2AudioProcessorEditor::layoutContent()
     cRow.removeFromLeft(16);
     fxOnButton.setBounds(cRow.removeFromLeft(90));
     limiterButton.setBounds(cRow.removeFromLeft(90));
+    cRow.removeFromLeft(10);
+    colourRandButton.setBounds(cRow.removeFromLeft(96));
 
     // --- Space panel: REVERB section over DELAY section ---
     body.removeFromTop(8);
@@ -1031,4 +1049,6 @@ void Nebula2AudioProcessorEditor::layoutContent()
     dlyRight.removeFromTop(6);
     auto dRowB = dlyRight.removeFromTop(24);
     spaceOnButton.setBounds(dRowB.removeFromLeft(110));
+    dRowB.removeFromLeft(10);
+    spaceRandButton.setBounds(dRowB.removeFromLeft(96));
 }

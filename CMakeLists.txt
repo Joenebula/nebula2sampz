@@ -49,6 +49,8 @@ target_sources(Nebula2 PRIVATE
     Source/Parameters.cpp
     Source/Parameters.h
     Source/ParameterIDs.h
+    Source/Randomise.cpp
+    Source/Randomise.h
     Source/GridPresets.cpp
     Source/GridPresets.h
     Source/Presets.cpp
@@ -137,6 +139,8 @@ target_sources(Nebula2Tests PRIVATE
     Source/Parameters.cpp
     Source/Parameters.h
     Source/ParameterIDs.h
+    Source/Randomise.cpp
+    Source/Randomise.h
     Source/GridPresets.cpp
     Source/GridPresets.h
     Source/Presets.cpp

@@ -27,6 +27,7 @@
 #include "../Source/dsp/StepFx.h"
 #include "../Source/dsp/Resonator.h"
 #include "../Source/GridPresets.h"
+#include "../Source/Randomise.h"
 #include "../Source/dsp/SliceAnalysis.h"
 #include "../Source/dsp/MorphPad.h"
 #include "../Source/dsp/MorphEngine.h"
@@ -3473,6 +3474,98 @@ int main()
             const int n = watch.count();
             check(n == 0, "rt: StepFx allocates nothing"
                           + (n == 0 ? String() : " — got " + String(n)));
+        }
+    }
+
+    // ---- Colour / Space dice ----
+    {
+        using namespace Nebula2;
+        DummyProcessor proc;
+
+        // Every id a roll names must be a REAL parameter. A typo here would silently roll
+        // nothing at all, and the button would look like it worked.
+        {
+            juce::Random rng(1);
+            StringArray missing;
+            for (const auto& r : randomColourValues(rng))
+                if (proc.apvts.getParameter(r.id) == nullptr) missing.add(r.id);
+            for (const auto& r : randomSpaceValues(rng))
+                if (proc.apvts.getParameter(r.id) == nullptr) missing.add(r.id);
+            check(missing.isEmpty(),
+                  "dice: every rolled id is a real parameter"
+                  + (missing.isEmpty() ? String() : " (missing: " + missing.joinIntoString(", ") + ")"));
+        }
+
+        // Every rolled value must sit inside its parameter's own range. This is the check
+        // that catches a percentage rolled into a 0..1 control or a choice index off the
+        // end of its list — both of which land silently at a limit.
+        {
+            StringArray outOfRange;
+            for (int t = 0; t < 300; ++t)
+            {
+                juce::Random rng(2000 + t);
+                std::vector<ParamRoll> all = randomColourValues(rng);
+                for (const auto& r : randomSpaceValues(rng)) all.push_back(r);
+
+                for (const auto& r : all)
+                {
+                    auto* p = proc.apvts.getParameter(r.id);
+                    if (p == nullptr) continue;
+                    const float norm = p->convertTo0to1(r.value);
+                    if (norm < 0.0f || norm > 1.0f || std::isnan(norm))
+                        outOfRange.addIfNotAlreadyThere(r.id);
+                }
+            }
+            check(outOfRange.isEmpty(),
+                  "dice: every rolled value is inside its parameter's range"
+                  + (outOfRange.isEmpty() ? String() : " (bad: " + outOfRange.joinIntoString(", ") + ")"));
+        }
+
+        // A roll that leaves the block switched OFF makes no sound, which reads as a broken
+        // button however good the values are.
+        {
+            juce::Random rng(5);
+            bool colourOn = false, spaceOn = false;
+            for (const auto& r : randomColourValues(rng)) if (String(r.id) == ParamID::fxOn)    colourOn = r.value > 0.5f;
+            for (const auto& r : randomSpaceValues(rng))  if (String(r.id) == ParamID::spaceOn) spaceOn  = r.value > 0.5f;
+            check(colourOn, "dice: a colour roll switches the block on");
+            check(spaceOn,  "dice: a space roll switches the block on");
+        }
+
+        // Rolls must actually vary, and a seed must reproduce one.
+        {
+            juce::Random a(9), b(9), c(10);
+            const auto r1 = randomColourValues(a);
+            const auto r2 = randomColourValues(b);
+            const auto r3 = randomColourValues(c);
+            bool same = r1.size() == r2.size();
+            for (size_t i = 0; i < r1.size() && same; ++i) if (r1[i].value != r2[i].value) same = false;
+            check(same, "dice: a seed reproduces its colour roll");
+
+            bool differs = false;
+            for (size_t i = 0; i < r1.size() && i < r3.size(); ++i)
+                if (r1[i].value != r3[i].value) differs = true;
+            check(differs, "dice: a different seed rolls different values");
+        }
+
+        // ...and applying a roll must actually MOVE the parameters, not just return values.
+        {
+            juce::Random rng(31);
+            auto* drive = proc.apvts.getParameter(ParamID::drive);
+            const float before = drive != nullptr ? drive->getValue() : -1.0f;
+            applyRolls(proc.apvts, randomColourValues(rng));
+            const float after = drive != nullptr ? drive->getValue() : -1.0f;
+            check(drive != nullptr && after != before,
+                  "dice: applying a roll changes the parameters");
+
+            // Drive rolls into 20..75, so after applying it must read back in that band.
+            // This is what catches a raw percentage passed where a normalised value belongs
+            // — that would clamp to 1.0 and pin every control at maximum.
+            auto* rp = dynamic_cast<RangedAudioParameter*>(drive);
+            const float real = rp != nullptr ? rp->convertFrom0to1(after) : -1.0f;
+            check(real >= 19.0f && real <= 76.0f,
+                  "dice: an applied value lands where it was rolled, not at the limit — "
+                  + String(real, 1));
         }
     }
 
