@@ -82,6 +82,7 @@ namespace Nebula2
                 // Choice controls.
                 ParamID::driveChar, ParamID::revChar, ParamID::dlySync, ParamID::dlyMode,
                 ParamID::resoKey, ParamID::resoScale,
+                ParamID::smpVol, ParamID::drmVol, ParamID::soloLayer,
             };
             // ...plus everything the editor loops over, which therefore cannot fall out of step.
             for (const auto& e : extraColourControls()) v.push_back(e.paramId);

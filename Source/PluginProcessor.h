@@ -133,6 +133,11 @@ private:
     std::atomic<float>* resonateParam { nullptr };
     std::atomic<float>* resoKeyParam { nullptr };
     std::atomic<float>* resoScaleParam { nullptr };
+    // Layer mixer: the two layers had no balance control at all.
+    std::atomic<float>* smpVolParam { nullptr };
+    std::atomic<float>* drmVolParam { nullptr };
+    std::atomic<float>* soloLayerParam { nullptr };
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smpGain, drmGain;
     Nebula2::StepFx stepFx;
     std::atomic<float>* fxOnParam { nullptr };
     std::atomic<float>* revMixParam { nullptr };

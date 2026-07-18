@@ -149,6 +149,20 @@ namespace Nebula2
         layout.add(std::make_unique<APC>(
             PID{ ParamID::resoScale, version }, "Resonate Scale",
             juce::StringArray{ "Minor", "Major", "Phrygian", "Fifths" }, 0));
+        // --- layer mixer ---
+        // The two layers had no balance control at all: a loud break buried the kit and the
+        // only recourse was the sampler's own gain staging. 150 % rather than 100 so a quiet
+        // layer can be brought UP, not just others pushed down.
+        layout.add(std::make_unique<APF>(
+            PID{ ParamID::smpVol, version }, "Sample Level",
+            juce::NormalisableRange<float>(0.0f, 150.0f, 1.0f), 100.0f));
+        layout.add(std::make_unique<APF>(
+            PID{ ParamID::drmVol, version }, "Drum Level",
+            juce::NormalisableRange<float>(0.0f, 150.0f, 1.0f), 100.0f));
+        layout.add(std::make_unique<APC>(
+            PID{ ParamID::soloLayer, version }, "Solo",
+            juce::StringArray{ "Off", "Sample", "Drums" }, 0));
+
         layout.add(std::make_unique<APB>(PID{ ParamID::fxOn, version }, "FX On", true));
 
         // --- Space (live) ---

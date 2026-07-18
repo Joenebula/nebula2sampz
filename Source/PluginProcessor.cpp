@@ -26,6 +26,9 @@ Nebula2AudioProcessor::Nebula2AudioProcessor()
     resonateParam  = apvts.getRawParameterValue(Nebula2::ParamID::resonate);
     resoKeyParam   = apvts.getRawParameterValue(Nebula2::ParamID::resoKey);
     resoScaleParam = apvts.getRawParameterValue(Nebula2::ParamID::resoScale);
+    smpVolParam    = apvts.getRawParameterValue(Nebula2::ParamID::smpVol);
+    drmVolParam    = apvts.getRawParameterValue(Nebula2::ParamID::drmVol);
+    soloLayerParam = apvts.getRawParameterValue(Nebula2::ParamID::soloLayer);
     fxOnParam      = apvts.getRawParameterValue(Nebula2::ParamID::fxOn);
     revMixParam    = apvts.getRawParameterValue(Nebula2::ParamID::revMix);
     revCharParam   = apvts.getRawParameterValue(Nebula2::ParamID::revChar);
@@ -200,6 +203,14 @@ void Nebula2AudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
     spec.maximumBlockSize = (juce::uint32) samplesPerBlock;
     spec.numChannels      = 2;
 
+    // Layer faders. 20 ms, and set to their CURRENT value rather than ramping up from 0 —
+    // otherwise every prepareToPlay (which a host does on every bus-layout change, not just
+    // at startup) would fade the whole instrument in from silence.
+    smpGain.reset(sampleRate, 0.02);
+    drmGain.reset(sampleRate, 0.02);
+    smpGain.setCurrentAndTargetValue(smpVolParam != nullptr ? smpVolParam->load() / 100.0f : 1.0f);
+    drmGain.setCurrentAndTargetValue(drmVolParam != nullptr ? drmVolParam->load() / 100.0f : 1.0f);
+
     masterProcessor.prepare(spec);
     masterProcessor.reset();
     colourChain.prepare(spec);
@@ -368,11 +379,31 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
         }
     }
 
-    // Layer buses -> main.
-    for (int c = 0; c < numChannels && c < 2; ++c)
+    // Layer buses -> main, through the mixer.
+    //
+    // SOLO wins over the levels: soloing the sample and then wondering why the kit is still
+    // audible because its knob is up would be a control that doesn't do what it says.
     {
-        buffer.addFrom(c, 0, sampleBus, c, 0, numSamples);
-        buffer.addFrom(c, 0, drumBus,   c, 0, numSamples);
+        const int solo = soloLayerParam != nullptr ? (int) soloLayerParam->load() : 0;
+        float smpLvl = 1.0f, drmLvl = 1.0f;
+        Nebula2::layerMixGains(solo,
+                               smpVolParam != nullptr ? smpVolParam->load() : 100.0f,
+                               drmVolParam != nullptr ? drmVolParam->load() : 100.0f,
+                               smpLvl, drmLvl);
+
+        // Smoothed: these are faders, and a jump straight to a new gain clicks. The
+        // smoothers are set up in prepareToPlay.
+        smpGain.setTargetValue(smpLvl);
+        drmGain.setTargetValue(drmLvl);
+
+        for (int i = 0; i < numSamples; ++i)
+        {
+            const float sg = smpGain.getNextValue();
+            const float dg = drmGain.getNextValue();
+            for (int c = 0; c < numChannels && c < 2; ++c)
+                buffer.addSample(c, i, sampleBus.getSample(c, i) * sg
+                                     + drumBus.getSample(c, i)   * dg);
+        }
     }
 
     // Colour: drive -> crush/width -> squeeze -> tone, on the summed layers.

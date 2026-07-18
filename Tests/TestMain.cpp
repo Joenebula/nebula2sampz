@@ -3477,6 +3477,59 @@ int main()
         }
     }
 
+    // ---- Layer mixer ----
+    {
+        using namespace Nebula2;
+        DummyProcessor proc;
+
+        // The gain law as arithmetic rather than by ear. SOLO must beat the level knobs:
+        // soloing the sample and still hearing the kit because its fader is up would be a
+        // control that doesn't do what its name says.
+        // The SHARED law — not a copy of it. See Parameters.h.
+        auto layerGains = [](int solo, float smpPct, float drmPct, float& smp, float& drm)
+        {
+            layerMixGains(solo, smpPct, drmPct, smp, drm);
+        };
+
+        float s = 0.0f, d = 0.0f;
+
+        layerGains(0, 100.0f, 100.0f, s, d);
+        check(s == 1.0f && d == 1.0f, "mixer: at defaults both layers pass at unity");
+
+        layerGains(1, 100.0f, 100.0f, s, d);
+        check(s == 1.0f && d == 0.0f, "mixer: solo Sample silences the drums");
+
+        layerGains(2, 100.0f, 100.0f, s, d);
+        check(s == 0.0f && d == 1.0f, "mixer: solo Drums silences the sample");
+
+        // The one that matters: solo overrides a raised fader on the muted layer.
+        layerGains(1, 0.0f, 150.0f, s, d);
+        check(d == 0.0f, "mixer: solo beats the other layer's level knob, however high");
+
+        layerGains(0, 0.0f, 150.0f, s, d);
+        check(s == 0.0f && d == 1.5f,
+              "mixer: a layer at 0 is silent, and 150% is a real boost — " + String(d, 2));
+
+        // The parameters must exist AND be reachable — a mixer you can't find is the failure
+        // this codebase has already shipped once.
+        for (const char* id : { ParamID::smpVol, ParamID::drmVol, ParamID::soloLayer })
+        {
+            check(proc.apvts.getParameter(id) != nullptr,
+                  String("mixer: ") + id + " is published");
+            bool reachable = false;
+            for (auto* c : editorControlledParamIds()) if (String(c) == String(id)) reachable = true;
+            check(reachable, String("mixer: ") + id + " has a control the user can reach");
+        }
+
+        // Defaults must be unity, not silence: an instrument that loads muted looks broken.
+        auto* sv = proc.apvts.getRawParameterValue(ParamID::smpVol);
+        auto* dv = proc.apvts.getRawParameterValue(ParamID::drmVol);
+        auto* so = proc.apvts.getRawParameterValue(ParamID::soloLayer);
+        check(sv != nullptr && dv != nullptr && so != nullptr
+               && sv->load() == 100.0f && dv->load() == 100.0f && so->load() == 0.0f,
+              "mixer: defaults are both layers at unity with solo off");
+    }
+
     // ---- Colour / Space dice ----
     {
         using namespace Nebula2;
@@ -4683,7 +4736,8 @@ int main()
             "gridOn", "gridSteps",
             "drive", "char", "crush", "squeeze", "tone", "width", "pump", "gate",
             "reverse", "stutter", "shatter", "pitchUp", "pitchDown",
-            "resonate", "resoKey", "resoScale", "fxOn",
+            "resonate", "resoKey", "resoScale",
+            "smpVol", "drmVol", "solo", "fxOn",
             "revMix", "revSize", "dlyMix", "dlyFb", "dlySync", "dlyMode", "haunt", "spaceOn", "revChar",
             "rackOn",
             "flt.cut", "flt.res", "flt.type",

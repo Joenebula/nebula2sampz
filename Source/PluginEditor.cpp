@@ -158,6 +158,12 @@ Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& 
     sensitivity.slider.valueFromTextFunction = [](const juce::String& t) { return t.getDoubleValue() / 100.0; };
     sensitivity.slider.updateText();
 
+    // --- layer mixer ---
+    addKnob(smpVol, Nebula2::ParamID::smpVol, "Sample", " %");
+    addKnob(drmVol, Nebula2::ParamID::drmVol, "Drums",  " %");
+    addCombo(soloBox, soloLabel, Nebula2::ParamID::soloLayer, "Solo",
+             { "Off", "Sample", "Drums" }, soloAttachment);
+
     content.addAndMakeVisible(waveform);
 
     // --- FX grid ---
@@ -507,7 +513,7 @@ int Nebula2AudioProcessorEditor::contentHeightFor(Page p) const
 {
     switch (p)
     {
-        case Page::play:  return 788;   // sample + colour (two knob rows) + space
+        case Page::play:  return 822;   // sample + mixer + colour (two knob rows) + space
         case Page::morph: return 320;
         case Page::grid:  return gridPageHeight();
         case Page::rack:  return 470;
@@ -538,12 +544,13 @@ void Nebula2AudioProcessorEditor::showPage(Page p)
         &charBox, &charLabel, &revCharBox, &revCharLabel,
         &dlySyncBox, &dlySyncLabel, &dlyModeBox, &dlyModeLabel, &fxOnButton, &limiterButton, &spaceOnButton,
         &resoKeyBox, &resoKeyLabel, &resoScaleBox, &resoScaleLabel,
-        &colourRandButton, &spaceRandButton
+        &colourRandButton, &spaceRandButton, &soloBox, &soloLabel
     };
     for (auto* c : playChildren) c->setVisible(play);
 
     for (auto* k : { &drive, &crush, &squeeze, &tone, &width, &pump, &master,
-                     &revMix, &revSize, &dlyMix, &dlyFb, &haunt, &sensitivity })
+                     &revMix, &revSize, &dlyMix, &dlyFb, &haunt, &sensitivity,
+                     &smpVol, &drmVol })
     {
         k->slider.setVisible(play);
         k->label.setVisible(play);
@@ -762,7 +769,7 @@ void Nebula2AudioProcessorEditor::paintContent(juce::Graphics& g)
 
     if (page == Page::play)
     {
-        auto sampleArea = body.removeFromTop(188.0f);
+        auto sampleArea = body.removeFromTop(222.0f);
         Nebula2LookAndFeel::drawCard(g, sampleArea, "SAMPLE");
         if (dragHighlight)
         {
@@ -930,7 +937,7 @@ void Nebula2AudioProcessorEditor::layoutContent()
     }
 
     // --- Sample panel ---
-    auto sampleArea = body.removeFromTop(188).reduced(10);
+    auto sampleArea = body.removeFromTop(222).reduced(10);
     sampleArea.removeFromTop(12);
     auto sRow2 = sampleArea.removeFromTop(26);
     loadButton.setBounds(sRow2.removeFromLeft(120));
@@ -955,6 +962,23 @@ void Nebula2AudioProcessorEditor::layoutContent()
     // rendered as a bare "50 %". A horizontal slider is the honest shape for this cell.
     sensitivity.label.setBounds(sliceRow.removeFromLeft(38));
     sensitivity.slider.setBounds(sliceRow.removeFromLeft(150).reduced(0, 6));
+
+    // Layer mixer: sits with the sample controls because the balance you want is the one
+    // between what you just loaded and the kit under it.
+    sampleArea.removeFromTop(4);
+    auto mixRow = sampleArea.removeFromTop(30);
+    smpVol.label.setBounds(mixRow.removeFromLeft(52));
+    smpVol.slider.setSliderStyle(juce::Slider::LinearHorizontal);
+    smpVol.slider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 46, 18);
+    smpVol.slider.setBounds(mixRow.removeFromLeft(150).reduced(0, 4));
+    mixRow.removeFromLeft(12);
+    drmVol.label.setBounds(mixRow.removeFromLeft(48));
+    drmVol.slider.setSliderStyle(juce::Slider::LinearHorizontal);
+    drmVol.slider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 46, 18);
+    drmVol.slider.setBounds(mixRow.removeFromLeft(150).reduced(0, 4));
+    mixRow.removeFromLeft(12);
+    soloLabel.setBounds(mixRow.removeFromLeft(34));
+    soloBox.setBounds(mixRow.removeFromLeft(86).reduced(0, 3));
 
     sampleArea.removeFromTop(4);
     waveform.setBounds(sampleArea);

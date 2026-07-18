@@ -154,6 +154,11 @@ private:
     std::unique_ptr<APVTS::ComboBoxAttachment> charAttachment, revCharAttachment, dlySyncAttachment,
                                                sliceModeAttachment, sliceCountAttachment;
     Knob sensitivity;
+    // Layer mixer — the balance between the sampler and the drum kit.
+    Knob smpVol, drmVol;
+    juce::ComboBox soloBox;
+    juce::Label soloLabel;
+    std::unique_ptr<APVTS::ComboBoxAttachment> soloAttachment;
 
     juce::TextButton colourRandButton { "Randomise" };
     juce::TextButton spaceRandButton { "Randomise" };

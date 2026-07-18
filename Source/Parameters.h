@@ -34,4 +34,18 @@ namespace Nebula2
     // Kept in its own translation unit so it can be unit-tested without instantiating
     // the whole processor (see Tests/).
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
+
+    // The layer mixer's gain law, in ONE place because processBlock and its test both need
+    // it — a copy in each is a test that passes while the audio does something else, which
+    // is the single most common way a green suite has lied in this project.
+    //
+    // SOLO beats the level knobs deliberately: soloing the sample and still hearing the kit
+    // because its fader happened to be up would be a control that doesn't do what it says.
+    // solo: 0 = off, 1 = sample, 2 = drums.
+    inline void layerMixGains(int solo, float smpPercent, float drmPercent,
+                              float& smpGain, float& drmGain) noexcept
+    {
+        smpGain = (solo == 2) ? 0.0f : smpPercent / 100.0f;
+        drmGain = (solo == 1) ? 0.0f : drmPercent / 100.0f;
+    }
 }

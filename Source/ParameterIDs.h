@@ -55,6 +55,9 @@ namespace Nebula2::ParamID
     inline constexpr auto resonate  = "resonate";  // float 0..100  % (tuned bandpass bank, parallel)
     inline constexpr auto resoKey   = "resoKey";   // choice 0..11  root note, 0 = A
     inline constexpr auto resoScale = "resoScale"; // choice 0..3   minor/major/phrygian/fifths
+    inline constexpr auto smpVol    = "smpVol";    // float 0..150 % sample layer level
+    inline constexpr auto drmVol    = "drmVol";    // float 0..150 % drum layer level
+    inline constexpr auto soloLayer = "solo";      // choice 0..2   none / sample / drums
     inline constexpr auto fxOn      = "fxOn";      // bool
 
     // --- Space (live: parallel reverb + tempo-synced delay send) ---
