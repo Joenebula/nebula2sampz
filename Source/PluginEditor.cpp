@@ -283,12 +283,24 @@ void Nebula2AudioProcessorEditor::showPage(Page p)
         &loadButton, &sampleInfo, &waveform,
         &sliceModeBox, &sliceCountBox, &sliceModeLabel, &sliceCountLabel,
         &charBox, &charLabel, &revCharBox, &revCharLabel,
-        &dlySyncBox, &dlySyncLabel, &dlyModeBox, &dlyModeLabel, &fxOnButton, &limiterButton, &spaceOnButton
+        &dlySyncBox, &dlySyncLabel, &dlyModeBox, &dlyModeLabel, &fxOnButton, &limiterButton, &spaceOnButton,
+        &resoKeyBox, &resoKeyLabel, &resoScaleBox, &resoScaleLabel
     };
     for (auto* c : playChildren) c->setVisible(play);
 
     for (auto* k : { &drive, &crush, &squeeze, &tone, &width, &pump, &master,
                      &revMix, &revSize, &dlyMix, &dlyFb, &haunt, &sensitivity })
+    {
+        k->slider.setVisible(play);
+        k->label.setVisible(play);
+    }
+
+    // The lane knobs, by iterating the container that HOLDS them rather than naming them
+    // again. Widgets built in a loop but hidden by a hand-written list is how seven stray
+    // "0 %" readouts came to float beneath the GRID page: they were never added to that
+    // list, so they stayed visible on every page wearing the play page's stale bounds.
+    // Looping the vector makes the two lists incapable of disagreeing.
+    for (auto& k : laneKnobs)
     {
         k->slider.setVisible(play);
         k->label.setVisible(play);
