@@ -11,6 +11,7 @@
 #include "../Source/Presets.h"
 #include "../Source/MasterProcessor.h"
 #include "../Source/Transport.h"
+#include "../Source/RackLayout.h"
 #include "../Source/dsp/EqCurveMath.h"
 #include "../Source/dsp/ParametricEq.h"
 #include "../Source/dsp/Saturator.h"
@@ -1353,6 +1354,82 @@ int main()
             rev.process (buf, 0.0f);   // fully dry
             check (std::abs (buf.getSample (0, 100) - 0.5f) < 0.01f,
                    "reverb: fully dry still passes the beat after 200 rate changes");
+        }
+
+        // --- rack module bands must never overlap ---
+        //
+        // This is the test that was missing while three screenshots came back with the same
+        // class of bug: "LAD" and "COM" where Ladder and Comb should be, "OUT" printed over
+        // "IN", the dice sitting on the caption, knobs gone entirely. Every one of those was
+        // layout arithmetic written blind - offsets computed in several places against the
+        // same rectangle, never seen until someone looked at the screen.
+        //
+        // The bands are pure geometry now, so they can be asserted about.
+        {
+            using namespace Nebula2;
+
+            auto overlaps = [](juce::Rectangle<float> a, juce::Rectangle<float> b)
+            {
+                if (a.isEmpty() || b.isEmpty()) return false;
+                return a.getRight() > b.getX() + 0.01f && b.getRight() > a.getX() + 0.01f
+                    && a.getBottom() > b.getY() + 0.01f && b.getBottom() > a.getY() + 0.01f;
+            };
+
+            StringArray clashes;
+            int checked = 0;
+
+            // Across a wide range of module sizes, including cruelly narrow ones - the
+            // truncation only showed up in narrow modules, which is exactly the case a
+            // single hand-checked size would miss.
+            for (float w : { 120.0f, 160.0f, 220.0f, 320.0f, 480.0f, 900.0f })
+                for (float h : { 90.0f, 120.0f, 170.0f, 240.0f })
+                    for (int variant = 0; variant < 4; ++variant)
+                    {
+                        const bool pwr = (variant & 1) != 0;
+                        const bool scr = (variant & 2) != 0;
+
+                        const auto b = layoutModuleBands ({ 0.0f, 0.0f, w, h }, pwr, scr, false, 46.0f);
+                        ++checked;
+
+                        const std::pair<const char*, juce::Rectangle<float>> bands[] = {
+                            { "power", b.power }, { "title", b.title }, { "caption", b.caption },
+                            { "dice", b.dice }, { "state", b.state }, { "screen", b.screen },
+                            { "knobs", b.knobs }, { "jacks", b.jacks },
+                        };
+
+                        for (size_t i = 0; i < 8; ++i)
+                            for (size_t j = i + 1; j < 8; ++j)
+                                if (overlaps (bands[i].second, bands[j].second))
+                                    clashes.add (String (bands[i].first) + "/" + bands[j].first
+                                                 + " at " + String ((int) w) + "x" + String ((int) h));
+                    }
+
+            check (checked > 0, "rack bands: the sweep actually ran - " + String (checked) + " layouts");
+            check (clashes.isEmpty(),
+                   "rack bands: no two bands ever overlap - " + clashes.joinIntoString ("; "));
+
+            // The title must keep real width even when the caption is long and the module
+            // narrow. A fixed caption width is what produced "LAD" and "PHA".
+            const auto narrow = layoutModuleBands ({ 0.0f, 0.0f, 200.0f, 170.0f }, true, false, false, 200.0f);
+            check (narrow.title.getWidth() >= 30.0f,
+                   "rack bands: the title keeps room even beside a long caption - got "
+                       + String (narrow.title.getWidth()));
+
+            // And every band stays inside the module.
+            const auto in = layoutModuleBands ({ 10.0f, 20.0f, 300.0f, 180.0f }, true, true, false, 40.0f);
+            const juce::Rectangle<float> outer (10.0f, 20.0f, 300.0f, 180.0f);
+            bool inside = true;
+            for (auto r : { in.power, in.title, in.caption, in.dice, in.state,
+                            in.screen, in.knobs, in.jacks })
+                if (! r.isEmpty() && ! outer.contains (r)) inside = false;
+            check (inside, "rack bands: every band stays inside the module");
+
+            // A module too small to hold anything must degrade, not produce negatives.
+            const auto tiny = layoutModuleBands ({ 0.0f, 0.0f, 40.0f, 30.0f }, true, true, false, 40.0f);
+            bool sane = true;
+            for (auto r : { tiny.power, tiny.title, tiny.knobs, tiny.jacks })
+                if (r.getWidth() < 0.0f || r.getHeight() < 0.0f) sane = false;
+            check (sane, "rack bands: a tiny module degrades without negative rectangles");
         }
 
         // --- the per-module power buttons ---

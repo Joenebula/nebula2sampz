@@ -58,6 +58,7 @@ target_sources(Nebula2 PRIVATE
     Source/RackView.cpp
     Source/EqCurve.cpp
     Source/RackView.h
+    Source/RackLayout.h
     Source/Nebula2LookAndFeel.cpp
     Source/Nebula2LookAndFeel.h
     Source/Theme.h
@@ -225,6 +226,7 @@ target_sources(Nebula2Tests PRIVATE
     Source/dsp/RackGraph.cpp
     Source/dsp/RackGraph.h
     Source/dsp/RackModules.cpp
+    Source/RackLayout.h
     Source/dsp/RackModules.h
 )
 

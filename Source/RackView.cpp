@@ -112,39 +112,44 @@ void RackView::timerCallback()
 
 void RackView::resized() { rebuildLayout(); }
 
+RackView::ModuleLayout RackView::layoutModule (ModuleId m) const
+{
+    // The carving itself is pure geometry in RackLayout.h so it can be tested; this only
+    // supplies what the view knows - the bounds, the flags, and the measured caption width.
+    const auto capFont = Theme::mono (8.0f, 500);
+    const float capW = juce::GlyphArrangement::getStringWidth (
+                           capFont, juce::String (moduleSub (m)).toUpperCase()) + 6.0f;
+
+    const auto b = layoutModuleBands (modBounds[(int) m],
+                                      hasPower (m), hasScreen (m), m == ModuleId::eq,
+                                      capW, bandSpec());
+
+    ModuleLayout L;
+    L.power = b.power; L.title = b.title; L.caption = b.caption; L.dice = b.dice;
+    L.state = b.state; L.screen = b.screen; L.knobs = b.knobs; L.jacks = b.jacks;
+    return L;
+}
+
 juce::Rectangle<float> RackView::powerRectFor (ModuleId m) const
 {
-    // A ROUND button, as the design draws it - not the little "On" text pill this had.
-    // 26px, sitting in the module's top-left with the title beside it.
-    if (! hasPower (m)) return {};
-    const auto b = modBounds[(int) m];
-    return { b.getX() + modPadX, b.getY() + 12.0f, powerD, powerD };
+    return layoutModule (m).power;
 }
 
 juce::Rectangle<float> RackView::diceRectFor (ModuleId m) const
 {
-    // Every effect module carries its own randomise button, top-right. The design has one
-    // on each; this build had none, so per-module randomising was not reachable at all.
-    if (! hasPower (m)) return {};
-    const auto b = modBounds[(int) m];
-    return { b.getRight() - modPadX - diceD, b.getY() + 12.0f, diceD, diceD };
+    return layoutModule (m).dice;
 }
 
 float RackView::moduleHeightFor (ModuleId m) noexcept
 {
-    // headH covers the round power button and the title beside it; the jack row runs along
-    // the bottom of every module that has one.
-    float h = headH + modPadB + jackInset * 2.0f;
-
-    if (m == ModuleId::eq) return h + eqCurveH;      // the curve IS its content
-    if (hasScreen (m))     h += screenH + 6.0f;
-
-    // Does it own any dials? Asked of the ONE dial table, so a module that gains a knob
-    // gets taller automatically instead of squashing the row it sits in.
+    // Asked of the SAME spec the bands are carved with, so the height a module is given and
+    // the space its contents need are one number rather than two that can drift apart.
+    bool hasKnobs = false;
     for (const auto& d : rackDialDefs())
-        if (d.owner == m) { h += (float) Nebula2::Theme::knobSize + capH + 6.0f; break; }
+        if (d.owner == m) { hasKnobs = true; break; }
 
-    return h;
+    return moduleBandsHeight (hasScreen (m), m == ModuleId::eq, hasKnobs,
+                              (float) Nebula2::Theme::knobSize + capH, eqCurveH, bandSpec());
 }
 
 int RackView::preferredHeight()
@@ -172,12 +177,9 @@ bool RackView::hasScreen (ModuleId m) noexcept
 
 juce::Rectangle<float> RackView::screenAreaFor (ModuleId m) const
 {
-    if (! hasScreen (m)) return {};
-
-    // A strip under the name and its subtitle. Height is fixed rather than a fraction of
-    // the module, so the dial row below it starts at a predictable place.
-    auto r = modBounds[(int) m].reduced (14.0f, 0.0f).withTrimmedTop (30.0f);
-    return r.withHeight (juce::jmin (screenH, juce::jmax (12.0f, r.getHeight() * 0.42f)));
+    // From the shared bands. This used to compute its own inset and height, which is how
+    // the LFO's curve came to be drawn straight through its own knobs.
+    return layoutModule (m).screen;
 }
 
 void RackView::drawModuleScreens (juce::Graphics& g) const
@@ -344,16 +346,19 @@ void RackView::rebuildLayout()
                                       cw - pad * 2.0f, rowH - pad * 2.0f);
             modBounds[(int) m] = r;
 
-            // Jacks in the BOTTOM CORNERS, as the design draws them - in on the left, out on
-            // the right, each with its label. They were unlabelled dots halfway up the side
-            // edges, which is neither where the design puts them nor legible as a socket.
-            const float jy = r.getBottom() - jackInset;
+            // Jacks along the BOTTOM, from the shared band - in on the left, cv beside it,
+            // out on the right, each labelled. They were unlabelled dots halfway up the
+            // side edges, which is neither where the design puts them nor legible as a
+            // socket. Positioned from L.jacks so they cannot drift from the space the
+            // layout reserved for them.
+            const auto jb = layoutModule (m).jacks;
+            const float jy = jb.getCentreY();
             if (hasJack (m, Jack::in))
-                jacks.push_back ({ { m, Jack::in },  { r.getX() + jackInset, jy } });
+                jacks.push_back ({ { m, Jack::in },  { jb.getX() + jackR, jy } });
             if (hasJack (m, Jack::cv))
-                jacks.push_back ({ { m, Jack::cv },  { r.getX() + jackInset + 42.0f, jy } });
+                jacks.push_back ({ { m, Jack::cv },  { jb.getX() + jackR + 52.0f, jy } });
             if (hasJack (m, Jack::out))
-                jacks.push_back ({ { m, Jack::out }, { r.getRight() - jackInset, jy } });
+                jacks.push_back ({ { m, Jack::out }, { jb.getRight() - jackR, jy } });
         }
 
         y += rowH;
@@ -369,14 +374,10 @@ void RackView::rebuildLayout()
             if (d.owner == sm) mine.push_back (&d);
         if (mine.empty()) continue;
 
-        // Start BELOW the screen when there is one. This was withTrimmedTop(16), which put
-        // the dial row straight through the middle of the scope/curve/formant drawings.
-        const float top = hasScreen (sm) ? (screenAreaFor (sm).getBottom() - modBounds[(int) sm].getY() + 6.0f)
-                                         : headH;
-        // Clear of the jack row along the bottom, or the knob captions would print over IN
-        // and OUT.
-        auto r = modBounds[(int) sm].reduced (modPadX, 0.0f).withTrimmedTop (top)
-                                     .withTrimmedBottom (jackInset * 2.0f);
+        // The knob band, straight from the shared layout. It is whatever the header, state
+        // line, screen and jack strip did not take - so it cannot overlap any of them, and
+        // it cannot be computed differently here than it is over in paint().
+        auto r = layoutModule (sm).knobs;
         const float w = r.getWidth() / (float) mine.size();
         for (size_t i = 0; i < mine.size(); ++i)
         {
@@ -585,12 +586,13 @@ void RackView::paint(juce::Graphics& g)
         g.drawRoundedRectangle (r, 5.0f, st == ModuleState::live ? 1.4f : 0.8f);
 
         const bool off = st == ModuleState::off;
+        const auto L = layoutModule (sm);
 
         // --- ROUND power button, top-left ---
         // The design draws a circle with a power glyph and a glowing ring, not a text pill.
         if (hasPower (sm))
         {
-            const auto pr = powerRectFor (sm);
+            const auto pr = L.power;
             const auto pc = pr.getCentre();
             const float pR = pr.getWidth() * 0.5f;
 
@@ -619,7 +621,7 @@ void RackView::paint(juce::Graphics& g)
         // --- dice, top-right ---
         if (hasPower (sm))
         {
-            const auto dr = diceRectFor (sm);
+            const auto dr = L.dice;
             g.setColour (Nebula2::Theme::card3);
             g.fillRoundedRectangle (dr, 6.0f);
             g.setColour (kAccent.withAlpha (off ? 0.2f : 0.45f));
@@ -634,34 +636,23 @@ void RackView::paint(juce::Graphics& g)
                 g.fillEllipse (pt.x - pr2, pt.y - pr2, pr2 * 2.0f, pr2 * 2.0f);
         }
 
-        // --- title: CAPS, bold, beside the power button ---
-        const float titleX = hasPower (sm) ? modPadX + powerD + 10.0f : modPadX;
-        const float titleW = r.getWidth() - titleX - (hasPower (sm) ? diceD + modPadX + 90.0f : modPadX);
-
+        // --- title and caption, from the SHARED bands ---
+        // The title gets whatever the power button, dice and caption did not take, so it
+        // cannot be squeezed into "LAD" by a width someone guessed elsewhere.
         g.setColour (off ? kSub.withAlpha (0.45f) : Nebula2::Theme::ink);
         g.setFont (Theme::ui (13.0f, 700).withExtraKerningFactor (0.06f));
-        g.drawText (juce::String (moduleName (sm)).toUpperCase(),
-                    juce::Rectangle<float> (r.getX() + titleX, r.getY() + 12.0f,
-                                            juce::jmax (20.0f, titleW), powerD),
+        g.drawText (juce::String (moduleName (sm)).toUpperCase(), L.title,
                     juce::Justification::centredLeft, false);
 
-        // --- caption on the RIGHT, mono caps - not stacked under the title ---
-        {
-            const float capX = r.getRight() - modPadX - (hasPower (sm) ? diceD + 8.0f : 0.0f) - 96.0f;
-            g.setColour (kSub.withAlpha (off ? 0.3f : 0.6f));
-            g.setFont (Theme::mono (8.0f, 500).withExtraKerningFactor (0.08f));
-            g.drawText (juce::String (moduleSub (sm)).toUpperCase(),
-                        juce::Rectangle<float> (capX, r.getY() + 12.0f, 96.0f, powerD),
-                        juce::Justification::centredRight, false);
-        }
+        g.setColour (kSub.withAlpha (off ? 0.3f : 0.6f));
+        g.setFont (Theme::mono (8.0f, 500).withExtraKerningFactor (0.08f));
+        g.drawText (juce::String (moduleSub (sm)).toUpperCase(), L.caption,
+                    juce::Justification::centredRight, false);
 
-        // Say WHY it isn't sounding. Under the caption so it never collides with it.
+        // Say WHY it isn't sounding. Its own band, so it cannot land on the caption.
         g.setColour (col);
         g.setFont (Theme::mono (7.5f, 500));
-        g.drawText (moduleStateText (st),
-                    juce::Rectangle<float> (r.getRight() - modPadX - 110.0f, r.getY() + 12.0f + powerD,
-                                            110.0f, 11.0f),
-                    juce::Justification::centredRight, false);
+        g.drawText (moduleStateText (st), L.state, juce::Justification::centredRight, false);
 
         // The LFO draws its own moving value along the bottom edge, so its rate and depth
         // are visible rather than implied. Below the dials, not across them.

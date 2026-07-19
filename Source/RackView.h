@@ -3,6 +3,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "PluginProcessor.h"
 #include "EqCurve.h"
+#include "RackLayout.h"
 
 // The modular rack's surface: modules with jacks, and cables you drag between them.
 //
@@ -109,16 +110,49 @@ private:
     // The per-module randomise button, top-right. The design gives every effect module one.
     juce::Rectangle<float> diceRectFor (Nebula2::ModuleId) const;
 
+    // ONE layout for a module, carved into bands that cannot overlap.
+    //
+    // Every collision in this panel - the truncated "LAD"/"COM"/"PHA", "OUT" printed over
+    // "IN", the dice sitting on the caption, knobs vanishing entirely - came from offsets
+    // computed in five different places against the same rectangle. Carving the rect into
+    // named bands ONCE, in order, makes overlap structurally impossible: a band can only
+    // use what the bands above it did not take.
+    struct ModuleLayout
+    {
+        juce::Rectangle<float> power;     // the round on/off button
+        juce::Rectangle<float> title;     // module name, CAPS
+        juce::Rectangle<float> caption;   // the subtitle, right-aligned
+        juce::Rectangle<float> dice;      // per-module randomise
+        juce::Rectangle<float> state;     // LIVE / IDLE / NO PATH OUT
+        juce::Rectangle<float> screen;    // scope / curve / formants (empty if none)
+        juce::Rectangle<float> knobs;     // the dial row
+        juce::Rectangle<float> jacks;     // IN / CV / OUT along the bottom
+    };
+    ModuleLayout layoutModule (Nebula2::ModuleId) const;
+
+    // The one spec both the carving and the height calculation use.
+    static Nebula2::ModuleBandSpec bandSpec() noexcept
+    {
+        Nebula2::ModuleBandSpec s;
+        s.padX = modPadX; s.padY = modPadY;
+        s.powerD = powerD; s.diceD = diceD;
+        s.stateH = stateH; s.jacksH = jacksH; s.screenH = screenH;
+        return s;
+    }
+
     // Module chrome, measured off the design rather than invented:
     //   power   a ROUND 26px button, top-left, glowing ring when on
     //   title   caps, bold, beside the power button
     //   caption the subtitle, on the RIGHT as grey mono caps - not under the title
     //   dice    a 26px square button, top-right
     //   jacks   BOTTOM corners, labelled IN and OUT
-    static constexpr float modPadX = 12.0f;
-    static constexpr float powerD  = 26.0f;
-    static constexpr float diceD   = 26.0f;
-    static constexpr float jackInset = 16.0f;   // from the module's bottom-left/right
+    static constexpr float modPadX  = 14.0f;
+    static constexpr float modPadY  = 12.0f;
+    static constexpr float powerD   = 26.0f;    // the round power button
+    static constexpr float diceD    = 26.0f;
+    static constexpr float stateH   = 13.0f;    // the LIVE/IDLE line
+    static constexpr float jacksH   = 26.0f;    // the IN/CV/OUT strip
+    static constexpr float jackInset = 16.0f;
 
     void rebuildLayout();
     juce::Rectangle<float> boundsFor(Nebula2::ModuleId m) const;
