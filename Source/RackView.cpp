@@ -122,7 +122,7 @@ RackView::ModuleLayout RackView::layoutModule (ModuleId m) const
 
     const auto b = layoutModuleBands (modBounds[(int) m],
                                       hasPower (m), hasScreen (m), m == ModuleId::eq,
-                                      capW, bandSpec());
+                                      capW, bandSpec (m));
 
     ModuleLayout L;
     L.power = b.power; L.title = b.title; L.caption = b.caption; L.dice = b.dice;
@@ -149,7 +149,7 @@ float RackView::moduleHeightFor (ModuleId m) noexcept
         if (d.owner == m) { hasKnobs = true; break; }
 
     return moduleBandsHeight (hasScreen (m), m == ModuleId::eq, hasKnobs,
-                              (float) Nebula2::Theme::knobSize + capH, eqCurveH, bandSpec());
+                              (float) Nebula2::Theme::knobSize + capH, eqCurveH, bandSpec (m));
 }
 
 int RackView::preferredHeight()
@@ -163,6 +163,12 @@ int RackView::preferredHeight()
         total += rowMax + 8.0f;      // the gap between rows
     }
     return (int) total + 18;         // the status strip along the bottom
+}
+
+float RackView::screenHeightFor (ModuleId m) noexcept
+{
+    if (! hasScreen (m)) return 0.0f;
+    return (m == ModuleId::src || m == ModuleId::out) ? screenCompact : screenTall;
 }
 
 bool RackView::hasScreen (ModuleId m) noexcept
@@ -188,8 +194,36 @@ void RackView::drawModuleScreens (juce::Graphics& g) const
 
     auto well = [&g] (juce::Rectangle<float> r)
     {
-        g.setColour (Nebula2::Theme::chassis);
-        g.fillRoundedRectangle (r, 3.0f);
+        g.setColour (Nebula2::Theme::well);
+        g.fillRoundedRectangle (r, 4.0f);
+    };
+
+    // The design puts a GRID behind every waveform display. Without it a trace floats in a
+    // black box with no sense of scale - it is the difference between a readout and a
+    // decoration.
+    auto grid = [&g] (juce::Rectangle<float> r)
+    {
+        g.setColour (Nebula2::Theme::card);
+        for (int i = 1; i < 10; ++i)
+        {
+            const float x = r.getX() + r.getWidth() * (float) i / 10.0f;
+            g.drawVerticalLine ((int) x, r.getY(), r.getBottom());
+        }
+        for (int i = 1; i < 4; ++i)
+        {
+            const float y = r.getY() + r.getHeight() * (float) i / 4.0f;
+            g.drawHorizontalLine ((int) y, r.getX(), r.getRight());
+        }
+    };
+
+    // Traces are drawn twice: a wide faint pass for the glow, then the line. The design's
+    // CSS uses a blur; this is the same read without a blur pass.
+    auto glowPath = [&g] (const juce::Path& p, juce::Colour c)
+    {
+        g.setColour (c.withAlpha (0.30f));
+        g.strokePath (p, juce::PathStrokeType (3.6f));
+        g.setColour (c);
+        g.strokePath (p, juce::PathStrokeType (1.5f));
     };
 
     const auto& dials = processorRef.getRackDialsSnapshot();
@@ -223,18 +257,45 @@ void RackView::drawModuleScreens (juce::Graphics& g) const
     {
         auto r = screenAreaFor (ModuleId::out);
         well (r);
+        // A SEGMENTED meter, as the design draws it - not a solid bar. Unlit segments stay
+        // visible as empty cells, so the meter has a scale you can read at a glance instead
+        // of a smooth fill you have to estimate against the box.
         const float lvl = juce::jlimit (0.0f, 1.0f, processorRef.getRackOutLevel());
-        auto bar = r.reduced (3.0f).withWidth ((r.getWidth() - 6.0f) * lvl);
-        // Green until it is close to clipping, then red. A meter that reads the same at
-        // -20 and at 0 dBFS is just a moving rectangle.
-        g.setColour (lvl > 0.95f ? Nebula2::Theme::danger : kAccent.withAlpha (0.8f));
-        g.fillRoundedRectangle (bar, 2.0f);
+        constexpr int nSeg = 16;
+        const int litTo = (int) std::ceil (lvl * (float) nSeg);
+
+        auto strip = r.reduced (5.0f, 8.0f);
+        const float gap = 3.0f;
+        const float sw = (strip.getWidth() - gap * (float) (nSeg - 1)) / (float) nSeg;
+
+        for (int i = 0; i < nSeg; ++i)
+        {
+            juce::Rectangle<float> s (strip.getX() + (sw + gap) * (float) i, strip.getY(),
+                                      sw, strip.getHeight());
+            const bool lit = i < litTo;
+
+            // Green through the working range, amber near the top, red at the very end -
+            // the segment's colour says where it sits, so a glance reads the level even
+            // without counting.
+            const auto c = i >= nSeg - 2 ? Nebula2::Theme::danger
+                         : i >= nSeg - 5 ? Nebula2::Theme::warn
+                                         : Nebula2::Theme::good;
+
+            g.setColour (lit ? c : Nebula2::Theme::card);
+            g.fillRoundedRectangle (s, 2.0f);
+            if (lit)
+            {
+                g.setColour (c.withAlpha (0.35f));
+                g.fillRoundedRectangle (s.expanded (1.0f), 2.5f);
+            }
+        }
     }
 
     // --- LFO: its shape, and where in the cycle it is ---
     {
         auto r = screenAreaFor (ModuleId::lfo);
         well (r);
+        grid (r);
         juce::Path p;
         const int n = 48;
         for (int i = 0; i <= n; ++i)
@@ -245,8 +306,7 @@ void RackView::drawModuleScreens (juce::Graphics& g) const
             const float y = r.getCentreY() - v * r.getHeight() * 0.4f;
             if (i == 0) p.startNewSubPath (x, y); else p.lineTo (x, y);
         }
-        g.setColour (kCV.withAlpha (0.85f));
-        g.strokePath (p, juce::PathStrokeType (1.3f));
+        glowPath (p, Nebula2::Theme::warn);
 
         // The dot: the LFO's actual current value, so the picture MOVES with the sound
         // rather than being a static drawing of a sine wave.
@@ -260,6 +320,7 @@ void RackView::drawModuleScreens (juce::Graphics& g) const
     {
         auto r = screenAreaFor (ModuleId::fld);
         well (r);
+        grid (r);
         juce::Path p;
         const int n = 64;
         for (int i = 0; i <= n; ++i)
@@ -271,14 +332,14 @@ void RackView::drawModuleScreens (juce::Graphics& g) const
             const float y = r.getCentreY() - out * r.getHeight() * 0.42f;
             if (i == 0) p.startNewSubPath (x, y); else p.lineTo (x, y);
         }
-        g.setColour (Nebula2::Theme::warn.withAlpha (0.85f));
-        g.strokePath (p, juce::PathStrokeType (1.3f));
+        glowPath (p, Nebula2::Theme::warn);
     }
 
     // --- Vowel: the formant peaks it is making ---
     {
         auto r = screenAreaFor (ModuleId::vow);
         well (r);
+        grid (r);
         float f[3];
         vowelFormantsAt (dials.vowMorph, f);
 
@@ -292,8 +353,7 @@ void RackView::drawModuleScreens (juce::Graphics& g) const
             const float y = r.getY() + r.getHeight() * juce::jlimit (0.0f, 1.0f, eqGainToNorm (db, 20.0f));
             if (i == 0) p.startNewSubPath (x, y); else p.lineTo (x, y);
         }
-        g.setColour (Nebula2::Theme::accentPale.withAlpha (0.85f));
-        g.strokePath (p, juce::PathStrokeType (1.3f));
+        glowPath (p, Nebula2::Theme::accentPale);
 
         // Which vowel, in words. "2.31" tells you nothing about what you are about to hear.
         g.setColour (kSub.withAlpha (0.7f));
@@ -607,15 +667,21 @@ void RackView::paint(juce::Graphics& g)
             g.setColour (off ? kSub.withAlpha (0.35f) : kAccent);
             g.drawEllipse (pr.reduced (0.5f), off ? 1.0f : 1.4f);
 
-            // The glyph: a ring broken at the top with a stem through the gap.
-            const float gR = pR * 0.44f;
+            // The glyph, proportioned off the button rather than in fixed pixels: a ring
+            // broken at the top with a stem through the gap. Everything scales with the
+            // button, so taking it from 26px down to the design's 20 keeps the same drawing
+            // instead of turning it into a blob.
+            const float gR = pR * 0.46f;
+            const float sw = juce::jmax (1.2f, pR * 0.17f);
+
             juce::Path glyph;
-            glyph.addCentredArc (pc.x, pc.y + 1.0f, gR, gR, 0.0f,
-                                 juce::degreesToRadians (35.0f),
-                                 juce::degreesToRadians (325.0f), true);
+            glyph.addCentredArc (pc.x, pc.y + pR * 0.10f, gR, gR, 0.0f,
+                                 juce::degreesToRadians (38.0f),
+                                 juce::degreesToRadians (322.0f), true);
             g.setColour (off ? kSub.withAlpha (0.5f) : Nebula2::Theme::accentLit);
-            g.strokePath (glyph, juce::PathStrokeType (1.5f));
-            g.drawLine (pc.x, pc.y - gR - 2.0f, pc.x, pc.y + 0.5f, 1.5f);
+            g.strokePath (glyph, juce::PathStrokeType (sw, juce::PathStrokeType::curved,
+                                                       juce::PathStrokeType::rounded));
+            g.drawLine (pc.x, pc.y - pR * 0.54f, pc.x, pc.y + pR * 0.06f, sw);
         }
 
         // --- dice, top-right ---

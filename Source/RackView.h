@@ -74,7 +74,16 @@ private:
     // Which modules draw a screen at all. ONE answer, asked by both the painter and the
     // layout - they disagreed, so screens drew over the knobs they were meant to sit above.
     static bool hasScreen (Nebula2::ModuleId) noexcept;
-    static constexpr float screenH = 30.0f;
+
+    // Screen height PER MODULE, because they are not all the same instrument.
+    //
+    // The LFO's wave, the Wavefolder's transfer curve and the Vowel's formants are readable
+    // displays with a grid behind them - they need room. Beat Out's scope and Main Out's
+    // meter stay COMPACT (the user's call): they are status, not something you read a shape
+    // off, and a tall one makes the top row dominate a page it only introduces.
+    static float screenHeightFor (Nebula2::ModuleId) noexcept;
+    static constexpr float screenTall    = 76.0f;
+    static constexpr float screenCompact = 34.0f;
 
 public:
     // The height this view NEEDS, derived from what its modules actually contain - a name,
@@ -131,12 +140,13 @@ private:
     ModuleLayout layoutModule (Nebula2::ModuleId) const;
 
     // The one spec both the carving and the height calculation use.
-    static Nebula2::ModuleBandSpec bandSpec() noexcept
+    static Nebula2::ModuleBandSpec bandSpec (Nebula2::ModuleId m) noexcept
     {
         Nebula2::ModuleBandSpec s;
         s.padX = modPadX; s.padY = modPadY;
         s.powerD = powerD; s.diceD = diceD;
-        s.stateH = stateH; s.jacksH = jacksH; s.screenH = screenH;
+        s.stateH = stateH; s.jacksH = jacksH;
+        s.screenH = screenHeightFor (m);
         return s;
     }
 
@@ -148,8 +158,8 @@ private:
     //   jacks   BOTTOM corners, labelled IN and OUT
     static constexpr float modPadX  = 14.0f;
     static constexpr float modPadY  = 12.0f;
-    static constexpr float powerD   = 26.0f;    // the round power button
-    static constexpr float diceD    = 26.0f;
+    static constexpr float powerD   = 20.0f;    // the round power button - 26 was too big
+    static constexpr float diceD    = 22.0f;
     static constexpr float stateH   = 13.0f;    // the LIVE/IDLE line
     static constexpr float jacksH   = 26.0f;    // the IN/CV/OUT strip
     static constexpr float jackInset = 16.0f;
