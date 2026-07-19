@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nebula2 — UI spec editor</title>
+
+<!--
+  THE UI SPEC EDITOR.
+
+  This exists because the plugin's layout was being written blind: offsets computed in C++,
+  compiled, and first seen when a screenshot came back with truncated titles and controls
+  drawn over each other. Every correction cost a round trip.
+
+  Here the layout is a DESCRIPTION you can edit and look at. Reorder sections, resize them,
+  hide them, switch a group between knobs and faders, change the knob size. When a page is
+  right, tick "approved". "Copy spec" puts the whole thing on the clipboard as JSON - paste
+  that back into the chat and it becomes the thing that gets ported.
+
+  Approvals and edits persist in this browser (localStorage), so closing the tab does not
+  lose them. The JSON is the hand-off; nothing here talks to the plugin directly.
+-->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--acc:#2ec5ff;--ink:#eaf6ff;--sub:#9fb0bf;--faint:#6b7a89;--dim:#546272;--panel:#0f151d}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:#05080d;color:var(--sub);font-family:'Chakra Petch',sans-serif;display:flex;flex-direction:column;overflow:hidden}
+
+/* ---------- chrome ---------- */
+.top{display:flex;align-items:center;gap:14px;padding:10px 16px;background:#0b1017;
+  box-shadow:0 1px 0 rgba(255,255,255,.06);flex:0 0 auto;flex-wrap:wrap}
+.brand{font:700 16px 'Chakra Petch';color:var(--ink);letter-spacing:-.2px}
+.brand small{font:500 10px 'IBM Plex Mono';color:var(--dim);letter-spacing:1px;margin-left:8px}
+.ptabs{display:flex;padding:4px;border-radius:10px;background:#080c12;gap:2px;box-shadow:inset 0 1px 4px rgba(0,0,0,.8)}
+.ptab{height:30px;padding:0 16px;border-radius:7px;font:600 11px 'Chakra Petch';letter-spacing:1.4px;
+  color:#8896a5;display:flex;align-items:center;gap:7px;border:0;background:none;cursor:pointer}
+.ptab.on{background:linear-gradient(180deg,#6bb9ec,#1f6fae);color:#eaf6ff;box-shadow:0 0 12px rgba(46,197,255,.35)}
+.ptab .ok{width:7px;height:7px;border-radius:50%;background:#3ddc84;box-shadow:0 0 7px #3ddc84;display:none}
+.ptab.done .ok{display:block}
+.btn{height:30px;padding:0 14px;border:0;border-radius:9px;cursor:pointer;font:600 11px 'Chakra Petch';
+  letter-spacing:1.4px;color:var(--sub);background:linear-gradient(180deg,#1a222d,#10161d);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.09),inset 0 -2px 5px rgba(0,0,0,.5)}
+.btn:hover{filter:brightness(1.25)}
+.btn.pri{background:linear-gradient(180deg,#6bb9ec,#1f6fae);color:#eaf6ff;box-shadow:0 0 14px rgba(46,197,255,.4)}
+.btn.ghost{background:none;box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)}
+.spacer{margin-left:auto}
+.lbl{font:500 10px 'IBM Plex Mono';letter-spacing:1px;color:var(--faint)}
+
+.main{flex:1;display:flex;min-height:0}
+.side{width:290px;flex:0 0 290px;background:var(--panel);overflow-y:auto;padding:12px;
+  box-shadow:1px 0 0 rgba(255,255,255,.05)}
+.side h3{font:600 10px 'Chakra Petch';letter-spacing:2px;color:var(--faint);margin:16px 0 8px}
+.side h3:first-child{margin-top:0}
+.stage{flex:1;overflow:auto;padding:20px;background:
+  radial-gradient(1200px 720px at 50% -14%,#101d2c,#05080d 62%),#05080d}
+.stageInner{margin:0 auto;transform-origin:top center}
+
+/* ---------- section list ---------- */
+.item{background:#0b1017;border-radius:8px;padding:9px 10px;margin-bottom:7px;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.05)}
+.item.hidden{opacity:.45}
+.irow{display:flex;align-items:center;gap:7px}
+.iname{font:600 11px 'Chakra Petch';letter-spacing:1.2px;color:var(--ink);flex:1}
+.mini{width:22px;height:22px;border:0;border-radius:6px;background:#1a222d;color:var(--sub);cursor:pointer;
+  font-size:11px;line-height:1;display:grid;place-items:center;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
+.mini:hover{background:#243040;color:var(--ink)}
+.mini.act{background:linear-gradient(180deg,#6bb9ec,#1f6fae);color:#04141d}
+.ctrlrow{display:flex;align-items:center;gap:8px;margin-top:8px}
+.ctrlrow .lbl{width:52px;flex:0 0 52px}
+input[type=range]{flex:1;accent-color:#2ec5ff;height:4px}
+.val{font:500 10px 'IBM Plex Mono';color:var(--acc);width:44px;text-align:right}
+.swap{display:flex;padding:2px;border-radius:7px;background:#080c12;gap:2px;margin-top:8px}
+.swap button{flex:1;height:22px;border:0;border-radius:5px;background:none;color:#8896a5;cursor:pointer;
+  font:600 9px 'Chakra Petch';letter-spacing:1px}
+.swap button.on{background:linear-gradient(180deg,#6bb9ec,#1f6fae);color:#eaf6ff}
+
+/* ---------- the rendered page ---------- */
+.sec{background:linear-gradient(180deg,#141b24,#0b1017);border-radius:9px;padding:12px 14px 14px;margin-bottom:10px;
+  box-shadow:0 10px 22px -14px rgba(0,0,0,.85),inset 0 1px 0 rgba(255,255,255,.075),inset 0 0 0 1px rgba(255,255,255,.022);
+  position:relative}
+.sec.sel{box-shadow:0 10px 22px -14px rgba(0,0,0,.85),inset 0 1px 0 rgba(255,255,255,.075),0 0 0 1px var(--acc)}
+.sh{display:flex;align-items:center;gap:9px;margin-bottom:12px;flex-wrap:wrap;min-height:32px}
+.dt{width:5px;height:5px;border-radius:50%;background:var(--acc);box-shadow:0 0 7px rgba(46,197,255,.9)}
+.sn{font:600 11px 'Chakra Petch';letter-spacing:2px;color:var(--faint);white-space:nowrap}
+.info{font:500 10px 'IBM Plex Mono';color:var(--dim);white-space:nowrap}
+.ctl{margin-left:auto;display:flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:flex-end}
+.sel{height:30px;padding:0 25px 0 10px;border-radius:8px;background:#0a0f16;font:600 11px 'Chakra Petch';
+  color:var(--ink);display:flex;align-items:center;box-shadow:inset 0 1px 4px rgba(0,0,0,.7);position:relative;white-space:nowrap}
+.sel:after{content:"▼";position:absolute;right:8px;font-size:8px;color:var(--acc)}
+.chk{display:flex;align-items:center;gap:7px;font:600 11px 'Chakra Petch';letter-spacing:1px;color:var(--sub);white-space:nowrap}
+.chk i{width:18px;height:18px;border-radius:5px;background:linear-gradient(180deg,#6bb9ec,#1f6fae);
+  display:grid;place-items:center;box-shadow:0 0 10px rgba(46,197,255,.4);flex:0 0 18px}
+.chk i:after{content:"";width:5px;height:9px;border:solid #04141d;border-width:0 2px 2px 0;transform:rotate(45deg);margin-top:-2px}
+.seg{display:flex;padding:3px;border-radius:9px;background:#080c12;box-shadow:inset 0 1px 4px rgba(0,0,0,.8)}
+.seg b{height:26px;padding:0 12px;border-radius:6px;font:600 11px 'Chakra Petch';letter-spacing:1px;color:#8896a5;display:grid;place-items:center}
+.seg b.on{background:linear-gradient(180deg,#6bb9ec,#1f6fae);color:#eaf6ff}
+.ic{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;position:relative;
+  background:linear-gradient(180deg,#2a3646,#161f2a);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12),inset 0 -1px 3px rgba(0,0,0,.5),0 0 0 1px rgba(46,197,255,.25)}
+.ic svg{stroke:#cfe6f2;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.tip{position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:#0b111a;color:var(--ink);
+  font:600 10px 'Chakra Petch';letter-spacing:1px;white-space:nowrap;padding:5px 9px;border-radius:6px;
+  box-shadow:0 8px 20px rgba(0,0,0,.7);opacity:0;pointer-events:none;transition:opacity .12s;z-index:5}
+.ic:hover .tip{opacity:1}
+.btn.pri2{background:linear-gradient(180deg,#6bb9ec,#1f6fae);color:#eaf6ff;
+  box-shadow:0 0 16px rgba(46,197,255,.45),inset 0 1px 0 rgba(255,255,255,.3);height:32px;padding:0 16px}
+
+.knobs{display:flex;gap:4px}
+.k{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px}
+.kn{position:relative}
+.kn .tk{position:absolute;inset:0;border-radius:50%;
+  background:repeating-conic-gradient(from 214deg,#5d6c7b 0 1.4deg,transparent 1.4deg 30deg)}
+.kn .bd{position:absolute;inset:7.4%;border-radius:50%;
+  background:radial-gradient(circle at 50% 42%,#232d38,#12181f 56%,#0b0f15);
+  box-shadow:0 4px 11px rgba(0,0,0,.8),inset 0 1px 1px rgba(160,185,205,.14),
+    inset 0 -6px 12px rgba(0,0,0,.58),inset 0 0 0 1px rgba(125,150,175,.13)}
+.kn .pt{position:absolute;inset:7.4%;border-radius:50%}
+.kn .pt s{position:absolute;top:7%;left:50%;width:2px;height:17%;margin-left:-1px;border-radius:2px;
+  background:linear-gradient(180deg,#d4f4ff,#2ec5ff);box-shadow:0 0 9px 2px rgba(46,197,255,.95)}
+.kl{font:600 10px 'Chakra Petch';letter-spacing:1.5px;color:#7d8b9a;text-align:center}
+.kv{font:500 10px 'IBM Plex Mono';color:var(--acc);opacity:.85}
+.frow{display:grid;gap:34px}
+.fd{min-width:0}
+.fdt{display:flex;justify-content:space-between;margin-bottom:9px}
+.fdl{font:600 10px 'Chakra Petch';letter-spacing:1.5px;color:#7d8b9a}
+.fdv{font:500 10px 'IBM Plex Mono';color:var(--acc)}
+.trk{position:relative;height:8px;border-radius:5px;background:linear-gradient(180deg,#05080d,#111823 50%,#05080d);
+  box-shadow:inset 0 1px 4px rgba(0,0,0,.8),inset 0 0 0 1px rgba(255,255,255,.025)}
+.fil{position:absolute;top:1px;bottom:1px;border-radius:4px;background:linear-gradient(90deg,#1577a8,#8fe6ff);box-shadow:0 0 8px rgba(46,197,255,.6)}
+.ctr{position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:rgba(255,255,255,.16)}
+.thb{position:absolute;top:50%;transform:translate(-50%,-50%);width:15px;height:28px;border-radius:4px;
+  background:linear-gradient(180deg,#63717e 0%,#3c4854 46%,#181f29 100%);border:1px solid rgba(0,0,0,.45);
+  box-shadow:0 4px 9px rgba(0,0,0,.85),inset 0 1px 0 rgba(255,255,255,.3),inset 0 -2px 4px rgba(0,0,0,.55)}
+.thb:after{content:"";position:absolute;left:50%;top:5px;bottom:5px;width:1.5px;transform:translateX(-50%);
+  background:rgba(46,197,255,.75);box-shadow:0 0 5px rgba(46,197,255,.9)}
+.wav{position:relative;border-radius:6px;background:linear-gradient(180deg,#0a0f16,#05080d);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.04),inset 0 2px 16px rgba(0,0,0,.6);overflow:hidden}
+.lp{position:absolute;top:0;bottom:0;background:rgba(46,197,255,.10);box-shadow:inset 0 0 22px rgba(46,197,255,.14)}
+.hn{position:absolute;top:0;bottom:0;width:3px;background:var(--acc);box-shadow:0 0 10px rgba(46,197,255,.9)}
+.hn:before,.hn:after{content:"";position:absolute;left:-4.5px;width:12px;height:12px;background:var(--acc);box-shadow:0 0 8px rgba(46,197,255,.9)}
+.hn:before{top:0;border-radius:0 0 3px 3px}.hn:after{bottom:0;border-radius:3px 3px 0 0}
+.grid2{display:grid;grid-template-columns:1fr 1px 1fr;gap:18px}
+.vr{background:rgba(255,255,255,.06)}
+.hs{font:600 10px 'Chakra Petch';letter-spacing:2px;color:var(--acc);opacity:.9;margin-bottom:10px}
+.lane{display:flex;gap:3px;margin-bottom:3px}
+.lname{position:relative;width:150px;flex:0 0 150px;border-radius:5px;overflow:hidden;background:#0e141d;
+  box-shadow:inset 0 1px 3px rgba(0,0,0,.7);display:flex;align-items:center;padding:0 9px}
+.lfill{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,#12455f,#1d6e56)}
+.lname span{position:relative;font:600 10px 'Chakra Petch';letter-spacing:1.2px}
+.lname i{position:relative;margin-left:auto;font:500 9px 'IBM Plex Mono';font-style:normal}
+.steps{display:flex;gap:3px;flex:1}
+.st{flex:1;border-radius:3px;background:#0d131b}
+.st.b{background:#141d29}
+.st.on{background:linear-gradient(180deg,#6bb9ec,#1f6fae);box-shadow:0 0 8px rgba(46,197,255,.45)}
+.pad{position:relative;aspect-ratio:1/1;border-radius:9px;overflow:hidden;
+  background:linear-gradient(180deg,#08121a,#04090f);box-shadow:inset 0 0 0 1px rgba(255,255,255,.04),inset 0 2px 16px rgba(0,0,0,.65)}
+.pgrid{position:absolute;inset:0;background-image:repeating-linear-gradient(0deg,rgba(46,197,255,.06) 0 1px,transparent 1px 100%),
+  repeating-linear-gradient(90deg,rgba(46,197,255,.06) 0 1px,transparent 1px 100%);background-size:12.5% 12.5%}
+.hnd{position:absolute;transform:translate(-50%,-50%);width:22px;height:22px;border-radius:6px;
+  background:rgba(46,197,255,.18);border:1px solid #2ec5ff;box-shadow:0 0 18px rgba(46,197,255,.85)}
+.cnr{position:absolute;font:500 10px 'IBM Plex Mono';color:rgba(46,197,255,.38)}
+.mgrid{display:grid;grid-template-columns:minmax(260px,360px) 1fr;gap:20px}
+.mod{background:linear-gradient(180deg,#10161d,#0b1017);border-radius:9px;padding:12px 14px 10px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06),inset 0 0 0 1px rgba(255,255,255,.028);display:flex;flex-direction:column}
+.mrow{display:flex;gap:10px;margin-bottom:10px}
+.mhd{display:flex;align-items:center;gap:9px;height:20px}
+.mti{font:700 13px 'Chakra Petch';letter-spacing:.9px;color:var(--ink);white-space:nowrap}
+.mcp{margin-left:auto;font:500 9px 'IBM Plex Mono';letter-spacing:.8px;color:var(--faint);white-space:nowrap}
+.mst{font:500 8px 'IBM Plex Mono';letter-spacing:1px;color:var(--dim);text-align:right;height:14px;line-height:14px}
+.jk{display:flex;align-items:center;height:20px;margin-top:8px}
+.j{display:flex;align-items:center;gap:6px}
+.j b{width:10px;height:10px;border-radius:50%;background:#0a0f16;box-shadow:0 0 0 1.6px #39434f;display:block}
+.j span{font:500 8px 'IBM Plex Mono';letter-spacing:1.2px;color:var(--dim)}
+.sp2{margin-left:auto}
+.segm{display:flex;gap:3px;height:16px}
+.segm i{flex:1;border-radius:2px;background:#141b24}
+
+dialog{border:0;border-radius:12px;background:#0b1017;color:var(--sub);padding:0;max-width:min(860px,92vw)}
+dialog::backdrop{background:rgba(0,0,0,.7)}
+.dlgh{display:flex;align-items:center;gap:10px;padding:14px 16px;box-shadow:0 1px 0 rgba(255,255,255,.06)}
+.dlgh b{font:600 11px 'Chakra Petch';letter-spacing:2px;color:var(--faint)}
+textarea{width:100%;height:46vh;background:#05080d;color:#9fe1cb;border:0;padding:14px;
+  font:500 11px/1.55 'IBM Plex Mono';resize:none;outline:none}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <span class="brand">Nebula2<small>UI SPEC EDITOR</small></span>
+  <div class="ptabs" id="ptabs"></div>
+  <span class="lbl">ZOOM</span>
+  <input type="range" id="zoom" min="50" max="130" value="100" style="width:110px">
+  <span class="val" id="zoomv">100%</span>
+  <div class="spacer"></div>
+  <button class="btn ghost" id="reset">RESET PAGE</button>
+  <button class="btn" id="copy">COPY SPEC</button>
+  <button class="btn pri" id="approve">MARK THIS PAGE RIGHT</button>
+</div>
+
+<div class="main">
+  <div class="side">
+    <h3>SECTIONS — ORDER, SIZE, VISIBILITY</h3>
+    <div id="list"></div>
+    <h3>PAGE</h3>
+    <div class="item">
+      <div class="ctrlrow"><span class="lbl">WIDTH</span>
+        <input type="range" id="pw" min="700" max="1400" step="10"><span class="val" id="pwv"></span></div>
+      <div class="ctrlrow"><span class="lbl">KNOB</span>
+        <input type="range" id="ks" min="34" max="86" step="2"><span class="val" id="ksv"></span></div>
+      <div class="ctrlrow"><span class="lbl">GAP</span>
+        <input type="range" id="gp" min="4" max="28" step="1"><span class="val" id="gpv"></span></div>
+    </div>
+  </div>
+  <div class="stage" id="stage"><div class="stageInner" id="page"></div></div>
+</div>
+
+<dialog id="dlg">
+  <div class="dlgh"><b>LAYOUT SPEC</b>
+    <span class="lbl">paste this into the chat — it is what gets ported</span>
+    <button class="btn" style="margin-left:auto" id="dclose">CLOSE</button></div>
+  <textarea id="json" readonly></textarea>
+</dialog>
+
+<script>
+/* ------------------------------------------------------------------ *
+ * The MODEL. Everything drawn below reads from this, and the sidebar
+ * edits it. One description, one renderer - the failure that made this
+ * tool necessary was layout facts living in several places at once.
+ * ------------------------------------------------------------------ */
+const DEFAULT = {
+  sample:{ name:'SAMPLE', w:1000, knob:54, gap:10, sections:[
+    {id:'slicer', name:'SAMPLE SLICER', h:230, show:1},
+    {id:'slice',  name:'SLICE EDITOR',  h:110, show:1, ctrl:'fader', swap:['knob','fader']},
+    {id:'colour', name:'COLOUR',        h:230, show:1, ctrl:'knob',  swap:['knob','fader']},
+    {id:'space',  name:'SPACE',         h:150, show:1, ctrl:'knob',  swap:['knob','fader']}]},
+  grid:{ name:'GRID', w:1000, knob:54, gap:10, sections:[
+    {id:'gridpanel', name:'STEP GRID', h:430, show:1}]},
+  morph:{ name:'MORPH', w:1000, knob:54, gap:10, sections:[
+    {id:'morphpad', name:'MORPH PAD', h:390, show:1}]},
+  rack:{ name:'RACK', w:1000, knob:54, gap:10, sections:[
+    {id:'rackbar', name:'TOOLBAR',   h:46,  show:1},
+    {id:'outs',    name:'OUTPUT ROW', h:150, show:1},
+    {id:'eq',      name:'PARAMETRIC EQ', h:330, show:1},
+    {id:'fx1',     name:'LADDER / LFO / COMB', h:190, show:1},
+    {id:'fx2',     name:'PHASER / CHORUS / ECHO', h:190, show:1},
+    {id:'fx3',     name:'WAVEFOLDER / VOWEL', h:230, show:1}]}
+};
+const KEY='nebula2.uispec.v1';
+let S = load();
+let page = 'sample';
+
+function load(){ try{ const r=localStorage.getItem(KEY); if(r) return JSON.parse(r); }catch(e){}
+  return JSON.parse(JSON.stringify({...DEFAULT, approved:{}})); }
+function save(){ localStorage.setItem(KEY, JSON.stringify(S)); }
+function P(){ return S[page]; }
+
+/* ---------- shared bits ---------- */
+const ICON={
+  shuffle:'<path d="M3 6h4l4 5"/><path d="M13 17h4"/><path d="M3 18h4l4-5"/><path d="M13 7h4"/><path d="M17 4l3 3-3 3"/><path d="M17 14l3 3-3 3"/>',
+  suggest:'<path d="M12 3v3M12 18v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M3 12h3M18 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/><circle cx="12" cy="12" r="3.4"/>',
+  reset:'<path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v5h-5"/>'};
+const ib=(n,t)=>`<div class="ic"><span class="tip">${t}</span><svg width="17" height="17" viewBox="0 0 24 24">${ICON[n]}</svg></div>`;
+const dice=`<div class="ic"><span class="tip">RANDOMISE</span><svg width="15" height="15" viewBox="0 0 12 12" style="stroke:none">
+  <g fill="#eafaff"><circle cx="2" cy="2" r="1.3"/><circle cx="10" cy="2" r="1.3"/><circle cx="6" cy="6" r="1.3"/>
+  <circle cx="2" cy="10" r="1.3"/><circle cx="10" cy="10" r="1.3"/></g></svg></div>`;
+const pwr=(d=20,on=1)=>`<svg width="${d}" height="${d}" viewBox="0 0 24 24" style="flex:0 0 ${d}px">
+  <circle cx="12" cy="12" r="10.4" fill="#080c12" stroke="${on?'#2ec5ff':'#39434f'}" stroke-width="1.4"/>
+  <path d="M12 5.6v5.6" stroke="${on?'#8fe6ff':'#546272'}" stroke-width="1.7" stroke-linecap="round"/>
+  <path d="M8.4 8.1a4.8 4.8 0 1 0 7.2 0" fill="none" stroke="${on?'#8fe6ff':'#546272'}" stroke-width="1.7" stroke-linecap="round"/></svg>`;
+const K=(l,v,p)=>{const s=P().knob;return `<div class="k"><div class="kn" style="width:${s}px;height:${s}px">
+  <div class="tk" style="-webkit-mask:radial-gradient(circle,transparent ${s*.444}px,#000 ${s*.463}px,#000 ${s*.49}px,transparent ${s*.5}px);
+   mask:radial-gradient(circle,transparent ${s*.444}px,#000 ${s*.463}px,#000 ${s*.49}px,transparent ${s*.5}px)"></div>
+  <div class="bd"></div><div class="pt" style="transform:rotate(${-135+p*2.7}deg)"><s></s></div></div>
+  <div class="kl">${l}</div><div class="kv">${v}</div></div>`;};
+const F=(l,v,p,bi)=>{const c=50,left=bi?Math.min(c,p):0,w=bi?Math.abs(p-c):p;
+  return `<div class="fd"><div class="fdt"><span class="fdl">${l}</span><span class="fdv">${v}</span></div>
+  <div class="trk">${bi?'<div class="ctr"></div>':''}<div class="fil" style="left:${left}%;width:${w}%"></div>
+  <div class="thb" style="left:${p}%"></div></div></div>`;};
+const group=(items,mode)=> mode==='fader'
+  ? `<div class="frow" style="grid-template-columns:repeat(${Math.min(items.length,4)},1fr)">${items.map(i=>F(i[0],i[1],i[2],i[3])).join('')}</div>`
+  : `<div class="knobs">${items.map(i=>K(i[0],i[1],i[2])).join('')}</div>`;
+const head=(name,right,info)=>`<div class="sh"><span class="dt"></span><span class="sn">${name}</span>
+  ${info?`<span class="info">${info}</span>`:''}<div class="ctl">${right||''}</div></div>`;
+const sel=t=>`<div class="sel">${t}</div>`, chk=t=>`<div class="chk"><i></i>${t}</div>`;
+const segm=(a,on)=>`<div class="seg">${a.map(x=>`<b class="${x===on?'on':''}">${x}</b>`).join('')}</div>`;
+
+const COLOUR=[['DRIVE','0 %',0],['CRUSH','0 %',0],['SQUEEZE','0 %',0],['TONE','100 %',100],
+  ['WIDTH','100 %',50],['PUMP','0 %',0],['MASTER','90 %',90]];
+const LANES2=[['REVERSE','0 %',0],['STUTTER','0 %',0],['SHATTER','0 %',0],['PITCH +','0 %',0],
+  ['PITCH −','0 %',0],['RESONATE','0 %',0],['GATE','0 %',0]];
+
+/* ---------- section renderers ---------- */
+const R = {
+ slicer:s=>`${head('SAMPLE',
+    `<button class="btn pri2">LOAD SAMPLE…</button>${ib('shuffle','SHUFFLE')}${ib('suggest','SUGGEST — ARRANGE BY WHAT IT HEARS')}${ib('reset','RESET ORDER')}
+     ${segm(['GRID','TRANSIENT'],'GRID')}<span class="lbl">COUNT</span>${segm(['4','8','16','32','64'],'16')}${dice}`,
+    '140 break2 · 16 slices · 140.0 BPM')}
+  <div class="wav" id="wav" style="height:${Math.max(70,s.h-108)}px"></div>
+  <div class="frow" style="grid-template-columns:1fr 1fr;margin-top:16px">
+    ${F('SENS','50 %',50)}${F('STRETCH','100 %',100)}</div>`,
+
+ slice:s=>`${head('SLICE 5',`${chk('REVERSE')}<span class="lbl">SHAPE</span>${sel('Punch')}`)}
+   ${s.ctrl==='fader'
+     ? `<div class="frow" style="grid-template-columns:repeat(3,1fr)">${F('LEVEL','0 dB',83)}${F('PAN','C',50,1)}${F('PITCH','0 st',50,1)}</div>`
+     : `<div class="knobs" style="max-width:${P().knob*6}px">${K('LEVEL','0 dB',83)}${K('PAN','C',50)}${K('PITCH','0 st',50)}</div>`}`,
+
+ colour:s=>`${head('COLOUR',
+    `<span class="lbl">KEY</span>${sel('A')}<span class="lbl">SCALE</span>${sel('Minor')}
+     <span class="lbl">CHARACTER</span>${sel('Tube')}${chk('FX ON')}${chk('LIMITER')}${dice}`)}
+   ${group(COLOUR,s.ctrl)}<div style="height:${P().gap}px"></div>${group(LANES2,s.ctrl)}`,
+
+ space:s=>`${head('SPACE',
+    `<span class="lbl">CHAR</span>${sel('Hall')}<span class="lbl">SYNC</span>${sel('1/8')}
+     <span class="lbl">MODE</span>${sel('Ping-Pong')}${chk('SPACE ON')}`)}
+   <div class="grid2"><div><div class="hs">REVERB</div>${group([['MIX','0 %',0],['SIZE','50 %',50]],s.ctrl)}</div>
+   <div class="vr"></div><div><div class="hs">DELAY</div>
+   ${group([['MIX','0 %',0],['FDBK','40 %',40],['HAUNT','0 %',0]],s.ctrl)}</div></div>`,
+
+ gridpanel:s=>{const L=[['TONE',100,1],['DRIVE',0,0],['CRUSH',0,0],['SQUEEZE',0,0],['PUMP',0,0],['WIDTH',100,1],
+    ['RESONATE',0,0],['PITCH +',0,0],['PITCH −',0,0],['REVERSE',0,0],['STUTTER',0,0],['SHATTER',0,0],
+    ['GATE',0,0],['REVERB',0,0],['DELAY',0,0],['HAUNT',0,0]];
+   const rowH=Math.max(12,Math.floor((s.h-100)/17));
+   return `${head('GRID',`${chk('GRID ON')}<span class="lbl">STEPS</span>${segm(['8','16','32'],'16')}
+     <span class="lbl">DENSITY</span>${segm(['LOW','MID','HIGH'],'MID')}<span class="lbl">PATTERN</span>${sel('—')}${dice}`)}
+   <div class="lane" style="margin-bottom:8px"><div class="lname"><span style="color:#9fb0bf">NOTE</span>
+     <i style="color:#2ec5ff">A MINOR</i></div><div class="steps">
+     ${Array.from({length:16},(_,i)=>`<div class="st" style="height:${rowH}px;position:relative">
+       ${[2,7,11].includes(i)?'<u style="position:absolute;left:2px;right:2px;top:40%;height:3px;border-radius:2px;background:#2ec5ff;box-shadow:0 0 7px rgba(46,197,255,.8)"></u>':''}</div>`).join('')}</div></div>
+   ${L.map(([n,v,rest],li)=>`<div class="lane"><div class="lname">
+     ${v>0?`<div class="lfill" style="width:${v}%;opacity:${rest?.35:1}"></div>`:''}
+     <span style="color:${rest||v===0?'#7b86a8':'#dfe7f7'}">${n}</span>
+     <i style="color:${rest||v===0?'#5f6883':'#9fe1cb'}">${v}%</i></div><div class="steps">
+     ${Array.from({length:16},(_,i)=>`<div class="st ${i%4===0?'b':''} ${(li===1&&[0,1,8].includes(i))?'on':''}" style="height:${rowH}px"></div>`).join('')}
+     </div></div>`).join('')}`;},
+
+ morphpad:s=>`${head('MORPH',`${chk('PAD ON')}<span class="lbl">MOTION</span>${sel('Circle')}
+    <span class="lbl">RATE</span>${sel('2 bars')}${dice}`)}
+  <div class="mgrid"><div><div class="pad" style="max-height:${s.h-90}px"><div class="pgrid"></div>
+    <div style="position:absolute;top:0;bottom:0;left:62%;width:1px;background:rgba(46,197,255,.4)"></div>
+    <div style="position:absolute;left:0;right:0;top:38%;height:1px;background:rgba(46,197,255,.4)"></div>
+    <div class="hnd" style="left:62%;top:38%"></div>
+    <span class="cnr" style="top:7px;left:9px">1</span><span class="cnr" style="top:7px;right:9px">3</span>
+    <span class="cnr" style="bottom:7px;left:9px">2</span><span class="cnr" style="bottom:7px;right:9px">4</span></div></div>
+  <div>${group([['SIZE','40 %',40],['GLIDE','30 %',30],['X','0.62',62],['Y','0.38',38]],'knob')}
+    <div class="frow" style="grid-template-columns:1fr 1fr;margin-top:14px">
+     ${[1,2,3,4].map(i=>`<div class="fd" style="background:#0b1017;border-radius:8px;padding:10px 12px;
+       box-shadow:inset 0 0 0 1px rgba(255,255,255,.05)"><div class="fdl">SCENE ${i}</div></div>`).join('')}</div></div></div>`,
+
+ rackbar:()=>`<div class="sh" style="margin:0">${chk('RACK ON')}
+   <button class="btn">CLEAR PATCH</button><button class="btn">RANDOMISE</button>
+   <span class="lbl">FILTER</span>${sel('Low Pass')}<span class="lbl">LFO</span>${sel('Sine')}</div>`,
+
+ outs:s=>rackRow([{n:'MAIN OUT',c:'→ SPEAKERS',out:0,k:[['LEVEL','100',100]],meter:1},
+                  {n:'BEAT OUT',c:'THE MIX',pw:0,in:0,scope:1}],s),
+ eq:s=>`${head('PARAMETRIC EQ · 5 BAND',dice)}
+   <div style="position:relative;border-radius:6px;background:#080c12;height:${Math.max(90,s.h-140)}px;
+     box-shadow:inset 0 1px 4px rgba(0,0,0,.75)"><svg width="100%" height="100%" viewBox="0 0 1000 200" preserveAspectRatio="none">
+     ${[100,250,400,550,700,850].map(x=>`<line x1="${x}" y1="0" x2="${x}" y2="200" stroke="#141b24"/>`).join('')}
+     <line x1="0" y1="100" x2="1000" y2="100" stroke="#1e2733"/>
+     <path d="M0 150 Q150 150 300 120 Q450 90 560 130 Q700 170 850 130 Q930 110 1000 120" fill="none" stroke="#2ec5ff" stroke-width="4" opacity=".18"/>
+     <path d="M0 150 Q150 150 300 120 Q450 90 560 130 Q700 170 850 130 Q930 110 1000 120" fill="none" stroke="#2ec5ff" stroke-width="2"/>
+     ${[['#ff5468',90,148],['#ffcf4d',280,122],['#5ce0a0',540,132],['#a78bfa',760,128],['#2ec5ff',930,120]]
+       .map(([c,x,y])=>`<circle cx="${x}" cy="${y}" r="9" fill="#0b1017" stroke="${c}" stroke-width="2"/><circle cx="${x}" cy="${y}" r="3.2" fill="${c}"/>`).join('')}
+     </svg></div>
+   <div class="frow" style="grid-template-columns:repeat(5,1fr);margin-top:12px">
+     ${[['B1','35 Hz','+0.0 dB','#ff5468'],['B2','121 Hz','+4.3 dB','#ffcf4d'],['B3','480 Hz','-2.4 dB','#5ce0a0'],
+        ['B4','2.0k Hz','+2.9 dB','#a78bfa'],['B5','8.7k Hz','+0.5 dB','#2ec5ff']]
+       .map(([b,f,g,c])=>`<div style="background:#0b1017;border-radius:8px;padding:9px 11px;position:relative;overflow:hidden;
+         box-shadow:inset 0 0 0 1px rgba(255,255,255,.05)">
+         <div style="position:absolute;left:0;right:0;top:0;height:2px;background:${c}"></div>
+         <div style="display:flex;align-items:center"><span class="fdl">${b}</span>
+           <span style="margin-left:auto">${pwr(18)}</span></div>
+         <div style="display:flex;margin-top:8px"><span class="fdv" style="color:#546272">${f}</span>
+           <span style="margin-left:auto;font:600 11px 'IBM Plex Mono';color:${c}">${g}</span></div></div>`).join('')}</div>`,
+ fx1:s=>rackRow([{n:'LADDER',c:'FILTER / CV',cv:1,k:[['CUT','6.00 kHz',60],['RES','4.0',18]]},
+                 {n:'LFO',c:'CV SOURCE',in:0,k:[['RATE','1.50 Hz',42],['DEPTH','50',50]],wave:1},
+                 {n:'COMB',c:'TUNED / METALLIC',cv:1,k:[['TUNE','180 Hz',44],['DECAY','80',80],['MIX','55',55]]}],s),
+ fx2:s=>rackRow([{n:'PHASER',c:'6-STAGE SWEEP',k:[['RATE','0.50',28],['DEPTH','70',70],['FDBK','45',45],['MIX','60',60]]},
+                 {n:'CHORUS',c:'3-VOICE',k:[['RATE','0.80',32],['DEPTH','45',45],['MIX','50',50]]},
+                 {n:'SPACE ECHO',c:'TAPE DELAY',k:[['TIME','320 ms',55],['REPEATS','55',55],['WOW','25',25],['MIX','45',45]]}],s),
+ fx3:s=>rackRow([{n:'WAVEFOLDER',c:'DESTRUCTION',cv:1,k:[['FOLD','35',35],['BIAS','0',50],['MIX','70',70]],wave:1},
+                 {n:'VOWEL',c:'FORMANT / IT TALKS',cv:1,k:[['VOWEL','A',0],['SHARP','9.0',38],['MIX','70',70]],wave:1}],s)
+};
+function rackRow(mods,s){
+  return `<div class="mrow">${mods.map(m=>{
+    const scr=m.meter?`<div style="border-radius:5px;background:#080c12;padding:9px 7px;margin:2px 0 8px"><div class="segm">
+        ${Array.from({length:16},(_,i)=>`<i style="${i<9?'background:#5ce0a0':i<13?'background:#ffcf4d':''}"></i>`).join('')}</div></div>`
+      : m.scope?`<div style="border-radius:5px;background:#080c12;height:34px;margin:2px 0 8px"></div>`
+      : m.wave?`<div style="border-radius:5px;background:#080c12;height:${Math.max(30,s.h-150)}px;margin:2px 0 8px"></div>`:'';
+    const jl=[]; if(m.in!==0)jl.push('<div class="j"><b></b><span>IN</span></div>');
+    if(m.cv)jl.push('<div class="j"><b></b><span>CV</span></div>');
+    const jr=m.out!==0?'<div class="sp2"><div class="j"><b></b><span>OUT</span></div></div>':'';
+    return `<div class="mod" style="flex:1"><div class="mhd">${m.pw!==0?pwr(20):''}
+      <div class="mti">${m.n}</div><div class="mcp">${m.c}</div>${m.pw!==0?dice:''}</div>
+      <div class="mst">IDLE</div>${scr}
+      ${m.k?`<div class="knobs">${m.k.map(k=>K(k[0],k[1],k[2])).join('')}</div>`:''}
+      <div class="jk">${jl.join('')}${jr}</div></div>`;}).join('')}</div>`;
+}
+
+/* ---------- render ---------- */
+function render(){
+  const p=P();
+  document.getElementById('page').style.width=p.w+'px';
+  const secs=p.sections.filter(s=>s.show).map(s=>{
+    const inner = R[s.id] ? R[s.id](s) : `<div class="sn">${s.name}</div>`;
+    const bare = s.id==='rackbar';
+    return `<div class="sec${bare?'':''}" data-id="${s.id}"
+      style="${bare?'background:none;box-shadow:none;padding:0;':''}min-height:${s.h}px;margin-bottom:${p.gap}px">${inner}</div>`;
+  }).join('');
+  document.getElementById('page').innerHTML=secs;
+  drawWave();
+  renderList(); renderTabs();
+}
+function drawWave(){
+  const el=document.getElementById('wav'); if(!el) return;
+  const w=1240,h=200; let d='';
+  for(let x=0;x<w;x+=2){const env=.25+.75*Math.abs(Math.sin(x/95))*(x%160<26?1.5:.6);
+    const a=Math.min(1,env*Math.abs(Math.sin(x*.7)*.5+Math.sin(x*.21)*.5));
+    d+=`<rect x="${x}" y="${100-a*84}" width="1.2" height="${a*168}"/>`;}
+  let m='';for(let i=1;i<16;i++){const x=i*w/16;m+=`<line x1="${x}" y1="0" x2="${x}" y2="${h}" stroke="#1a222d"/>`;}
+  let n='';for(let i=0;i<16;i++)n+=`<text x="${i*w/16+7}" y="18" fill="#455260" font-family="IBM Plex Mono" font-size="14">${i+1}</text>`;
+  el.innerHTML=`<svg width="100%" height="100%" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">${m}
+    <g fill="#5d6c7b" opacity=".85">${d}</g>${n}</svg>
+    <div class="lp" style="left:18%;width:56%"></div>
+    <div class="hn" style="left:18%"></div><div class="hn" style="left:74%"></div>`;
+}
+function renderTabs(){
+  document.getElementById('ptabs').innerHTML=['sample','grid','morph','rack'].map(k=>
+    `<button class="ptab ${k===page?'on':''} ${S.approved&&S.approved[k]?'done':''}" data-p="${k}">
+      <span class="ok"></span>${S[k].name}</button>`).join('');
+  document.querySelectorAll('.ptab').forEach(b=>b.onclick=()=>{page=b.dataset.p;render();});
+  const a=S.approved&&S.approved[page];
+  const btn=document.getElementById('approve');
+  btn.textContent=a?'✓ MARKED RIGHT':'MARK THIS PAGE RIGHT';
+  btn.className='btn '+(a?'':'pri');
+}
+function renderList(){
+  const p=P();
+  document.getElementById('list').innerHTML=p.sections.map((s,i)=>`
+    <div class="item ${s.show?'':'hidden'}">
+      <div class="irow">
+        <button class="mini" data-a="up" data-i="${i}" ${i===0?'disabled':''}>▲</button>
+        <button class="mini" data-a="dn" data-i="${i}" ${i===p.sections.length-1?'disabled':''}>▼</button>
+        <span class="iname">${s.name}</span>
+        <button class="mini ${s.show?'act':''}" data-a="vis" data-i="${i}">${s.show?'●':'○'}</button>
+      </div>
+      <div class="ctrlrow"><span class="lbl">HEIGHT</span>
+        <input type="range" data-a="h" data-i="${i}" min="40" max="600" step="5" value="${s.h}">
+        <span class="val">${s.h}px</span></div>
+      ${s.swap?`<div class="swap">${s.swap.map(m=>
+        `<button data-a="ctrl" data-i="${i}" data-v="${m}" class="${s.ctrl===m?'on':''}">${m.toUpperCase()}S</button>`).join('')}</div>`:''}
+    </div>`).join('');
+  ['pw','ks','gp'].forEach((id,n)=>{const el=document.getElementById(id);
+    el.value=[p.w,p.knob,p.gap][n];
+    document.getElementById(id+'v').textContent=el.value+'px';});
+  document.querySelectorAll('.item [data-a]').forEach(el=>{
+    const i=+el.dataset.i, a=el.dataset.a, secs=P().sections;
+    if(el.tagName==='INPUT'){ el.oninput=()=>{ secs[i].h=+el.value; save(); render(); }; return; }
+    el.onclick=()=>{
+      if(a==='up'&&i>0){[secs[i-1],secs[i]]=[secs[i],secs[i-1]];}
+      if(a==='dn'&&i<secs.length-1){[secs[i+1],secs[i]]=[secs[i],secs[i+1]];}
+      if(a==='vis') secs[i].show=secs[i].show?0:1;
+      if(a==='ctrl') secs[i].ctrl=el.dataset.v;
+      save(); render();};});
+}
+['pw','ks','gp'].forEach((id,n)=>{
+  document.getElementById(id).oninput=e=>{
+    const k=['w','knob','gap'][n]; P()[k]=+e.target.value; save(); render();};});
+document.getElementById('zoom').oninput=e=>{
+  document.getElementById('page').style.transform=`scale(${e.target.value/100})`;
+  document.getElementById('zoomv').textContent=e.target.value+'%';};
+document.getElementById('approve').onclick=()=>{
+  S.approved=S.approved||{}; S.approved[page]=!S.approved[page]; save(); renderTabs();};
+document.getElementById('reset').onclick=()=>{
+  if(!confirm('Reset '+P().name+' to the starting layout?')) return;
+  S[page]=JSON.parse(JSON.stringify(DEFAULT[page])); save(); render();};
+document.getElementById('copy').onclick=()=>{
+  const out={approved:S.approved||{}};
+  ['sample','grid','morph','rack'].forEach(k=>out[k]={w:S[k].w,knob:S[k].knob,gap:S[k].gap,
+    sections:S[k].sections.map(s=>({id:s.id,h:s.h,show:s.show,...(s.ctrl?{ctrl:s.ctrl}:{})}))});
+  const t=JSON.stringify(out,null,2);
+  document.getElementById('json').value=t;
+  document.getElementById('dlg').showModal();
+  navigator.clipboard&&navigator.clipboard.writeText(t).catch(()=>{});};
+document.getElementById('dclose').onclick=()=>document.getElementById('dlg').close();
+render();
+</script>
+</body>
+</html>
