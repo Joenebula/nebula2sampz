@@ -39,6 +39,11 @@ private:
         std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
         juce::String label;
         Nebula2::ModuleId owner = Nebula2::ModuleId::count;
+
+        // Where the caption and value are drawn, under the knob. The kit pairs every
+        // rotary with both; this build had neither - the label existed only as a tooltip,
+        // so a rack knob showed nothing at all until you hovered it.
+        juce::Rectangle<int> textArea;
     };
     std::vector<Dial> dials;
 

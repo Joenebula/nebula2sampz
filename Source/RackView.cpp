@@ -269,7 +269,14 @@ void RackView::rebuildLayout()
         for (size_t i = 0; i < mine.size(); ++i)
         {
             auto cell = r.withX (r.getX() + w * (float) i).withWidth (w).reduced (2.0f, 0.0f);
-            mine[i]->slider->setBounds (cell.toNearestInt());
+
+            // Reserve the bottom strip for the caption and value, as the kit does. The knob
+            // takes what's left rather than the whole cell; drawing the text over the knob
+            // is the only other way to fit it, and it is unreadable.
+            auto cellI = cell.toNearestInt();
+            const int textH = juce::jmin (22, cellI.getHeight() / 3);
+            mine[i]->textArea = cellI.removeFromBottom (textH);
+            mine[i]->slider->setBounds (cellI);
         }
     }
 
@@ -509,6 +516,33 @@ void RackView::paint(juce::Graphics& g)
     }
 
     drawModuleScreens (g);
+
+    // --- knob captions and values ---
+    //
+    // The kit pairs every rotary with a caption and a live value:
+    //     label  600 10px Chakra Petch, letter-spacing 1.5px, #7d8b9a
+    //     value  500 10px IBM Plex Mono, #2ec5ff at 0.8
+    //
+    // Both are new. The label existed only as a tooltip and the value only as a hover
+    // popup, so a rack knob showed nothing at all until you pointed at it. That was
+    // survivable while the knob drew a filled value arc; the kit's knob has no arc, so
+    // without this the control would say less than it used to, not more.
+    for (const auto& d : dials)
+    {
+        if (d.textArea.isEmpty() || d.slider == nullptr) continue;
+
+        auto area = d.textArea;
+        auto labelRow = area.removeFromTop (area.getHeight() / 2);
+
+        g.setColour (Nebula2::Theme::knobLabel);
+        g.setFont (Theme::ui (9.0f, 600));
+        g.drawText (d.label.toUpperCase(), labelRow, juce::Justification::centred, false);
+
+        g.setColour (Theme::accent.withAlpha (0.8f));
+        g.setFont (Theme::mono (9.0f, 500));
+        g.drawText (d.slider->getTextFromValue (d.slider->getValue()),
+                    area, juce::Justification::centred, false);
+    }
 
     // --- cables ---
     for (const auto& c : cables)

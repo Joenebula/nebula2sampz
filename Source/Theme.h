@@ -71,25 +71,45 @@ namespace Nebula2::Theme
 
     // --- knob body ---
     //
-    // The moulded-plastic ramp the rotary control is built from: cap highlight down to
-    // skirt shadow. Tokenised so the AUDIO KIT's knob can replace the prototype's by
-    // editing six values here rather than hunting twenty-one literals in the LookAndFeel.
-    inline const juce::Colour knobCapTop  { 0xff39415f };
-    inline const juce::Colour knobCapBot  { 0xff10142a };
-    inline const juce::Colour knobRim     { 0xff232c4c };
-    inline const juce::Colour knobBody    { 0xff182038 };
-    inline const juce::Colour knobShade   { 0xff151b32 };
-    inline const juce::Colour knobSkirt   { 0xff131a30 };
+    // The AUDIO KIT's rotary, which is a moulded cap lit from above rather than the
+    // prototype's arc-and-disc:
+    //
+    //   body    radial-gradient(circle at 50% 42%, #232d38, #12181f 56%, #0b0f15)
+    //   ticks   repeating-conic-gradient(from 214deg, #5d6c7b 0 1.4deg, transparent 1.4 30)
+    //   pointer linear-gradient(180deg,#d4f4ff,#2ec5ff) + a 9px cyan glow
+    //
+    // The light is off-centre (42%, not 50%) - that is what stops it reading as a flat
+    // circle, and it is the easiest detail to lose when eyeballing a knob.
+    inline const juce::Colour knobBodyTop { 0xff232d38 };   // lit face
+    inline const juce::Colour knobBodyMid { 0xff12181f };   // 56% stop
+    inline const juce::Colour knobBodyBot { 0xff0b0f15 };   // shaded skirt
+    inline const juce::Colour knobTick    { 0xff5d6c7b };   // the tick ring
+    inline const juce::Colour knobLabel   { 0xff7d8b9a };   // caption under the knob
+    inline const juce::Colour pointerTip  { 0xffd4f4ff };   // pointer gradient, top
+
+    // Inner lighting: a hairline highlight along the top edge and a cool rim. Both are
+    // low-alpha and both are load-bearing - without them the cap reads as printed on.
+    inline const juce::Colour knobInnerLit { 0x24a0b9cd };  // rgba(160,185,205,0.14)
+    inline const juce::Colour knobInnerRim { 0x217d96af };  // rgba(125,150,175,0.13)
 
     // --- geometry ---
     inline constexpr float cardRadius = 14.0f;
     inline constexpr float wellRadius = 10.0f;
     inline constexpr float ctrlRadius = 10.0f;
 
-    // The knob's sweep: -140deg to +140deg. Not a full circle - you can see where the ends
-    // are, which is the whole point of a pointer knob.
-    inline constexpr float knobStartDeg = -140.0f;
-    inline constexpr float knobEndDeg   =  140.0f;
+    // The knob's sweep. The kit's own maths is `-135 + value * 270`, so 270 degrees, not
+    // the prototype's 280. Taken from the design's script rather than measured off a
+    // picture - a five-degree error at each end is invisible alone and obvious in a row.
+    inline constexpr float knobStartDeg = -135.0f;
+    inline constexpr float knobEndDeg   =  135.0f;
+
+    // The tick ring: 12 marks 30 degrees apart, each 1.4 degrees wide, the first at 214.
+    // They run the whole way round in the kit - some fall outside the 270-degree sweep,
+    // which is the design's choice and not a bug to tidy up.
+    inline constexpr int   knobTickCount   = 12;
+    inline constexpr float knobTickStepDeg = 30.0f;
+    inline constexpr float knobTickFromDeg = 214.0f;
+    inline constexpr float knobTickWideDeg = 1.4f;
 
     // --- type ---
     //

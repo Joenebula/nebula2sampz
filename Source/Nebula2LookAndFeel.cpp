@@ -71,81 +71,91 @@ void Nebula2LookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int w
     if (R <= 1.0f) return;   // genuinely zero-sized; nothing sensible to draw
 
     const auto c = bounds.getCentre();
-    const bool big = R >= 40.0f;
-    const float W = juce::jlimit(3.0f, 6.0f, R * 0.22f);
 
     const float A0 = Theme::knobStartDeg, A1 = Theme::knobEndDeg;
     const float Av = A0 + (A1 - A0) * n;
 
-    // Zero means zero: below this, nothing lights up.
-    const bool lit = n > 0.0005f;
+    // THE AUDIO KIT'S KNOB. Three layers and no value arc:
+    //
+    //   1. a ring of tick marks, fixed - they do NOT light up as the value passes them
+    //   2. a moulded body, lit from 42% rather than the centre
+    //   3. a pointer line with a cyan glow
+    //
+    // The prototype's knob was an arc-and-disc: a filled sweep showed the value at a
+    // glance. The kit deliberately does not do that, which is a real change in what the
+    // control tells you - the value lives in the pointer angle and the mono readout
+    // underneath instead. Dropping the arc WITHOUT that readout would lose information,
+    // so drawValueReadout below is part of this change rather than a later polish.
 
-    // --- tick ring ---
-    const int NT = big ? 13 : (R <= 20.0f ? 7 : 11);
-    for (int i = 0; i < NT; ++i)
+    // --- 1. tick ring ---
+    // Every 30 degrees from 214, all the way round. Proportions taken from the kit's mask:
+    // the ring sits at r 25..26.5 of a 27px radius, i.e. 0.926..0.981.
     {
-        const float a = A0 + (A1 - A0) * (float) i / (float) (NT - 1);
-        const bool passed = lit && a <= Av;
-        const auto t = polar(c, R + (big ? 9.0f : 6.0f), a);
-        const float tr = big ? 1.6f : 1.2f;
-        g.setColour(passed ? Theme::accent : Nebula2::Theme::glassMid);
-        g.fillEllipse(t.x - tr, t.y - tr, tr * 2.0f, tr * 2.0f);
-    }
+        const float rIn = R * 0.926f, rOut = R * 0.981f;
+        g.setColour (Nebula2::Theme::knobTick);
 
-    // --- recessed track ---
-    g.setColour(Nebula2::Theme::shadowDeep);
-    g.strokePath(arc(c, R, A0, A1), juce::PathStrokeType(W + 2.5f, juce::PathStrokeType::curved,
-                                                         juce::PathStrokeType::rounded));
-    g.setColour(Nebula2::Theme::glassLow);
-    g.strokePath(arc(c, R, A0, A1), juce::PathStrokeType(W, juce::PathStrokeType::curved,
-                                                         juce::PathStrokeType::rounded));
-
-    // --- value arc, with a brighter leading edge ---
-    if (lit)
-    {
-        // The SVG used a drop-shadow for the glow; here it's a wider, fainter arc under
-        // the real one — same read, no blur pass.
-        g.setColour(Theme::accent.withAlpha(0.22f));
-        g.strokePath(arc(c, R, A0, Av), juce::PathStrokeType(W + (big ? 7.0f : 4.0f),
-                                                             juce::PathStrokeType::curved,
-                                                             juce::PathStrokeType::rounded));
-        g.setColour(Theme::accent);
-        g.strokePath(arc(c, R, A0, Av), juce::PathStrokeType(W, juce::PathStrokeType::curved,
-                                                             juce::PathStrokeType::rounded));
-        g.setColour(Theme::accentLit.withAlpha(0.9f));
-        g.strokePath(arc(c, R, juce::jmax(A0, Av - 14.0f), Av),
-                     juce::PathStrokeType(W * 0.55f, juce::PathStrokeType::curved,
-                                          juce::PathStrokeType::rounded));
-    }
-
-    // --- machined cap ---
-    const float capR = R - W - 4.0f;
-    if (capR > 3.0f)
-    {
-        juce::ColourGradient cap(Nebula2::Theme::knobCapTop, c.x, c.y - capR,
-                                 Nebula2::Theme::knobCapBot, c.x, c.y + capR, false);
-        g.setGradientFill(cap);
-        g.fillEllipse(c.x - capR, c.y - capR, capR * 2.0f, capR * 2.0f);
-
-        g.setColour(Nebula2::Theme::glassHigh);
-        g.drawEllipse(c.x - capR, c.y - capR, capR * 2.0f, capR * 2.0f, 1.4f);
-
-        // Specular highlight — what makes it read as a moulded cap rather than a disc.
-        g.setColour(Nebula2::Theme::glassMid);
-        g.fillEllipse(c.x - capR * 0.28f - capR * 0.42f,
-                      c.y - capR * 0.42f - capR * 0.26f,
-                      capR * 0.84f, capR * 0.52f);
-
-        // --- pointer ---
-        const auto p1 = polar(c, capR * 0.30f, Av);
-        const auto p2 = polar(c, capR * 0.86f, Av);
-        if (lit)
+        for (int i = 0; i < Theme::knobTickCount; ++i)
         {
-            g.setColour(Theme::accent.withAlpha(0.35f));
-            g.drawLine(p1.x, p1.y, p2.x, p2.y, (big ? 3.4f : 2.6f) + 3.0f);
+            const float a = Theme::knobTickFromDeg + Theme::knobTickStepDeg * (float) i;
+            // Drawn as a short radial stroke rather than a filled wedge: at 1.4 degrees the
+            // two are indistinguishable, and a stroke stays crisp at small sizes.
+            const auto p1 = polar (c, rIn,  a - 90.0f);
+            const auto p2 = polar (c, rOut, a - 90.0f);
+            g.drawLine (p1.x, p1.y, p2.x, p2.y, juce::jmax (1.0f, R * 0.05f));
         }
-        g.setColour(lit ? Theme::accent : Theme::faint);
-        g.drawLine(p1.x, p1.y, p2.x, p2.y, big ? 3.4f : 2.6f);
+    }
+
+    // --- 2. moulded body ---
+    // inset 4 of 54 in the kit = 0.852 of the diameter.
+    const float bodyR = R * 0.852f;
+    if (bodyR <= 2.0f) return;
+
+    {
+        // Radial, centred at 50% 42% - above centre. An even fill reads as a flat circle;
+        // this is what makes it look turned.
+        juce::ColourGradient body (Nebula2::Theme::knobBodyTop,
+                                   c.x, c.y - bodyR * 0.16f,
+                                   Nebula2::Theme::knobBodyBot,
+                                   c.x, c.y + bodyR, true);
+        body.addColour (0.56, Nebula2::Theme::knobBodyMid);
+        g.setGradientFill (body);
+        g.fillEllipse (c.x - bodyR, c.y - bodyR, bodyR * 2.0f, bodyR * 2.0f);
+
+        // Cool rim, then a hairline lit edge across the top only. Both low-alpha and both
+        // load-bearing: without them the cap reads as printed on rather than moulded.
+        g.setColour (Nebula2::Theme::knobInnerRim);
+        g.drawEllipse (c.x - bodyR, c.y - bodyR, bodyR * 2.0f, bodyR * 2.0f, 1.0f);
+
+        g.setColour (Nebula2::Theme::knobInnerLit);
+        juce::Path topLit;
+        topLit.addCentredArc (c.x, c.y, bodyR - 0.5f, bodyR - 0.5f, 0.0f,
+                              juce::degreesToRadians (-70.0f),
+                              juce::degreesToRadians (70.0f), true);
+        g.strokePath (topLit, juce::PathStrokeType (1.2f));
+    }
+
+    // --- 3. pointer ---
+    // 2px wide, 9px tall, starting 4px in from the body's top edge: near the rim, not a
+    // spoke from the centre. Proportions from the kit's 54px knob.
+    {
+        const float len   = bodyR * 0.39f;
+        const float inset = bodyR * 0.17f;
+        const float wid   = juce::jmax (1.5f, R * 0.074f);
+
+        const auto tip  = polar (c, bodyR - inset,       Av);
+        const auto tail = polar (c, bodyR - inset - len, Av);
+
+        // The glow, as a wider soft stroke under the line - the kit uses a 9px blur.
+        g.setColour (Theme::accent.withAlpha (0.32f));
+        g.drawLine (tail.x, tail.y, tip.x, tip.y, wid + 4.5f);
+        g.setColour (Theme::accent.withAlpha (0.5f));
+        g.drawLine (tail.x, tail.y, tip.x, tip.y, wid + 2.0f);
+
+        // The line itself: pale at the tip, accent at the tail.
+        juce::ColourGradient pg (Nebula2::Theme::pointerTip, tip.x, tip.y,
+                                 Theme::accent, tail.x, tail.y, false);
+        g.setGradientFill (pg);
+        g.drawLine (tail.x, tail.y, tip.x, tip.y, wid);
     }
 }
 
@@ -176,8 +186,8 @@ void Nebula2LookAndFeel::drawLinearSlider(juce::Graphics& g, int x, int y, int w
 
     // Thumb, machined like the knob caps so the family reads as one set of controls.
     const float tr = juce::jmin(7.0f, b.getHeight() * 0.5f);
-    juce::ColourGradient cap(Nebula2::Theme::knobCapTop, sliderPos, cy - tr,
-                             Nebula2::Theme::knobCapBot, sliderPos, cy + tr, false);
+    juce::ColourGradient cap(Nebula2::Theme::knobBodyTop, sliderPos, cy - tr,
+                             Nebula2::Theme::knobBodyBot, sliderPos, cy + tr, false);
     g.setGradientFill(cap);
     g.fillEllipse(sliderPos - tr, cy - tr, tr * 2.0f, tr * 2.0f);
     g.setColour(s.isEnabled() ? Theme::accentLit.withAlpha(0.8f) : Theme::faint);
@@ -305,9 +315,11 @@ void Nebula2LookAndFeel::drawCard(juce::Graphics& g, juce::Rectangle<float> r,
     g.setColour(Nebula2::Theme::shadowFaint);
     g.fillRoundedRectangle(r.translated(0.0f, 3.0f), Theme::cardRadius);
 
-    juce::ColourGradient grad(Nebula2::Theme::knobBody, 0.0f, r.getY(),
-                              Theme::card2, 0.0f, r.getBottom(), false);
-    grad.addColour(0.4, Theme::card);
+    // The kit's panel: a simple two-stop linear-gradient(180deg,#141b24,#0b1017). It had a
+    // third stop and a knob token for its top colour, which is how a panel ends up made of
+    // knob-coloured plastic.
+    juce::ColourGradient grad(Theme::card, 0.0f, r.getY(),
+                              Nebula2::Theme::chassis, 0.0f, r.getBottom(), false);
     g.setGradientFill(grad);
     g.fillRoundedRectangle(r, Theme::cardRadius);
 
