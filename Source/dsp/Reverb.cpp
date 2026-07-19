@@ -151,7 +151,35 @@ namespace Nebula2
 
     void Reverb::reset()
     {
-        if (conv != nullptr) conv->reset();
+        // DELIBERATELY DOES NOT CALL conv->reset(). This is the actual crash fix, and it is
+        // the first one in this file derived from JUCE's concurrency contract rather than
+        // from a stack trace.
+        //
+        // Convolution's background queue documents its own rule:
+        //     "This function is only safe to call from a single thread at a time."  (push)
+        // popMutex guards the two CONSUMERS. Nothing guards the PRODUCERS, and there are
+        // two of them:
+        //     Pimpl::reset()          -> destroyPreviousEngine() -> push   [MESSAGE thread]
+        //     Pimpl::processSamples() -> postPendingCommand()    -> push   [AUDIO thread]
+        //                             -> destroyPreviousEngine() -> push
+        // The queue sits on an AbstractFifo, which is single-producer. Two concurrent
+        // writers corrupt the write index; a reader then pops a slot nobody wrote, finds a
+        // default-constructed FixedSizeFunction, calls it, and throws std::bad_function_call.
+        // That is the exception we have been chasing, and every recorded crash site
+        // (Restoring default layout, Non-releasing audio processing, Automation) is a test
+        // that calls prepareToPlay while audio is running - exactly the overlap needed.
+        //
+        // Reverb::reset() is called from prepareToPlay, so it WAS the message-thread
+        // producer. Removing the call removes that side of the race: the audio thread is
+        // then the only thread that ever pushes, which is the contract the queue asks for.
+        //
+        // What it costs: the convolution tail is not explicitly flushed here. In practice
+        // nothing is lost - prepare() already installs a fresh engine and clears
+        // previousEngine, and a rate change now replaces the whole Convolution anyway, so
+        // the state this call would have cleared does not survive either path.
+        //
+        // NOT CLAIMED AS PROVEN. This is a mechanism-level argument, not a measurement.
+        // The pluginval campaign is the evidence; see docs/VST_WORKFLOW.md.
     }
 
     void Reverb::setCharacter(ReverbChar character, double sizeSeconds)
