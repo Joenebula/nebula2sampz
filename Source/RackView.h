@@ -106,6 +106,20 @@ private:
     static bool hasPower (Nebula2::ModuleId m) noexcept { return Nebula2::moduleHasPower (m); }
     juce::Rectangle<float> powerRectFor (Nebula2::ModuleId) const;
 
+    // The per-module randomise button, top-right. The design gives every effect module one.
+    juce::Rectangle<float> diceRectFor (Nebula2::ModuleId) const;
+
+    // Module chrome, measured off the design rather than invented:
+    //   power   a ROUND 26px button, top-left, glowing ring when on
+    //   title   caps, bold, beside the power button
+    //   caption the subtitle, on the RIGHT as grey mono caps - not under the title
+    //   dice    a 26px square button, top-right
+    //   jacks   BOTTOM corners, labelled IN and OUT
+    static constexpr float modPadX = 12.0f;
+    static constexpr float powerD  = 26.0f;
+    static constexpr float diceD   = 26.0f;
+    static constexpr float jackInset = 16.0f;   // from the module's bottom-left/right
+
     void rebuildLayout();
     juce::Rectangle<float> boundsFor(Nebula2::ModuleId m) const;
     const JackSpot* jackAt(juce::Point<float> p) const;

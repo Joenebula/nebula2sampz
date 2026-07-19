@@ -114,14 +114,27 @@ void RackView::resized() { rebuildLayout(); }
 
 juce::Rectangle<float> RackView::powerRectFor (ModuleId m) const
 {
+    // A ROUND button, as the design draws it - not the little "On" text pill this had.
+    // 26px, sitting in the module's top-left with the title beside it.
     if (! hasPower (m)) return {};
-    return modBounds[(int) m].reduced (6.0f, 0.0f).withTrimmedTop (4.0f)
-                             .withWidth (20.0f).withHeight (11.0f);
+    const auto b = modBounds[(int) m];
+    return { b.getX() + modPadX, b.getY() + 12.0f, powerD, powerD };
+}
+
+juce::Rectangle<float> RackView::diceRectFor (ModuleId m) const
+{
+    // Every effect module carries its own randomise button, top-right. The design has one
+    // on each; this build had none, so per-module randomising was not reachable at all.
+    if (! hasPower (m)) return {};
+    const auto b = modBounds[(int) m];
+    return { b.getRight() - modPadX - diceD, b.getY() + 12.0f, diceD, diceD };
 }
 
 float RackView::moduleHeightFor (ModuleId m) noexcept
 {
-    float h = headH + modPadB;
+    // headH covers the round power button and the title beside it; the jack row runs along
+    // the bottom of every module that has one.
+    float h = headH + modPadB + jackInset * 2.0f;
 
     if (m == ModuleId::eq) return h + eqCurveH;      // the curve IS its content
     if (hasScreen (m))     h += screenH + 6.0f;
@@ -331,14 +344,16 @@ void RackView::rebuildLayout()
                                       cw - pad * 2.0f, rowH - pad * 2.0f);
             modBounds[(int) m] = r;
 
-            // Inputs down the left edge, outputs down the right — so a cable's direction is
-            // legible at a glance rather than something you have to remember.
+            // Jacks in the BOTTOM CORNERS, as the design draws them - in on the left, out on
+            // the right, each with its label. They were unlabelled dots halfway up the side
+            // edges, which is neither where the design puts them nor legible as a socket.
+            const float jy = r.getBottom() - jackInset;
             if (hasJack (m, Jack::in))
-                jacks.push_back ({ { m, Jack::in },  { r.getX() + 8.0f, r.getCentreY() } });
+                jacks.push_back ({ { m, Jack::in },  { r.getX() + jackInset, jy } });
             if (hasJack (m, Jack::cv))
-                jacks.push_back ({ { m, Jack::cv },  { r.getX() + 8.0f, r.getCentreY() + 14.0f } });
+                jacks.push_back ({ { m, Jack::cv },  { r.getX() + jackInset + 42.0f, jy } });
             if (hasJack (m, Jack::out))
-                jacks.push_back ({ { m, Jack::out }, { r.getRight() - 8.0f, r.getCentreY() } });
+                jacks.push_back ({ { m, Jack::out }, { r.getRight() - jackInset, jy } });
         }
 
         y += rowH;
@@ -357,9 +372,11 @@ void RackView::rebuildLayout()
         // Start BELOW the screen when there is one. This was withTrimmedTop(16), which put
         // the dial row straight through the middle of the scope/curve/formant drawings.
         const float top = hasScreen (sm) ? (screenAreaFor (sm).getBottom() - modBounds[(int) sm].getY() + 6.0f)
-                                         : 30.0f;
-        auto r = modBounds[(int) sm].reduced (14.0f, 0.0f).withTrimmedTop (top)
-                                     .withTrimmedBottom (4.0f);
+                                         : headH;
+        // Clear of the jack row along the bottom, or the knob captions would print over IN
+        // and OUT.
+        auto r = modBounds[(int) sm].reduced (modPadX, 0.0f).withTrimmedTop (top)
+                                     .withTrimmedBottom (jackInset * 2.0f);
         const float w = r.getWidth() / (float) mine.size();
         for (size_t i = 0; i < mine.size(); ++i)
         {
@@ -462,9 +479,33 @@ void RackView::mouseDown(const juce::MouseEvent& e)
     // Not the whole body: the body holds dials and a screen, and a stray click that
     // silently bypassed a module would be a nasty surprise mid-take.
     const auto m = moduleAt (p);
+
+    // The dice: randomise THIS module's dials. Checked before the power toggle because it
+    // sits inside the header strip, and a button that draws but does nothing is the exact
+    // failure this project keeps shipping - it is wired in the same commit that draws it.
+    if (hasPower (m) && diceRectFor (m).contains (p))
+    {
+        juce::Random rng;
+        auto& vts = processorRef.getValueTreeState();
+        for (const auto& d : rackDialDefs())
+        {
+            if (d.owner != m) continue;
+            if (auto* prm = vts.getParameter (d.paramId))
+            {
+                prm->beginChangeGesture();
+                prm->setValueNotifyingHost (rng.nextFloat());
+                prm->endChangeGesture();
+            }
+        }
+        message = juce::String (moduleName (m)) + " randomised";
+        messageTicks = 40;
+        repaint();
+        return;
+    }
+
     if (hasPower (m))
     {
-        const auto header = modBounds[(int) m].withHeight (16.0f);
+        const auto header = modBounds[(int) m].withHeight (headH);
         if (! header.contains (p) && ! powerRectFor (m).contains (p)) return;
 
         auto& g = processorRef.getRackGraph();
@@ -543,45 +584,84 @@ void RackView::paint(juce::Graphics& g)
         g.setColour (col.withAlpha (st == ModuleState::live ? 0.7f : 0.25f));
         g.drawRoundedRectangle (r, 5.0f, st == ModuleState::live ? 1.4f : 0.8f);
 
-        // The power button, and the name shifted clear of it. Drawn before the name so the
-        // name's inset can depend on whether there IS one.
-        const float nameInset = hasPower (sm) ? 30.0f : 8.0f;
+        const bool off = st == ModuleState::off;
+
+        // --- ROUND power button, top-left ---
+        // The design draws a circle with a power glyph and a glowing ring, not a text pill.
         if (hasPower (sm))
         {
             const auto pr = powerRectFor (sm);
-            const bool off = st == ModuleState::off;
+            const auto pc = pr.getCentre();
+            const float pR = pr.getWidth() * 0.5f;
 
-            g.setColour (off ? kSub.withAlpha (0.18f) : kAccent.withAlpha (0.30f));
-            g.fillRoundedRectangle (pr, 3.0f);
-            g.setColour (off ? kSub.withAlpha (0.5f) : kAccent.withAlpha (0.9f));
-            g.drawRoundedRectangle (pr, 3.0f, 0.8f);
+            if (! off)
+            {
+                g.setColour (kAccent.withAlpha (0.22f));
+                g.fillEllipse (pr.expanded (3.0f));
+            }
 
-            // The word, not just a colour. "Off" beside a dim module is unambiguous;
-            // a dim button on a dim module is two shades of the same guess.
-            g.setFont (juce::FontOptions (7.5f));
-            g.drawText (off ? "Off" : "On", pr, juce::Justification::centred);
+            g.setColour (Nebula2::Theme::well);
+            g.fillEllipse (pr);
+            g.setColour (off ? kSub.withAlpha (0.35f) : kAccent);
+            g.drawEllipse (pr.reduced (0.5f), off ? 1.0f : 1.4f);
+
+            // The glyph: a ring broken at the top with a stem through the gap.
+            const float gR = pR * 0.44f;
+            juce::Path glyph;
+            glyph.addCentredArc (pc.x, pc.y + 1.0f, gR, gR, 0.0f,
+                                 juce::degreesToRadians (35.0f),
+                                 juce::degreesToRadians (325.0f), true);
+            g.setColour (off ? kSub.withAlpha (0.5f) : Nebula2::Theme::accentLit);
+            g.strokePath (glyph, juce::PathStrokeType (1.5f));
+            g.drawLine (pc.x, pc.y - gR - 2.0f, pc.x, pc.y + 0.5f, 1.5f);
         }
 
-        g.setColour (st == ModuleState::off ? kSub.withAlpha (0.45f) : juce::Colours::white.withAlpha (0.85f));
-        g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
-        g.drawText (moduleName (sm), r.withTrimmedLeft (nameInset).withTrimmedTop (4.0f)
-                                       .removeFromTop (12.0f),
-                    juce::Justification::topLeft);
+        // --- dice, top-right ---
+        if (hasPower (sm))
+        {
+            const auto dr = diceRectFor (sm);
+            g.setColour (Nebula2::Theme::card3);
+            g.fillRoundedRectangle (dr, 6.0f);
+            g.setColour (kAccent.withAlpha (off ? 0.2f : 0.45f));
+            g.drawRoundedRectangle (dr.reduced (0.5f), 6.0f, 1.0f);
 
-        // Say WHY it isn't sounding, instead of just greying it out.
+            // Five pips - a die face reads instantly at this size where a glyph would not.
+            g.setColour (off ? kSub.withAlpha (0.4f) : Nebula2::Theme::ink);
+            const auto dc = dr.getCentre();
+            const float o = dr.getWidth() * 0.22f, pr2 = 1.5f;
+            for (auto pt : { juce::Point<float> (dc.x - o, dc.y - o), { dc.x + o, dc.y - o },
+                             { dc.x, dc.y }, { dc.x - o, dc.y + o }, { dc.x + o, dc.y + o } })
+                g.fillEllipse (pt.x - pr2, pt.y - pr2, pr2 * 2.0f, pr2 * 2.0f);
+        }
+
+        // --- title: CAPS, bold, beside the power button ---
+        const float titleX = hasPower (sm) ? modPadX + powerD + 10.0f : modPadX;
+        const float titleW = r.getWidth() - titleX - (hasPower (sm) ? diceD + modPadX + 90.0f : modPadX);
+
+        g.setColour (off ? kSub.withAlpha (0.45f) : Nebula2::Theme::ink);
+        g.setFont (Theme::ui (13.0f, 700).withExtraKerningFactor (0.06f));
+        g.drawText (juce::String (moduleName (sm)).toUpperCase(),
+                    juce::Rectangle<float> (r.getX() + titleX, r.getY() + 12.0f,
+                                            juce::jmax (20.0f, titleW), powerD),
+                    juce::Justification::centredLeft, false);
+
+        // --- caption on the RIGHT, mono caps - not stacked under the title ---
+        {
+            const float capX = r.getRight() - modPadX - (hasPower (sm) ? diceD + 8.0f : 0.0f) - 96.0f;
+            g.setColour (kSub.withAlpha (off ? 0.3f : 0.6f));
+            g.setFont (Theme::mono (8.0f, 500).withExtraKerningFactor (0.08f));
+            g.drawText (juce::String (moduleSub (sm)).toUpperCase(),
+                        juce::Rectangle<float> (capX, r.getY() + 12.0f, 96.0f, powerD),
+                        juce::Justification::centredRight, false);
+        }
+
+        // Say WHY it isn't sounding. Under the caption so it never collides with it.
         g.setColour (col);
-        g.setFont (juce::FontOptions (8.0f));
-        g.drawText (moduleStateText (st), r.reduced (8.0f, 4.0f).removeFromTop (12.0f),
-                    juce::Justification::topRight);
-
-        // The one-line description under the name, as in the prototype. Without it the rack
-        // is eleven boxes of unlabelled dials and you have to turn one to find out what the
-        // module is for.
-        g.setColour (kSub.withAlpha (st == ModuleState::off ? 0.35f : 0.7f));
-        g.setFont (juce::FontOptions (8.0f));
-        g.drawText (moduleSub (sm), r.withTrimmedLeft (nameInset).withTrimmedTop (16.0f)
-                                      .removeFromTop (10.0f),
-                    juce::Justification::topLeft);
+        g.setFont (Theme::mono (7.5f, 500));
+        g.drawText (moduleStateText (st),
+                    juce::Rectangle<float> (r.getRight() - modPadX - 110.0f, r.getY() + 12.0f + powerD,
+                                            110.0f, 11.0f),
+                    juce::Justification::centredRight, false);
 
         // The LFO draws its own moving value along the bottom edge, so its rate and depth
         // are visible rather than implied. Below the dials, not across them.
@@ -615,10 +695,34 @@ void RackView::paint(juce::Graphics& g)
             if (c.from == j.port || c.to == j.port) { wired = true; break; }
 
         const auto col = j.port.jack == Jack::cv ? kCV : kAccent;
+
+        // A wired jack glows, as in the design - the socket reads as connected before you
+        // trace the cable.
+        if (wired)
+        {
+            g.setColour (col.withAlpha (0.28f));
+            g.fillEllipse (j.pos.x - jackR * 2.2f, j.pos.y - jackR * 2.2f,
+                           jackR * 4.4f, jackR * 4.4f);
+        }
+
         g.setColour (wired ? col : kSub.withAlpha (0.35f));
         g.fillEllipse (j.pos.x - jackR, j.pos.y - jackR, jackR * 2.0f, jackR * 2.0f);
         g.setColour (kWell);
         g.fillEllipse (j.pos.x - 2.0f, j.pos.y - 2.0f, 4.0f, 4.0f);
+
+        // LABELLED. The design writes IN and OUT beside the sockets; unlabelled dots make
+        // you learn which side is which by trying it.
+        const char* lab = j.port.jack == Jack::in ? "IN"
+                        : j.port.jack == Jack::out ? "OUT" : "CV";
+        const bool onRight = j.port.jack == Jack::out;
+
+        g.setColour (wired ? col.withAlpha (0.9f) : kSub.withAlpha (0.45f));
+        g.setFont (Theme::mono (7.5f, 500).withExtraKerningFactor (0.1f));
+        g.drawText (lab,
+                    juce::Rectangle<float> (onRight ? j.pos.x - 44.0f : j.pos.x + 9.0f,
+                                            j.pos.y - 6.0f, 35.0f, 12.0f),
+                    onRight ? juce::Justification::centredRight : juce::Justification::centredLeft,
+                    false);
     }
 
     drawModuleScreens (g);
