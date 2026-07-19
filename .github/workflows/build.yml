@@ -49,6 +49,16 @@ jobs:
       # keeping an un-snapped float) failed 1-3 tests PER RUN on a random subset of the
       # bools, and a single lucky run had it recorded as "passed at strictness 10, first
       # try" for weeks. One run cannot distinguish "correct" from "correct this time".
+      #
+      # (That same bug came back with the EQ's five on/off switches - raw
+      # AudioParameterBool instead of SnappedBool - and this step is what caught it. It
+      # fails reliably, so 5 runs is plenty for this class.)
+      #
+      # WHAT THIS STEP DOES NOT COVER: the intermittent Convolution/prepare race. That one
+      # runs at roughly 1.7%, so 5 runs detect it about 8% of the time - a green tick here
+      # says nothing about it either way. Do not read this passing as evidence the crash is
+      # gone. The crash-hunt workflow (manual, hundreds of runs) is the gate for that, and
+      # ~180 runs are needed before a clean sweep means anything. See docs/VST_WORKFLOW.md.
       - name: pluginval (Windows)
         if: runner.os == 'Windows'
         shell: pwsh

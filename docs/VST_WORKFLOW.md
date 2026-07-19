@@ -181,6 +181,43 @@ carefully, not at the end of a long session. The alternative is dropping
 `juce::dsp::Convolution` for an algorithmic reverb, which removes the entire class of bug and
 is a much bigger change.
 
+### That poll was written, and it was wrong twice over
+
+Two more corrections, and they are worse than the three above because this time the fix was
+*shipped* and reported as a fix.
+
+4. **`waitForIrIdle()` never ran — not once.** Its first line is
+   `if (expectedIrSize <= 0) return;`, and nothing anywhere ever assigned `expectedIrSize`.
+   Declared `0`, read, set back to `0`. So the "wait" returned immediately on every call for
+   its entire life. The crash surviving it was not mysterious; the code was not executing.
+   I spent a session unable to explain why the wait failed to catch the rate-change path,
+   when the honest question was whether it was running at all. **Check that a fix executes
+   before theorising about why it didn't work.**
+
+5. **The mechanism could not have worked even wired up.** Setting `expectedIrSize` correctly
+   and then writing a test for the assumption underneath it — that `getCurrentIRSize()`
+   reaches the loaded size — showed the assumption is false. It returns **1**, not 96000,
+   two seconds after a load: JUCE swaps a loaded IR into the engine during `process()`, so
+   polling that size on the message thread with no audio running watches a number that
+   cannot change. The poll would have burned its 200 ms timeout on every rate change and
+   continued anyway. The idea in the paragraph above was wrong, not just its implementation.
+
+**What replaced it.** A re-prepare now REPLACES the `Convolution` outright
+(`conv = std::make_unique<...>()`) instead of re-preparing it. The race needs `prepare()` and
+the loader thread to drain the same queue; a brand-new engine has never had a load queued on
+it, so the queue `prepare()` drains is provably empty. No polling, no timeout, no window —
+the concurrency is removed by construction rather than by timing. Destroying the old engine
+joins its loader thread first. `waitForIrIdle` is deleted rather than left as dead code
+pretending to protect something.
+
+**Status: not proven fixed.** A 200-rate-change stress test in the unit suite passes — and
+also passes with the fix reverted, so it does not reproduce the race and is worth nothing as
+evidence. A 60-run pluginval campaign came back 60/60 clean, which sounds convincing and
+isn't: at the measured ~1.7% rate, P(zero failures in 60) ≈ 0.36. A clean 60 is what you'd
+expect about a third of the time from a build that had not changed at all. ~180 runs are
+needed to push that below 5%. **Sample size before celebration** — this is the same error as
+the "macOS only" claim at the top of this entry, made from 12 runs.
+
 **Method note.** I twice drew a firm conclusion from evidence that hadn't settled: once by
 counting a directory a batch was still writing into (the "failing" file appeared to move
 between reads), and once from "the test that used to crash now passes" — which was true, and
