@@ -84,6 +84,11 @@ input[type=range]{flex:1;accent-color:#2ec5ff;height:4px}
   position:relative}
 .sec.sel{box-shadow:0 10px 22px -14px rgba(0,0,0,.85),inset 0 1px 0 rgba(255,255,255,.075),0 0 0 1px var(--acc)}
 .sh{display:flex;align-items:center;gap:9px;margin-bottom:12px;flex-wrap:wrap;min-height:32px}
+/* The left-hand group - dot, name, primary action, info - never breaks apart. It was all
+   loose children of a wrapping row, so LOAD SAMPLE dropped to a second line the moment the
+   control group on the right ran out of room. The RIGHT side may still wrap; the title and
+   the action that starts the page stay together. */
+.shl{display:flex;align-items:center;gap:9px;flex:0 1 auto;min-width:0}
 .dt{width:5px;height:5px;border-radius:50%;background:var(--acc);box-shadow:0 0 7px rgba(46,197,255,.9)}
 .sn{font:600 11px 'Chakra Petch';letter-spacing:2px;color:var(--faint);white-space:nowrap}
 /* Was var(--dim) #546272 - too dark to read against the panel. Small mono text has to be
@@ -291,8 +296,11 @@ const F=(l,v,p,bi)=>{const c=50,left=bi?Math.min(c,p):0,w=bi?Math.abs(p-c):p;
 const group=(items,mode)=> mode==='fader'
   ? `<div class="frow" style="grid-template-columns:repeat(${Math.min(items.length,4)},1fr)">${items.map(i=>F(i[0],i[1],i[2],i[3])).join('')}</div>`
   : `<div class="knobs">${items.map(i=>K(i[0],i[1],i[2])).join('')}</div>`;
-const head=(name,right,info)=>`<div class="sh"><span class="dt"></span><span class="sn">${name}</span>
-  ${info?`<span class="info">${info}</span>`:''}<div class="ctl">${right||''}</div></div>`;
+// Left group is one non-wrapping unit; only the right-hand controls may wrap.
+const head=(name,right,info)=>`<div class="sh">
+  <div class="shl"><span class="dt"></span><span class="sn">${name}</span>
+    ${info?`<span class="info">${info}</span>`:''}</div>
+  <div class="ctl">${right||''}</div></div>`;
 const sel=t=>`<div class="sel">${t}</div>`, chk=t=>`<div class="chk"><i></i>${t}</div>`;
 const segm=(a,on)=>`<div class="seg">${a.map(x=>`<b class="${x===on?'on':''}">${x}</b>`).join('')}</div>`;
 
@@ -306,9 +314,10 @@ const R = {
  // LOAD SAMPLE sits on the LEFT, with the file info beside it - it is the action that
  // starts everything on this page, so it leads the row rather than queueing behind five
  // settings on the right.
- slicer:s=>`<div class="sh"><span class="dt"></span><span class="sn">SAMPLE</span>
-    <button class="btn pri2">LOAD SAMPLE…</button>
-    <span class="info">140 break2 · 16 slices · 140.0 BPM</span>
+ slicer:s=>`<div class="sh">
+    <div class="shl"><span class="dt"></span><span class="sn">SAMPLE</span>
+      <button class="btn pri2">LOAD SAMPLE…</button>
+      <span class="info">140 break2 · 16 slices · 140.0 BPM</span></div>
     <div class="ctl">${ib('shuffle','SHUFFLE')}${ib('suggest','SUGGEST — ARRANGE BY WHAT IT HEARS')}${ib('reset','RESET ORDER')}
      ${segm(['GRID','TRANSIENT'],'GRID')}<span class="lbl">COUNT</span>${segm(['4','8','16','32','64'],'16')}${dice}</div></div>
   <div class="wav" id="wav" style="height:${Math.max(70,s.h-108)}px"></div>
