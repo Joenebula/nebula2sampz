@@ -210,6 +210,45 @@ the concurrency is removed by construction rather than by timing. Destroying the
 joins its loader thread first. `waitForIrIdle` is deleted rather than left as dead code
 pretending to protect something.
 
+### Correction 6: the documented root cause is not possible in JUCE 8.0.14
+
+Read the actual source instead of trusting the entry above. In
+`juce_Convolution.cpp`, BOTH consumers of the background queue take the same lock:
+
+```cpp
+void popAll()                       // what Convolution::prepare drains through
+{
+    const ScopedLock lock (popMutex);
+    queue.popAll (...);
+}
+
+void run() override                 // the background loader thread
+{
+    const auto tryPop = [&]
+    {
+        const ScopedLock lock (popMutex);   // <- same mutex
+        ...
+    };
+}
+```
+
+`popMutex` serialises them. The mechanism this entry has asserted throughout — *"prepare's
+`popAll` plus the background thread's `popAll` are two consumers: one reads a slot the other
+already took, gets a default-constructed `FixedSizeFunction`, calls it, and throws"* — cannot
+occur on the version we build against (JUCE 8.0.14, pinned in CMakeLists).
+
+That means every fix in this entry, including the current one, was aimed at a race the
+library already prevents. They may still have been worth making (fewer redundant loads, no
+re-prepare of a live engine), but **none of them can be credited with fixing a crash whose
+stated cause does not exist here.** The real cause is either something else entirely, or it
+was a genuine JUCE bug that upstream fixed in a version we have since moved to — in which
+case the crash may have stopped for reasons that have nothing to do with this file.
+
+The lesson is the plainest one in this document: **the root cause was never verified against
+the source.** It was inferred from a stack trace and then repeated as established fact in
+four separate fix attempts, each of which cited it as justification. A stack tells you where
+a program died, not why the code that died is wrong.
+
 **Status: not proven fixed.** A 200-rate-change stress test in the unit suite passes — and
 also passes with the fix reverted, so it does not reproduce the race and is worth nothing as
 evidence. A 60-run pluginval campaign came back 60/60 clean, which sounds convincing and
