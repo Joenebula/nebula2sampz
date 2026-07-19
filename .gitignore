@@ -5,3 +5,7 @@ out/
 .vscode/
 *.user
 CMakeUserPresets.json
+
+# Generated from design/ui-spec.html by design/build-artifact.js — never hand-edited, and
+# 520KB of inlined font data has no business in the history.
+design/ui-spec.artifact.html
