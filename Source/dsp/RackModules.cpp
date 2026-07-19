@@ -26,23 +26,23 @@ namespace Nebula2
             return i == 0 ? 1 : (i == RackDials::numEqBands - 1 ? 2 : 0);
         }
 
-        float lfoShapeValue(int shape, double phase) noexcept
-        {
-            const float t = (float) phase;   // 0..1
-            switch (shape)
-            {
-                case 1:  return 1.0f - 4.0f * std::abs (std::round (t) - t);       // triangle
-                case 2:  return 2.0f * t - 1.0f;                                   // saw
-                case 3:  return t < 0.5f ? 1.0f : -1.0f;                           // square
-                default: return std::sin (t * juce::MathConstants<float>::twoPi);  // sine
-            }
-        }
 
         inline float wetOf (float mixPercent) noexcept { return mixPercent / 100.0f; }
         // The prototype's dry law: dry = 1 - mix/200. At mix=100 the dry is still 0.5, so a
         // wet-heavy setting thickens rather than replaces. Keep it — it's why the modules
         // stack without collapsing.
         inline float dryOf (float mixPercent) noexcept { return 1.0f - mixPercent / 200.0f; }
+    }
+
+    float lfoShapeAt(int shape, float t) noexcept
+    {
+        switch (shape)
+        {
+            case 1:  return 1.0f - 4.0f * std::abs (std::round (t) - t);       // triangle
+            case 2:  return 2.0f * t - 1.0f;                                   // saw
+            case 3:  return t < 0.5f ? 1.0f : -1.0f;                           // square
+            default: return std::sin (t * juce::MathConstants<float>::twoPi);  // sine
+        }
     }
 
     const VowelFormants& vowelAt(int i) noexcept
@@ -425,7 +425,9 @@ namespace Nebula2
         // patch made mid-bar lands where the drawing said it would.
         const double lfoInc = (double) juce::jmax (0.01f, d.lfoRate) / sampleRate;
         const float lfoDepth = juce::jlimit (0.0f, 1.0f, d.lfoDepth / 100.0f);
-        lastLfoValue = lfoShapeValue (d.lfoShape, lfoPhase) * lfoDepth;
+        // The SAME function the LFO's screen draws with, so the picture cannot drift from
+        // the signal. It used to be a file-local copy in here only.
+        lastLfoValue = lfoShapeAt (d.lfoShape, (float) lfoPhase) * lfoDepth;
         const float cvAtBlock = lastLfoValue;
         lfoPhase += lfoInc * n;
         if (lfoPhase >= 1.0) lfoPhase -= std::floor (lfoPhase);

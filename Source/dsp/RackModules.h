@@ -74,6 +74,12 @@ namespace Nebula2
     // effect" bug this project keeps finding.
     float foldSample(float x, float amt, float bias, float preGain = 1.0f) noexcept;
 
+    // The LFO's waveform at phase t (0..1), -1..1. Public so the LFO module can DRAW the
+    // shape it is about to produce, rather than the UI keeping its own second copy of the
+    // formulas - which is how a picture ends up disagreeing with the sound.
+    // 0 sine, 1 triangle, 2 saw, 3 square.
+    float lfoShapeAt(int shape, float t) noexcept;
+
     // Renders the rack: walks the graph's process order, feeds each module the sum of what
     // reaches its input, and sums whatever reaches the main out.
     //

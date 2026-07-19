@@ -74,6 +74,19 @@ namespace Nebula2
                          : gainDb * (0.5f + 0.5f * s);   // high shelf: lifts ABOVE f0
     }
 
+    // --- the vowel module's screen ---
+    //
+    // Three formant peaks summed, in dB, so the Vowel module can DRAW the mouth shape it is
+    // making. Same log axis as the EQ, so the two screens read the same way round.
+    inline float vowelResponseDb (const float formantHz[3], float sharpness, float atHz) noexcept
+    {
+        float sum = 0.0f;
+        for (int i = 0; i < 3; ++i)
+            sum += eqBandResponseDb (0, formantHz[i], juce::jmax (0.5f, sharpness * 0.35f),
+                                     12.0f - (float) i * 3.0f, atHz);
+        return sum;
+    }
+
     // Hz formatted the way an EQ labels it: "180 Hz", "1.6 kHz". Shown live while dragging,
     // which is the whole point of a parametric band - you need to know where you put it.
     inline juce::String eqFormatHz (float hz)

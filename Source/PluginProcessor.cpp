@@ -127,6 +127,15 @@ void Nebula2AudioProcessor::readRackDials() noexcept
     }
 }
 
+float Nebula2AudioProcessor::getScopePoint(int i) const noexcept
+{
+    // Oldest first, so the UI draws left-to-right in time order. The write head is the
+    // OLDEST slot (it is about to be overwritten), which is why the read starts there.
+    if (i < 0 || i >= scopePoints) return 0.0f;
+    const int start = scopeWrite.load();
+    return scopeRing[(size_t) ((start + i) % scopePoints)].load();
+}
+
 int Nebula2AudioProcessor::gridStepsFromChoice(int choiceIndex) noexcept
 {
     static constexpr int counts[] = { 8, 16, 32 };
@@ -608,6 +617,40 @@ void Nebula2AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
     const float g   = masterParam  != nullptr ? masterParam->load()          : 0.9f;
     const bool  lim = limiterParam != nullptr ? limiterParam->load() > 0.5f   : true;
     masterProcessor.process(buffer, g, lim);
+
+    // --- feed the rack's two screens ---
+    //
+    // Tapped AFTER the master, so Main Out's meter shows what actually leaves the plugin
+    // rather than an intermediate the user can't hear. Peak per chunk, not every Nth
+    // sample: a stride would alias transients and make a drum hit flicker with block size.
+    {
+        const int nCh = juce::jmin(2, buffer.getNumChannels());
+        const int nS  = buffer.getNumSamples();
+        const int samplesPerPoint = juce::jmax(1, (int) (getSampleRate() / 1500.0));
+
+        float blockPeak = 0.0f;
+        for (int i = 0; i < nS; ++i)
+        {
+            float m = 0.0f;
+            for (int c = 0; c < nCh; ++c) m = juce::jmax(m, std::abs(buffer.getSample(c, i)));
+            blockPeak = juce::jmax(blockPeak, m);
+
+            scopeChunkPeak = juce::jmax(scopeChunkPeak, m);
+            if (--scopeChunkLeft <= 0)
+            {
+                const int w = scopeWrite.load();
+                scopeRing[(size_t) w].store(scopeChunkPeak);
+                scopeWrite.store((w + 1) % scopePoints);
+                scopeChunkPeak = 0.0f;
+                scopeChunkLeft = samplesPerPoint;
+            }
+        }
+
+        // Fast attack, slow release, so a hit reads instantly and the needle doesn't
+        // collapse before your eye reaches it.
+        const float prev = rackOutLevel.load();
+        rackOutLevel.store(blockPeak > prev ? blockPeak : prev + (blockPeak - prev) * 0.25f);
+    }
 
     midiMessages.clear();
 }

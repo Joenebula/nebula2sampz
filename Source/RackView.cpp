@@ -1,4 +1,5 @@
 #include "RackView.h"
+#include "dsp/EqCurveMath.h"
 #include "ParameterIDs.h"
 #include "Theme.h"
 
@@ -84,6 +85,137 @@ void RackView::timerCallback()
 }
 
 void RackView::resized() { rebuildLayout(); }
+
+juce::Rectangle<float> RackView::screenAreaFor (ModuleId m) const
+{
+    // A strip under the name, above the dials. Modules with dials get a thin one; the two
+    // with no dials at all (Beat Out, LFO has two) can afford more.
+    auto r = modBounds[(int) m].reduced (18.0f, 0.0f).withTrimmedTop (26.0f);
+    const float h = juce::jmin (34.0f, r.getHeight() * 0.45f);
+    return r.withHeight (juce::jmax (12.0f, h));
+}
+
+void RackView::drawModuleScreens (juce::Graphics& g) const
+{
+    using namespace Nebula2;
+
+    auto well = [&g] (juce::Rectangle<float> r)
+    {
+        g.setColour (juce::Colour (0xff0d1220));
+        g.fillRoundedRectangle (r, 3.0f);
+    };
+
+    const auto& dials = processorRef.getRackDialsSnapshot();
+
+    // --- Beat Out: the beat going in ---
+    {
+        auto r = screenAreaFor (ModuleId::src);
+        well (r);
+        juce::Path p;
+        const int n = Nebula2AudioProcessor::scopePoints;
+        for (int i = 0; i < n; ++i)
+        {
+            const float v = juce::jlimit (0.0f, 1.0f, processorRef.getScopePoint (i));
+            const float x = r.getX() + r.getWidth() * ((float) i / (float) (n - 1));
+            const float half = r.getHeight() * 0.5f * v;
+            if (i == 0) p.startNewSubPath (x, r.getCentreY() - half);
+            else        p.lineTo (x, r.getCentreY() - half);
+        }
+        for (int i = n - 1; i >= 0; --i)
+        {
+            const float v = juce::jlimit (0.0f, 1.0f, processorRef.getScopePoint (i));
+            const float x = r.getX() + r.getWidth() * ((float) i / (float) (n - 1));
+            p.lineTo (x, r.getCentreY() + r.getHeight() * 0.5f * v);
+        }
+        p.closeSubPath();
+        g.setColour (kAccent.withAlpha (0.75f));
+        g.fillPath (p);
+    }
+
+    // --- Main Out: its own level ---
+    {
+        auto r = screenAreaFor (ModuleId::out);
+        well (r);
+        const float lvl = juce::jlimit (0.0f, 1.0f, processorRef.getRackOutLevel());
+        auto bar = r.reduced (3.0f).withWidth ((r.getWidth() - 6.0f) * lvl);
+        // Green until it is close to clipping, then red. A meter that reads the same at
+        // -20 and at 0 dBFS is just a moving rectangle.
+        g.setColour (lvl > 0.95f ? juce::Colour (0xffe24b4a) : kAccent.withAlpha (0.8f));
+        g.fillRoundedRectangle (bar, 2.0f);
+    }
+
+    // --- LFO: its shape, and where in the cycle it is ---
+    {
+        auto r = screenAreaFor (ModuleId::lfo);
+        well (r);
+        juce::Path p;
+        const int n = 48;
+        for (int i = 0; i <= n; ++i)
+        {
+            const float t = (float) i / (float) n;
+            const float v = lfoShapeAt (dials.lfoShape, t);
+            const float x = r.getX() + r.getWidth() * t;
+            const float y = r.getCentreY() - v * r.getHeight() * 0.4f;
+            if (i == 0) p.startNewSubPath (x, y); else p.lineTo (x, y);
+        }
+        g.setColour (kCV.withAlpha (0.85f));
+        g.strokePath (p, juce::PathStrokeType (1.3f));
+
+        // The dot: the LFO's actual current value, so the picture MOVES with the sound
+        // rather than being a static drawing of a sine wave.
+        const float v = juce::jlimit (-1.0f, 1.0f, processorRef.getRackLfoValue());
+        g.setColour (juce::Colours::white.withAlpha (0.9f));
+        g.fillEllipse (r.getRight() - 4.0f, r.getCentreY() - v * r.getHeight() * 0.4f - 2.0f,
+                       4.0f, 4.0f);
+    }
+
+    // --- Wavefolder: its transfer curve ---
+    {
+        auto r = screenAreaFor (ModuleId::fld);
+        well (r);
+        juce::Path p;
+        const int n = 64;
+        for (int i = 0; i <= n; ++i)
+        {
+            const float x01 = (float) i / (float) n;
+            const float in  = x01 * 2.0f - 1.0f;
+            const float out = foldSample (in, dials.fldDrive / 100.0f, dials.fldSym / 100.0f);
+            const float x = r.getX() + r.getWidth() * x01;
+            const float y = r.getCentreY() - out * r.getHeight() * 0.42f;
+            if (i == 0) p.startNewSubPath (x, y); else p.lineTo (x, y);
+        }
+        g.setColour (juce::Colour (0xffef9f27).withAlpha (0.85f));
+        g.strokePath (p, juce::PathStrokeType (1.3f));
+    }
+
+    // --- Vowel: the formant peaks it is making ---
+    {
+        auto r = screenAreaFor (ModuleId::vow);
+        well (r);
+        float f[3];
+        vowelFormantsAt (dials.vowMorph, f);
+
+        juce::Path p;
+        const int n = 64;
+        for (int i = 0; i <= n; ++i)
+        {
+            const float t = (float) i / (float) n;
+            const float db = vowelResponseDb (f, dials.vowSharp, eqNormToFreq (t));
+            const float x = r.getX() + r.getWidth() * t;
+            const float y = r.getY() + r.getHeight() * juce::jlimit (0.0f, 1.0f, eqGainToNorm (db, 20.0f));
+            if (i == 0) p.startNewSubPath (x, y); else p.lineTo (x, y);
+        }
+        g.setColour (juce::Colour (0xffed93b1).withAlpha (0.85f));
+        g.strokePath (p, juce::PathStrokeType (1.3f));
+
+        // Which vowel, in words. "2.31" tells you nothing about what you are about to hear.
+        g.setColour (kSub.withAlpha (0.7f));
+        g.setFont (juce::FontOptions (8.0f));
+        static const char* names[] = { "A", "E", "I", "O", "U" };
+        const int vi = juce::jlimit (0, 4, (int) juce::jlimit (0.0f, 4.0f, dials.vowMorph));
+        g.drawText (names[vi], r.reduced (3.0f, 1.0f), juce::Justification::topRight);
+    }
+}
 
 juce::Rectangle<float> RackView::boundsFor(ModuleId m) const
 {
@@ -344,6 +476,8 @@ void RackView::paint(juce::Graphics& g)
         g.setColour (kWell);
         g.fillEllipse (j.pos.x - 2.0f, j.pos.y - 2.0f, 4.0f, 4.0f);
     }
+
+    drawModuleScreens (g);
 
     // --- cables ---
     for (const auto& c : cables)

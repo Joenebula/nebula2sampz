@@ -1305,6 +1305,52 @@ int main()
             check(layer.activeVoiceCount() > 0, "sample: the root plays slice 1");
         }
 
+        // --- the module screens draw the REAL thing ---
+        //
+        // A screen that draws its own idea of the shape is worse than no screen: it looks
+        // authoritative and is wrong. So the LFO screen calls the same lfoShapeAt() the
+        // engine does, and these check the shapes are actually the shapes.
+        {
+            using namespace Nebula2;
+
+            check (std::abs (lfoShapeAt (0, 0.25f) - 1.0f) < 0.001f, "lfo: sine peaks at a quarter turn");
+            check (std::abs (lfoShapeAt (0, 0.75f) + 1.0f) < 0.001f, "lfo: and troughs at three quarters");
+            check (lfoShapeAt (2, 0.0f) < 0.0f && lfoShapeAt (2, 1.0f) > 0.0f,
+                   "lfo: saw climbs across the cycle");
+            check (lfoShapeAt (3, 0.25f) > 0.0f && lfoShapeAt (3, 0.75f) < 0.0f,
+                   "lfo: square is high then low, with nothing in between");
+            check (std::abs (lfoShapeAt (1, 0.5f) + 1.0f) < 0.01f,
+                   "lfo: triangle bottoms out mid-cycle");
+
+            for (int shape = 0; shape < 4; ++shape)
+            {
+                bool inRange = true;
+                for (int i = 0; i <= 200; ++i)
+                    if (std::abs (lfoShapeAt (shape, (float) i / 200.0f)) > 1.0001f) inRange = false;
+                check (inRange, String ("lfo: shape ") + String (shape)
+                                    + " stays within -1..1, so the drawing can't leave its screen");
+            }
+
+            // The wavefolder's screen draws foldSample directly, so the only thing to check
+            // is that the curve is bounded - an unbounded one would scribble over the module.
+            bool foldBounded = true;
+            for (int i = 0; i <= 100; ++i)
+            {
+                const float x = (float) i / 50.0f - 1.0f;
+                if (std::abs (foldSample (x, 1.0f, 0.5f)) > 1.0001f) foldBounded = false;
+            }
+            check (foldBounded, "wavefolder: the transfer curve stays inside its screen");
+
+            // The vowel screen must put its peaks where the formants are, or it is drawing
+            // a different vowel from the one you are hearing.
+            float f[3];
+            vowelFormantsAt (0.0f, f);        // "A" = 730 / 1090 / 2440
+            check (vowelResponseDb (f, 9.0f, f[0]) > vowelResponseDb (f, 9.0f, 120.0f),
+                   "vowel: the screen peaks at the first formant, not below it");
+            check (vowelResponseDb (f, 9.0f, f[0]) > vowelResponseDb (f, 9.0f, 12000.0f),
+                   "vowel: and not up in the air above it");
+        }
+
         // --- the parametric EQ ---
         {
             using namespace Nebula2;

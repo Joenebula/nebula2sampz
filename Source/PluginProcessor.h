@@ -86,6 +86,27 @@ public:
     // The LFO's current value (-1..1) so the rack UI can draw a moving picture.
     float getRackLfoValue() const noexcept { return rackEngine.lfoValue(); }
 
+    // --- what the rack's two end modules show on their screens ---
+    //
+    // Beat Out draws the incoming beat; Main Out draws its own level. Both are written by
+    // the AUDIO thread and read by the UI, so they are plain atomics and nothing more: a
+    // torn read costs one stale pixel, whereas a lock here would cost a dropout.
+    //
+    // The scope stores PEAKS of consecutive chunks rather than raw samples. A screen ~100px
+    // wide cannot show 512 samples, and taking every Nth sample would alias a drum hit into
+    // whatever the stride happened to land on - the transient would flicker in and out
+    // depending on block size. A peak per chunk always catches the hit.
+    static constexpr int scopePoints = 96;
+    float getScopePoint(int i) const noexcept;      // 0 = oldest
+    float getRackOutLevel() const noexcept { return rackOutLevel.load(); }
+
+    // The dial values the audio thread last read, for the screens that DRAW a module's
+    // settings (the wavefolder's curve, the vowel's formants, the LFO's shape). Read on the
+    // message thread while the audio thread may be writing: every field is a plain float or
+    // int, so a race yields the old or the new number for one frame of a repaint. That is a
+    // pixel, not a glitch, and it is far cheaper than locking the audio thread to draw.
+    const Nebula2::RackDials& getRackDialsSnapshot() const noexcept { return rackDials; }
+
     // In-app PREVIEW: play the loaded break WITHOUT the DAW rolling. Toggled by the
     // editor's Preview button.
     //
@@ -241,6 +262,14 @@ private:
     // audio-thread only. The whole-break note comes from SampleLayer, never a literal.
     std::atomic<bool> auditionActive { false };
     std::atomic<bool> hostTransportRolling { false };   // audio -> UI, see isHostRolling()
+
+    // Scope + meter, audio -> UI. std::atomic members are NOT zero-initialised by default,
+    // which has already cost this project a silent sampler, so both are initialised here.
+    std::array<std::atomic<float>, (size_t) scopePoints> scopeRing {};
+    std::atomic<int>   scopeWrite { 0 };
+    std::atomic<float> rackOutLevel { 0.0f };
+    float scopeChunkPeak = 0.0f;    // audio thread only
+    int   scopeChunkLeft = 0;       // audio thread only
     double auditionPpq = 0.0;          // audio thread: the synthesized transport position
     double lastHostPpq = -1.0;         // audio thread: to detect the host actually rolling
     bool   auditionWasRolling = false;

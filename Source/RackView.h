@@ -56,6 +56,15 @@ private:
     };
 
     void timerCallback() override;
+
+    // Per-module screens, as the prototype has them: Beat Out shows the beat going in,
+    // Main Out its own level, the LFO its shape and where in it we are, the Wavefolder its
+    // transfer curve, the Vowel its formant peaks. Without these a module is a box of
+    // unlabelled dials and the only way to learn what one does is to turn it and listen.
+    // (The EQ's screen is the EqCurve component, which is also its control surface.)
+    void drawModuleScreens (juce::Graphics&) const;
+    juce::Rectangle<float> screenAreaFor (Nebula2::ModuleId) const;
+
     void rebuildLayout();
     juce::Rectangle<float> boundsFor(Nebula2::ModuleId m) const;
     const JackSpot* jackAt(juce::Point<float> p) const;
