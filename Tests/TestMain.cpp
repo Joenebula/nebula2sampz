@@ -1305,6 +1305,56 @@ int main()
             check(layer.activeVoiceCount() > 0, "sample: the root plays slice 1");
         }
 
+        // --- the crash: hammering prepare() across sample rates ---
+        //
+        // The crash is Convolution::prepare() draining its background queue while its own
+        // loader thread drains it - two consumers of a single-consumer queue, one gets an
+        // empty function and calls it. The fix is to never re-prepare an engine that has had
+        // loads queued on it: a rate change REPLACES the Convolution outright, so the queue
+        // prepare() drains is provably empty.
+        //
+        // The fix this replaces (waitForIrIdle) could never have worked - JUCE swaps a
+        // loaded IR in during process(), so polling getCurrentIRSize() on the message thread
+        // with no audio running watches a number that cannot change. It also never ran at
+        // all, because nothing ever set the size it waited for.
+        //
+        // This drives the exact shape that crashed: alternate rates, queue a load each time,
+        // never let the loader settle.
+        {
+            Nebula2::Reverb rev;
+            const double rates[] = { 44100.0, 48000.0, 88200.0, 96000.0 };
+            juce::AudioBuffer<float> buf (2, 512);
+
+            bool threw = false;
+            try
+            {
+                for (int i = 0; i < 200; ++i)
+                {
+                    const double sr = rates[i % 4];
+                    rev.prepare ({ sr, 512, 2 });
+                    // Queue a load and immediately re-prepare, giving the loader thread no
+                    // chance to finish - the condition the crash needs.
+                    rev.setCharacter ((Nebula2::ReverbChar) (i % 5), 0.5 + (double) (i % 5));
+                    rev.reloadIrIfNeeded();
+                    buf.clear();
+                    rev.process (buf, 0.5f);
+                }
+            }
+            catch (...) { threw = true; }
+
+            check (! threw, "reverb: 200 rate changes with loads in flight, no exception");
+
+            // The IR length is still one definition shared with the generator.
+            check (Nebula2::Reverb::irLengthFor (48000.0, 2.0) == 96000,
+                   "reverb: the IR length is rate x seconds");
+
+            // ...and after all that abuse it still passes audio rather than sitting mute.
+            for (int i = 0; i < 512; ++i) buf.setSample (0, i, 0.5f);
+            rev.process (buf, 0.0f);   // fully dry
+            check (std::abs (buf.getSample (0, 100) - 0.5f) < 0.01f,
+                   "reverb: fully dry still passes the beat after 200 rate changes");
+        }
+
         // --- the per-module power buttons ---
         //
         // Bypass has worked and been tested since the rack was built; what it lacked was any
@@ -3459,19 +3509,41 @@ int main()
         // And the round-trip pluginval actually tests: save, disturb, restore, compare —
         // where both the saved and disturbed values land on the SAME side of 0.5, so the
         // tree value never changes and only the raw float can betray you.
+        //
+        // EVERY bool, not just the limiter. This test used to name one parameter, so when
+        // the EQ added five more bools with the WRONG type (raw juce::AudioParameterBool
+        // instead of SnappedBool) it sailed through and pluginval caught it instead:
+        // "EQ 3 Peak On not restored, expected 1, actual 0.509935". A test that checks one
+        // instance of a bug class cannot notice the second instance.
         {
-            auto* p = proc.apvts.getParameter(ParamID::limiter);
-            p->setValueNotifyingHost(0.9f);
-            const float saved = p->getValue();
-
             MemoryBlock mb;
-            proc.getStateInformation(mb);
+            StringArray broken;
 
-            p->setValueNotifyingHost(0.577136f);   // still "true", different float
-            proc.setStateInformation(mb.getData(), (int) mb.getSize());
+            // Two discrete steps IS the definition of a bool parameter here, so this finds
+            // them all without a list to keep up to date.
+            std::vector<juce::RangedAudioParameter*> bools;
+            for (auto* p : proc.getParameters())
+                if (auto* rp = dynamic_cast<juce::RangedAudioParameter*>(p))
+                    if (rp->getNumSteps() == 2) bools.push_back(rp);
 
-            check(std::abs(p->getValue() - saved) < 0.1f,
-                  "bool: a bool survives save/restore exactly (the pluginval failure)");
+            check(bools.size() >= 6,
+                  "bool: the sweep actually finds the bool parameters - got " + String((int) bools.size()));
+
+            for (auto* p : bools)
+            {
+                p->setValueNotifyingHost(0.9f);
+                const float saved = p->getValue();
+
+                proc.getStateInformation(mb);
+                p->setValueNotifyingHost(0.577136f);   // still "true", different float
+                proc.setStateInformation(mb.getData(), (int) mb.getSize());
+
+                if (std::abs(p->getValue() - saved) > 0.1f) broken.add(p->getName(40));
+            }
+
+            check(broken.isEmpty(),
+                  "bool: EVERY bool survives save/restore exactly (the pluginval failure) - "
+                  "broken: " + broken.joinIntoString(", "));
         }
     }
 

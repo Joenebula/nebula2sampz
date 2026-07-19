@@ -278,7 +278,14 @@ namespace Nebula2
                                             n + " Q", qr(), i == 0 || i == 4 ? 0.71f : 1.1f));
             // Bands start ON. A band at 0 dB is already inaudible, so defaulting them off
             // would mean two clicks to hear anything and no visible difference in between.
-            layout.add(std::make_unique<juce::AudioParameterBool>(
+            //
+            // APB (SnappedBool), NOT juce::AudioParameterBool. A raw bool parameter does not
+            // survive setStateInformation intact, and pluginval says so precisely: "EQ 3
+            // Peak On not restored, expected 1, actual 0.509935". SnappedBool exists in this
+            // project BECAUSE of that exact failure; I reached for the JUCE type out of
+            // habit and reintroduced a bug we had already paid for once. Every other bool in
+            // this file was already APB - this was the only one that wasn't.
+            layout.add(std::make_unique<APB>(
                 PID{ ParamID::eqOn[i], version }, n + " On", true));
         }
 

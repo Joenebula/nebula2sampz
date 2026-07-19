@@ -37,6 +37,13 @@ namespace Nebula2
         // load landing RESETS the convolution state (killing any ringing tail), so never
         // call it redundantly (SpaceProcessor only calls it when char or size changed).
         // sizeSeconds is the tail length: the prototype's Size knob spanned 0.25..~6.75 s.
+        // How many samples makeImpulseResponse() produces for these settings. One
+        // definition, used by the generator and by the tests that check it.
+        static int irLengthFor(double sampleRate, double seconds) noexcept
+        {
+            return juce::jmax(64, (int) (sampleRate * seconds));
+        }
+
         void setCharacter(ReverbChar character, double sizeSeconds);
         ReverbChar getCharacter() const noexcept { return currentChar; }
         double getSizeSeconds() const noexcept { return currentSize; }
@@ -44,14 +51,22 @@ namespace Nebula2
         // wetMix 0..1 dry/wet blend.
         void process(juce::AudioBuffer<float>& buffer, float wetMix) noexcept;
 
-        int getCurrentIRSize() const noexcept { return (int) conv.getCurrentIRSize(); }
+        int getCurrentIRSize() const noexcept { return conv != nullptr ? (int) conv->getCurrentIRSize() : 0; }
 
-        // Blocks (briefly, with a hard timeout) until a queued IR load has landed. Message
-        // thread only — see the note in the .cpp for why this exists.
-        void waitForIrIdle() noexcept;
+        // waitForIrIdle() is GONE. It polled getCurrentIRSize() waiting for a queued load to
+        // land, and it could never have worked: JUCE swaps a loaded IR in during process(),
+        // so on the message thread with no audio running the size never changes and the poll
+        // could only ever hit its timeout. It was also never called with a non-zero expected
+        // size, so in practice it returned instantly and did nothing at all. Two independent
+        // reasons the same function was theatre. See the note in the .cpp.
 
     private:
-        juce::dsp::Convolution conv;
+        // A POINTER, so a re-prepare can replace the object outright. That is the fix: the
+        // crash is Convolution::prepare() draining the same single-consumer queue its own
+        // background loader is draining, and the only way to be sure no load is in flight is
+        // to prepare an engine nobody has ever queued a load on. A brand new one qualifies
+        // by construction; the old one's destructor joins its thread before it goes.
+        std::unique_ptr<juce::dsp::Convolution> conv;
         juce::AudioBuffer<float> dryScratch;
         double sampleRate = 44100.0;
         bool irDirty = true;      // prepare() sets this; reloadIrIfNeeded() clears it
@@ -61,7 +76,6 @@ namespace Nebula2
         double preparedRate = 0.0;
         int preparedBlock = 0;
         static constexpr int preparedBlockFloor = 2048;   // prepare generously, re-prepare rarely
-        int expectedIrSize = 0;      // size the pending load should produce, 0 = nothing pending
         ReverbChar currentChar = ReverbChar::Hall;
         double currentSize = 2.0;      // seconds; the prototype's default Size (~50%)
     };

@@ -8,7 +8,7 @@ namespace Nebula2
     juce::AudioBuffer<float> makeImpulseResponse(double sampleRate, double seconds,
                                                  ReverbChar character, int seed)
     {
-        const int len = juce::jmax(64, (int) (sampleRate * seconds));
+        const int len = Reverb::irLengthFor(sampleRate, seconds);
         juce::AudioBuffer<float> ir(2, len);
 
         const int preDelay = character == ReverbChar::Cathedral ? (int) (sampleRate * 0.045)
@@ -73,19 +73,41 @@ namespace Nebula2
         const bool rateChanged  = ! juce::approximatelyEqual(sampleRate, preparedRate);
         const bool needsBigger  = wantBlock > preparedBlock;
 
-        if (rateChanged || needsBigger || preparedBlock == 0)
+        if (rateChanged || needsBigger || preparedBlock == 0 || conv == nullptr)
         {
-            // Part 2: for the rare case that DOES re-prepare, make sure no load is in
-            // flight first. A rate change is the realistic trigger, and two in quick
-            // succession is the only way to get here with the background thread busy.
-            waitForIrIdle();
+            // Part 2: REPLACE the engine rather than re-prepare it.
+            //
+            // The crash is Convolution::prepare() draining its BackgroundMessageQueue at the
+            // same time as its own loader thread drains it: one reads a slot the other has
+            // already taken, gets an empty FixedSizeFunction, calls it, and throws
+            // std::bad_function_call. The only way to be certain no load is in flight when
+            // prepare runs is to run it on an engine nobody has ever queued a load on.
+            //
+            // A brand new Convolution qualifies by construction. No polling, no timeout, no
+            // window - the queue prepare() drains is provably empty because the object was
+            // born three lines ago. Destroying the old one joins its loader thread first.
+            //
+            // This replaces waitForIrIdle(), which could not have worked: it polled
+            // getCurrentIRSize() for a queued load to land, but JUCE only swaps a loaded IR
+            // in during process(), so on the message thread with no audio running that size
+            // never changes. It would have spun to its 200ms timeout and continued anyway.
+            // (It never even got that far - nothing ever set the size it waited for, so it
+            // returned instantly. Two independent reasons the same function did nothing.)
+            //
+            // Cost: an allocation and a thread join, on the message thread, only when the
+            // rate genuinely changes or the block outgrows a 2048-sample ceiling. That is
+            // rare, and it is the correct place to pay for correctness.
+            conv = std::make_unique<juce::dsp::Convolution>();
 
             auto s = spec;
             s.maximumBlockSize = (juce::uint32) wantBlock;
-            conv.prepare(s);
+            conv->prepare(s);
 
             preparedRate  = sampleRate;
             preparedBlock = wantBlock;
+
+            // A new engine has no IR at all, so one must be loaded whatever the rate did.
+            irDirty = true;
         }
 
         // The IR load is deliberately NOT done here — see reloadIrIfNeeded().
@@ -110,32 +132,11 @@ namespace Nebula2
         // Automation tests do) kept the background thread permanently busy and left the
         // race wide open. Deferring the load out of prepare's call stack narrowed the
         // window; not queueing a pointless load closes most of what was left.
-        if (! juce::approximatelyEqual(sampleRate, irSampleRate) || conv.getCurrentIRSize() <= 1)
+        if (! juce::approximatelyEqual(sampleRate, irSampleRate) || getCurrentIRSize() <= 1)
         {
             irSampleRate = sampleRate;
             irDirty = true;
         }
-    }
-
-    void Reverb::waitForIrIdle() noexcept
-    {
-        // MESSAGE THREAD ONLY. Waits for a queued IR load to land before we touch
-        // Convolution::prepare.
-        //
-        // JUCE exposes no "is the loader idle" flag, so the observable signal is the IR
-        // size changing to the one we asked for. A load that happens to produce the SAME
-        // size is indistinguishable from one still pending — hence the hard timeout, which
-        // is the important part: worst case we wait 200 ms and proceed exactly as before,
-        // which is the current behaviour. Blocking the message thread forever would be far
-        // worse than the crash we are fixing.
-        if (expectedIrSize <= 0) return;
-
-        const auto deadline = juce::Time::getMillisecondCounter() + 200;
-        while ((int) conv.getCurrentIRSize() != expectedIrSize
-               && juce::Time::getMillisecondCounter() < deadline)
-            juce::Thread::sleep(1);
-
-        expectedIrSize = 0;
     }
 
     void Reverb::reloadIrIfNeeded()
@@ -150,14 +151,17 @@ namespace Nebula2
 
     void Reverb::reset()
     {
-        conv.reset();
+        if (conv != nullptr) conv->reset();
     }
 
     void Reverb::setCharacter(ReverbChar character, double sizeSeconds)
     {
         currentChar = character;
         currentSize = juce::jlimit(0.25, 6.75, sizeSeconds);
-        conv.loadImpulseResponse(makeImpulseResponse(sampleRate, currentSize, character),
+
+        if (conv == nullptr) return;   // not prepared yet; prepare() will load it
+
+        conv->loadImpulseResponse(makeImpulseResponse(sampleRate, currentSize, character),
                                  sampleRate,
                                  juce::dsp::Convolution::Stereo::yes,
                                  juce::dsp::Convolution::Trim::no,
@@ -177,7 +181,10 @@ namespace Nebula2
         // Wet = convolution.
         juce::dsp::AudioBlock<float> block(buffer);
         juce::dsp::ProcessContextReplacing<float> ctx(block);
-        conv.process(ctx);
+        // No engine yet = no reverb, and crucially NOT silence: the dry blend below still
+        // runs, so an unprepared reverb passes the beat rather than muting the track.
+        if (conv != nullptr) conv->process(ctx);
+        else                 buffer.clear();   // wet is nothing; the dry blend restores it
 
         // Blend out = dry*(1-mix) + wet*mix.
         for (int c = 0; c < numChannels && c < dryScratch.getNumChannels(); ++c)
