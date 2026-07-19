@@ -387,17 +387,29 @@ const R = {
 };
 function rackRow(mods,s){
   return `<div class="mrow">${mods.map(m=>{
-    const scr=m.meter?`<div style="border-radius:5px;background:#080c12;padding:9px 7px;margin:2px 0 8px"><div class="segm">
-        ${Array.from({length:16},(_,i)=>`<i style="${i<9?'background:#5ce0a0':i<13?'background:#ffcf4d':''}"></i>`).join('')}</div></div>`
+    const meter=`<div style="border-radius:5px;background:#080c12;padding:9px 7px"><div class="segm">
+        ${Array.from({length:16},(_,i)=>`<i style="${i<9?'background:#5ce0a0':i<13?'background:#ffcf4d':''}"></i>`).join('')}</div></div>`;
+    const scr=m.meter?`<div style="margin:2px 0 8px">${meter}</div>`
       : m.scope?`<div style="border-radius:5px;background:#080c12;height:34px;margin:2px 0 8px"></div>`
       : m.wave?`<div style="border-radius:5px;background:#080c12;height:${Math.max(30,s.h-150)}px;margin:2px 0 8px"></div>`:'';
+    const knobs=m.k?`<div class="knobs">${m.k.map(k=>K(k[0],k[1],k[2])).join('')}</div>`:'';
+
+    // INLINE: the meter and its control share one row rather than stacking. Main Out has a
+    // single Level knob under a full-width meter, which wastes a whole band of height on a
+    // module that is only reporting the output. Side by side, the meter takes the room it
+    // needs and the knob sits beside it.
+    const body = (m.meter && m.k)
+      ? `<div style="display:flex;align-items:center;gap:14px;margin:2px 0 8px">
+           <div style="flex:1;min-width:0">${meter}</div>
+           <div style="flex:0 0 auto">${knobs}</div></div>`
+      : scr + knobs;
+
     const jl=[]; if(m.in!==0)jl.push('<div class="j"><b></b><span>IN</span></div>');
     if(m.cv)jl.push('<div class="j"><b></b><span>CV</span></div>');
     const jr=m.out!==0?'<div class="sp2"><div class="j"><b></b><span>OUT</span></div></div>':'';
     return `<div class="mod" style="flex:1"><div class="mhd">${m.pw!==0?pwr(20):''}
       <div class="mti">${m.n}</div><div class="mcp">${m.c}</div>${m.pw!==0?dice:''}</div>
-      <div class="mst">IDLE</div>${scr}
-      ${m.k?`<div class="knobs">${m.k.map(k=>K(k[0],k[1],k[2])).join('')}</div>`:''}
+      <div class="mst">IDLE</div>${body}
       <div class="jk">${jl.join('')}${jr}</div></div>`;}).join('')}</div>`;
 }
 
