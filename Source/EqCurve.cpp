@@ -1,14 +1,15 @@
+#include "Theme.h"
 #include "EqCurve.h"
 #include "ParameterIDs.h"
 #include "dsp/EqCurveMath.h"
 
 namespace
 {
-    const juce::Colour kWell   { 0xff0d1220 };
-    const juce::Colour kLine   { 0xff232b45 };
-    const juce::Colour kSub    { 0xff7b86a8 };
-    const juce::Colour kLive   { 0xff5dcaa5 };
-    const juce::Colour kOffCol { 0xff5f6883 };
+    const auto& kWell   = Nebula2::Theme::well;
+    const auto& kLine   = Nebula2::Theme::card3;
+    const auto& kSub    = Nebula2::Theme::faint;
+    const auto& kLive   = Nebula2::Theme::accent;
+    const auto& kOffCol = Nebula2::Theme::dim;
 
     // Band shape must match RackModules::eqBandType. Ends are shelves, middle are peaks.
     int bandType (int i) noexcept

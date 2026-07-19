@@ -1,12 +1,13 @@
+#include "Theme.h"
 #include "WaveformView.h"
 
 namespace
 {
-    const juce::Colour kWell   { 0xff05070d };
-    const juce::Colour kWave   { 0xff5d6580 };
-    const juce::Colour kAccent { 0xff3fe0d4 };
-    const juce::Colour kLine   { 0x22ffffff };
-    const juce::Colour kSub    { 0xff9aa3bd };
+    const auto& kWell   = Nebula2::Theme::well;
+    const auto& kWave   = Nebula2::Theme::dim;
+    const auto& kAccent = Nebula2::Theme::accent;
+    const auto& kLine   = Nebula2::Theme::hiline;
+    const auto& kSub    = Nebula2::Theme::sub;
 }
 
 WaveformView::WaveformView(Nebula2::SampleLayer& layerToUse) : layer(layerToUse)

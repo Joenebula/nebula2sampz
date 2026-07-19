@@ -7,13 +7,13 @@ using namespace Nebula2;
 
 namespace
 {
-    const juce::Colour kWell   { 0xff05070d };
-    const juce::Colour kPanel  { 0xff0d1220 };
-    const juce::Colour kAccent { 0xff3fe0d4 };
-    const juce::Colour kCV     { 0xffffd166 };
-    const juce::Colour kDang   { 0xffff6b6b };
-    const juce::Colour kSub    { 0xff9aa3bd };
-    const juce::Colour kLine   { 0x22ffffff };
+    const auto& kWell   = Nebula2::Theme::well;
+    const auto& kPanel  = Nebula2::Theme::chassis;
+    const auto& kAccent = Nebula2::Theme::accent;
+    const auto& kCV     = Nebula2::Theme::warn;
+    const auto& kDang   = Nebula2::Theme::danger;
+    const auto& kSub    = Nebula2::Theme::sub;
+    const auto& kLine   = Nebula2::Theme::hiline;
 
     constexpr float jackR = 5.0f;
 
@@ -108,7 +108,7 @@ void RackView::drawModuleScreens (juce::Graphics& g) const
 
     auto well = [&g] (juce::Rectangle<float> r)
     {
-        g.setColour (juce::Colour (0xff0d1220));
+        g.setColour (Nebula2::Theme::chassis);
         g.fillRoundedRectangle (r, 3.0f);
     };
 
@@ -147,7 +147,7 @@ void RackView::drawModuleScreens (juce::Graphics& g) const
         auto bar = r.reduced (3.0f).withWidth ((r.getWidth() - 6.0f) * lvl);
         // Green until it is close to clipping, then red. A meter that reads the same at
         // -20 and at 0 dBFS is just a moving rectangle.
-        g.setColour (lvl > 0.95f ? juce::Colour (0xffe24b4a) : kAccent.withAlpha (0.8f));
+        g.setColour (lvl > 0.95f ? Nebula2::Theme::danger : kAccent.withAlpha (0.8f));
         g.fillRoundedRectangle (bar, 2.0f);
     }
 
@@ -191,7 +191,7 @@ void RackView::drawModuleScreens (juce::Graphics& g) const
             const float y = r.getCentreY() - out * r.getHeight() * 0.42f;
             if (i == 0) p.startNewSubPath (x, y); else p.lineTo (x, y);
         }
-        g.setColour (juce::Colour (0xffef9f27).withAlpha (0.85f));
+        g.setColour (Nebula2::Theme::warn.withAlpha (0.85f));
         g.strokePath (p, juce::PathStrokeType (1.3f));
     }
 
@@ -212,7 +212,7 @@ void RackView::drawModuleScreens (juce::Graphics& g) const
             const float y = r.getY() + r.getHeight() * juce::jlimit (0.0f, 1.0f, eqGainToNorm (db, 20.0f));
             if (i == 0) p.startNewSubPath (x, y); else p.lineTo (x, y);
         }
-        g.setColour (juce::Colour (0xffed93b1).withAlpha (0.85f));
+        g.setColour (Nebula2::Theme::accentPale.withAlpha (0.85f));
         g.strokePath (p, juce::PathStrokeType (1.3f));
 
         // Which vowel, in words. "2.31" tells you nothing about what you are about to hear.

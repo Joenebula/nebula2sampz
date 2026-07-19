@@ -1,3 +1,4 @@
+#include "Theme.h"
 #include "PluginEditor.h"
 #include "ParameterIDs.h"
 #include "GridPresets.h"
@@ -6,10 +7,10 @@
 
 namespace
 {
-    const juce::Colour kBg     { 0xff0b0e16 };
-    const juce::Colour kPanel  { 0xff131a2e };
-    const juce::Colour kAccent { 0xff3fe0d4 };
-    const juce::Colour kSub    { 0xff9aa3bd };
+    const auto& kBg     = Nebula2::Theme::bg;
+    const auto& kPanel  = Nebula2::Theme::card;
+    const auto& kAccent = Nebula2::Theme::accent;
+    const auto& kSub    = Nebula2::Theme::sub;
 }
 
 Nebula2AudioProcessorEditor::Nebula2AudioProcessorEditor(Nebula2AudioProcessor& p)
@@ -972,24 +973,38 @@ void Nebula2AudioProcessorEditor::paint(juce::Graphics& g)
 {
     using namespace Nebula2;
 
-    // A vertical wash rather than a flat fill — it's what stops a dark plugin reading as a
-    // black hole. Straight from the prototype's body gradient.
-    juce::ColourGradient bgGrad(juce::Colour(0xff131a30), 0.0f, 0.0f,
-                                Theme::bg, 0.0f, (float) getHeight(), false);
-    bgGrad.addColour(0.55, juce::Colour(0xff0d1222));
-    g.setGradientFill(bgGrad);
-    g.fillAll();
+    // The kit's page wash: radial, not vertical.
+    //
+    //   radial-gradient(1200px 720px at 50% -14%, #101d2c, #05080d 62%)
+    //
+    // Centred ABOVE the top edge, so the light appears to come from off-screen and the
+    // panels below sit in its falloff. A flat fill makes a dark plugin read as a black
+    // hole; a vertical wash (what this was) lights the top edge evenly, which is subtly
+    // wrong in a way that is hard to name but easy to see next to the design.
+    //
+    // The bulk retokenising of this file mapped the old gradient's literals onto knobSkirt
+    // and chassis - mechanically correct, semantically nonsense. This is the real thing.
+    {
+        const auto w = (float) getWidth(), h = (float) getHeight();
+        const float cx = w * 0.5f, cy = h * -0.14f;
+        const float radius = juce::jmax (w, h) * 0.95f;
+
+        juce::ColourGradient bgGrad (Theme::bgLift, cx, cy, Theme::bg, cx, cy + radius, true);
+        bgGrad.addColour (0.62, Theme::bg);   // the kit's 62% stop
+        g.setGradientFill (bgGrad);
+        g.fillAll();
+    }
 
     auto header = getLocalBounds().removeFromTop(headerH);
 
     auto title = header.reduced(16, 8).removeFromTop(24);
     title.removeFromRight(100);   // the Play button lives here (placed in resized())
     g.setColour(Theme::ink);
-    g.setFont(Theme::ui(19.0f, true));
+    g.setFont(Theme::ui(19.0f, 700));   // the kit sets headings at 700
     g.drawFittedText("Nebula2", title.removeFromLeft(96), juce::Justification::centredLeft, 1);
 
     g.setColour(Theme::faint);
-    g.setFont(Theme::mono(10.0f));
+    g.setFont(Theme::mono(10.0f, 500));  // the kit sets mono captions at 500
     // No drum-note range here any more: the synth-drum layer is gone, so advertising
     // "drums 36-46" would be the header promising a sound the plugin no longer makes.
     g.drawFittedText(noteMapBlurb (true),
@@ -1012,9 +1027,9 @@ void Nebula2AudioProcessorEditor::paintContent(juce::Graphics& g)
         Nebula2LookAndFeel::drawCard(g, sampleArea, "SAMPLE");
         if (dragHighlight)
         {
-            g.setColour(Theme::teal.withAlpha(0.18f));
+            g.setColour(Theme::accent.withAlpha(0.18f));
             g.fillRoundedRectangle(sampleArea, Theme::cardRadius);
-            g.setColour(Theme::teal);
+            g.setColour(Theme::accent);
             g.drawRoundedRectangle(sampleArea.reduced(1.0f), Theme::cardRadius, 1.5f);
         }
 
@@ -1028,14 +1043,14 @@ void Nebula2AudioProcessorEditor::paintContent(juce::Graphics& g)
         Nebula2LookAndFeel::drawCard(g, spaceCard, "SPACE");
         auto inner = spaceCard.reduced(14.0f, 4.0f);
         inner.removeFromTop(16.0f);                        // clear the SPACE title
-        g.setColour(Theme::teal.withAlpha(0.85f));
-        g.setFont(Theme::ui(9.0f, true));
+        g.setColour(Theme::accent.withAlpha(0.85f));
+        g.setFont(Theme::ui(9.0f, 600));
         g.drawText("REVERB", inner.removeFromTop(14.0f), juce::Justification::topLeft);
         auto delayHalf = inner.withTop(inner.getY() + 92.0f);
         g.setColour(Theme::line);
         g.drawLine(delayHalf.getX(), delayHalf.getY() - 4.0f,
                    delayHalf.getRight(), delayHalf.getY() - 4.0f);   // divider
-        g.setColour(Theme::teal.withAlpha(0.85f));
+        g.setColour(Theme::accent.withAlpha(0.85f));
         g.drawText("DELAY", delayHalf.removeFromTop(14.0f), juce::Justification::topLeft);
     }
     else if (page == Page::morph)

@@ -1,12 +1,13 @@
+#include "Theme.h"
 #include "MorphPadView.h"
 #include "ParameterIDs.h"
 
 namespace
 {
-    const juce::Colour kWell   { 0xff05070d };
-    const juce::Colour kAccent { 0xff3fe0d4 };
-    const juce::Colour kSub    { 0xff9aa3bd };
-    const juce::Colour kLine   { 0x18ffffff };
+    const auto& kWell   = Nebula2::Theme::well;
+    const auto& kAccent = Nebula2::Theme::accent;
+    const auto& kSub    = Nebula2::Theme::sub;
+    const auto& kLine   = Nebula2::Theme::line;
 }
 
 MorphPadView::MorphPadView(Nebula2AudioProcessor& p) : processorRef(p)
@@ -125,7 +126,7 @@ void MorphPadView::paint(juce::Graphics& g)
         {
             g.setColour(kWell.withAlpha(0.62f));
             g.fillAll();
-            g.setColour(juce::Colour(0xffff6a4d));
+            g.setColour(Nebula2::Theme::danger);
             g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
             g.drawText("Pad is OFF - it won't touch the sound. Tick \"Morph On\".",
                        getLocalBounds(), juce::Justification::centred);

@@ -35,16 +35,16 @@ Nebula2LookAndFeel::Nebula2LookAndFeel()
 
     setColour(juce::ComboBox::backgroundColourId, Theme::well);
     setColour(juce::ComboBox::textColourId,       Theme::ink);
-    setColour(juce::ComboBox::outlineColourId,    juce::Colour(0x99000000));
-    setColour(juce::ComboBox::arrowColourId,      Theme::teal);
+    setColour(juce::ComboBox::outlineColourId,    Nebula2::Theme::shadowMid);
+    setColour(juce::ComboBox::arrowColourId,      Theme::accent);
 
     setColour(juce::PopupMenu::backgroundColourId,            Theme::card2);
     setColour(juce::PopupMenu::textColourId,                  Theme::ink);
-    setColour(juce::PopupMenu::highlightedBackgroundColourId, Theme::teal.withAlpha(0.22f));
-    setColour(juce::PopupMenu::highlightedTextColourId,       Theme::tealLit);
+    setColour(juce::PopupMenu::highlightedBackgroundColourId, Theme::accent.withAlpha(0.22f));
+    setColour(juce::PopupMenu::highlightedTextColourId,       Theme::accentLit);
 
     setColour(juce::ToggleButton::textColourId,   Theme::sub);
-    setColour(juce::ToggleButton::tickColourId,   Theme::teal);
+    setColour(juce::ToggleButton::tickColourId,   Theme::accent);
 
     setColour(juce::TextButton::buttonColourId,   Theme::card3);
     setColour(juce::TextButton::textColourOffId,  Theme::sub);
@@ -88,15 +88,15 @@ void Nebula2LookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int w
         const bool passed = lit && a <= Av;
         const auto t = polar(c, R + (big ? 9.0f : 6.0f), a);
         const float tr = big ? 1.6f : 1.2f;
-        g.setColour(passed ? Theme::teal : juce::Colour(0x29ffffff));
+        g.setColour(passed ? Theme::accent : Nebula2::Theme::glassMid);
         g.fillEllipse(t.x - tr, t.y - tr, tr * 2.0f, tr * 2.0f);
     }
 
     // --- recessed track ---
-    g.setColour(juce::Colour(0xa6000000));
+    g.setColour(Nebula2::Theme::shadowDeep);
     g.strokePath(arc(c, R, A0, A1), juce::PathStrokeType(W + 2.5f, juce::PathStrokeType::curved,
                                                          juce::PathStrokeType::rounded));
-    g.setColour(juce::Colour(0x0fffffff));
+    g.setColour(Nebula2::Theme::glassLow);
     g.strokePath(arc(c, R, A0, A1), juce::PathStrokeType(W, juce::PathStrokeType::curved,
                                                          juce::PathStrokeType::rounded));
 
@@ -105,14 +105,14 @@ void Nebula2LookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int w
     {
         // The SVG used a drop-shadow for the glow; here it's a wider, fainter arc under
         // the real one — same read, no blur pass.
-        g.setColour(Theme::teal.withAlpha(0.22f));
+        g.setColour(Theme::accent.withAlpha(0.22f));
         g.strokePath(arc(c, R, A0, Av), juce::PathStrokeType(W + (big ? 7.0f : 4.0f),
                                                              juce::PathStrokeType::curved,
                                                              juce::PathStrokeType::rounded));
-        g.setColour(Theme::teal);
+        g.setColour(Theme::accent);
         g.strokePath(arc(c, R, A0, Av), juce::PathStrokeType(W, juce::PathStrokeType::curved,
                                                              juce::PathStrokeType::rounded));
-        g.setColour(Theme::tealLit.withAlpha(0.9f));
+        g.setColour(Theme::accentLit.withAlpha(0.9f));
         g.strokePath(arc(c, R, juce::jmax(A0, Av - 14.0f), Av),
                      juce::PathStrokeType(W * 0.55f, juce::PathStrokeType::curved,
                                           juce::PathStrokeType::rounded));
@@ -122,16 +122,16 @@ void Nebula2LookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int w
     const float capR = R - W - 4.0f;
     if (capR > 3.0f)
     {
-        juce::ColourGradient cap(juce::Colour(0xff39415f), c.x, c.y - capR,
-                                 juce::Colour(0xff10142a), c.x, c.y + capR, false);
+        juce::ColourGradient cap(Nebula2::Theme::knobCapTop, c.x, c.y - capR,
+                                 Nebula2::Theme::knobCapBot, c.x, c.y + capR, false);
         g.setGradientFill(cap);
         g.fillEllipse(c.x - capR, c.y - capR, capR * 2.0f, capR * 2.0f);
 
-        g.setColour(juce::Colour(0x30ffffff));
+        g.setColour(Nebula2::Theme::glassHigh);
         g.drawEllipse(c.x - capR, c.y - capR, capR * 2.0f, capR * 2.0f, 1.4f);
 
         // Specular highlight — what makes it read as a moulded cap rather than a disc.
-        g.setColour(juce::Colour(0x1affffff));
+        g.setColour(Nebula2::Theme::glassMid);
         g.fillEllipse(c.x - capR * 0.28f - capR * 0.42f,
                       c.y - capR * 0.42f - capR * 0.26f,
                       capR * 0.84f, capR * 0.52f);
@@ -141,10 +141,10 @@ void Nebula2LookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int w
         const auto p2 = polar(c, capR * 0.86f, Av);
         if (lit)
         {
-            g.setColour(Theme::teal.withAlpha(0.35f));
+            g.setColour(Theme::accent.withAlpha(0.35f));
             g.drawLine(p1.x, p1.y, p2.x, p2.y, (big ? 3.4f : 2.6f) + 3.0f);
         }
-        g.setColour(lit ? Theme::teal : Theme::faint);
+        g.setColour(lit ? Theme::accent : Theme::faint);
         g.drawLine(p1.x, p1.y, p2.x, p2.y, big ? 3.4f : 2.6f);
     }
 }
@@ -161,26 +161,26 @@ void Nebula2LookAndFeel::drawLinearSlider(juce::Graphics& g, int x, int y, int w
     auto track = juce::Rectangle<float>(b.getX(), cy - trackH * 0.5f, b.getWidth(), trackH);
     g.setColour(Theme::well);
     g.fillRoundedRectangle(track, trackH * 0.5f);
-    g.setColour(juce::Colour(0x99000000));
+    g.setColour(Nebula2::Theme::shadowMid);
     g.drawRoundedRectangle(track.reduced(0.25f), trackH * 0.5f, 1.0f);
 
     // Filled portion. Zero means zero: at the bottom of the range nothing lights up.
     const float fillW = juce::jlimit(0.0f, b.getWidth(), sliderPos - b.getX());
     if (fillW > 1.0f)
     {
-        g.setColour(Theme::teal.withAlpha(0.25f));
+        g.setColour(Theme::accent.withAlpha(0.25f));
         g.fillRoundedRectangle(track.withWidth(fillW).expanded(0.0f, 2.0f), trackH * 0.5f + 2.0f);
-        g.setColour(Theme::teal);
+        g.setColour(Theme::accent);
         g.fillRoundedRectangle(track.withWidth(fillW), trackH * 0.5f);
     }
 
     // Thumb, machined like the knob caps so the family reads as one set of controls.
     const float tr = juce::jmin(7.0f, b.getHeight() * 0.5f);
-    juce::ColourGradient cap(juce::Colour(0xff39415f), sliderPos, cy - tr,
-                             juce::Colour(0xff10142a), sliderPos, cy + tr, false);
+    juce::ColourGradient cap(Nebula2::Theme::knobCapTop, sliderPos, cy - tr,
+                             Nebula2::Theme::knobCapBot, sliderPos, cy + tr, false);
     g.setGradientFill(cap);
     g.fillEllipse(sliderPos - tr, cy - tr, tr * 2.0f, tr * 2.0f);
-    g.setColour(s.isEnabled() ? Theme::tealLit.withAlpha(0.8f) : Theme::faint);
+    g.setColour(s.isEnabled() ? Theme::accentLit.withAlpha(0.8f) : Theme::faint);
     g.drawEllipse(sliderPos - tr, cy - tr, tr * 2.0f, tr * 2.0f, 1.2f);
 }
 
@@ -191,10 +191,10 @@ void Nebula2LookAndFeel::drawComboBox(juce::Graphics& g, int width, int height, 
 
     g.setColour(Theme::well);
     g.fillRoundedRectangle(b, 7.0f);
-    g.setColour(juce::Colour(0x99000000));
+    g.setColour(Nebula2::Theme::shadowMid);
     g.drawRoundedRectangle(b.reduced(0.5f), 7.0f, 1.0f);
     // A top inner line fakes the CSS inset shadow: it reads as recessed, not stuck on.
-    g.setColour(juce::Colour(0x14ffffff));
+    g.setColour(Nebula2::Theme::glassLow);
     g.drawLine(b.getX() + 6.0f, b.getBottom() - 1.0f, b.getRight() - 6.0f, b.getBottom() - 1.0f);
 
     juce::Path arrow;
@@ -202,7 +202,7 @@ void Nebula2LookAndFeel::drawComboBox(juce::Graphics& g, int width, int height, 
     arrow.startNewSubPath(cx - 4.0f, cy - 2.0f);
     arrow.lineTo(cx, cy + 2.5f);
     arrow.lineTo(cx + 4.0f, cy - 2.0f);
-    g.setColour(box.isEnabled() ? Theme::teal : Theme::faint);
+    g.setColour(box.isEnabled() ? Theme::accent : Theme::faint);
     g.strokePath(arrow, juce::PathStrokeType(1.6f, juce::PathStrokeType::curved,
                                              juce::PathStrokeType::rounded));
 }
@@ -223,10 +223,10 @@ void Nebula2LookAndFeel::drawToggleButton(juce::Graphics& g, juce::ToggleButton&
                                       boxSize, boxSize);
     const bool on = b.getToggleState();
 
-    g.setColour(on ? Theme::teal : Theme::well);
+    g.setColour(on ? Theme::accent : Theme::well);
     g.fillRoundedRectangle(box, 4.0f);
-    g.setColour(on ? Theme::tealLit.withAlpha(0.8f)
-                   : juce::Colour(0x99000000));
+    g.setColour(on ? Theme::accentLit.withAlpha(0.8f)
+                   : Nebula2::Theme::shadowMid);
     g.drawRoundedRectangle(box.reduced(0.5f), 4.0f, 1.0f);
 
     if (on)
@@ -253,14 +253,14 @@ void Nebula2LookAndFeel::drawButtonBackground(juce::Graphics& g, juce::Button& b
     const bool on = b.getToggleState();
 
     juce::ColourGradient grad = on
-        ? juce::ColourGradient(Theme::tealLit, 0.0f, bounds.getY(),
-                               Theme::teal, 0.0f, bounds.getBottom(), false)
+        ? juce::ColourGradient(Theme::accentLit, 0.0f, bounds.getY(),
+                               Theme::accent, 0.0f, bounds.getBottom(), false)
         : juce::ColourGradient(juce::Colour(down ? 0xff151b32 : 0xff232c4c), 0.0f, bounds.getY(),
                                juce::Colour(down ? 0xff232c4c : 0xff151b32), 0.0f, bounds.getBottom(), false);
     g.setGradientFill(grad);
     g.fillRoundedRectangle(bounds, 7.0f);
 
-    g.setColour(on ? Theme::teal : (highlighted ? Theme::hiline : juce::Colour(0x66000000)));
+    g.setColour(on ? Theme::accent : (highlighted ? Theme::hiline : Nebula2::Theme::shadowSoft));
     g.drawRoundedRectangle(bounds, 7.0f, 1.0f);
 }
 
@@ -302,10 +302,10 @@ void Nebula2LookAndFeel::drawCard(juce::Graphics& g, juce::Rectangle<float> r,
 {
     // --card-sh: a drop shadow plus a 1px inner top highlight. The highlight is what makes
     // the panel read as raised rather than as a flat rectangle.
-    g.setColour(juce::Colour(0x40000000));
+    g.setColour(Nebula2::Theme::shadowFaint);
     g.fillRoundedRectangle(r.translated(0.0f, 3.0f), Theme::cardRadius);
 
-    juce::ColourGradient grad(juce::Colour(0xff182038), 0.0f, r.getY(),
+    juce::ColourGradient grad(Nebula2::Theme::knobBody, 0.0f, r.getY(),
                               Theme::card2, 0.0f, r.getBottom(), false);
     grad.addColour(0.4, Theme::card);
     g.setGradientFill(grad);
@@ -313,14 +313,14 @@ void Nebula2LookAndFeel::drawCard(juce::Graphics& g, juce::Rectangle<float> r,
 
     g.setColour(Theme::line);
     g.drawRoundedRectangle(r.reduced(0.5f), Theme::cardRadius, 1.0f);
-    g.setColour(juce::Colour(0x12ffffff));
+    g.setColour(Nebula2::Theme::glassLow);
     g.drawLine(r.getX() + Theme::cardRadius, r.getY() + 1.0f,
                r.getRight() - Theme::cardRadius, r.getY() + 1.0f);
 
     if (title.isNotEmpty())
     {
-        g.setColour(Theme::teal);
-        g.setFont(Theme::ui(9.0f, true));
+        g.setColour(Theme::accent);
+        g.setFont(Theme::ui(9.0f, 600));
         g.drawText(title, r.reduced(14.0f, 7.0f).removeFromTop(12.0f),
                    juce::Justification::topLeft);
     }
@@ -330,12 +330,12 @@ void Nebula2LookAndFeel::drawWell(juce::Graphics& g, juce::Rectangle<float> r)
 {
     g.setColour(Theme::well);
     g.fillRoundedRectangle(r, Theme::wellRadius);
-    g.setColour(juce::Colour(0x99000000));
+    g.setColour(Nebula2::Theme::shadowMid);
     g.drawRoundedRectangle(r.reduced(0.5f), Theme::wellRadius, 1.0f);
     // --well-sh is an inset shadow; a dark top edge and a light bottom edge is the cheap,
     // convincing version of it.
-    g.setColour(juce::Colour(0x66000000));
+    g.setColour(Nebula2::Theme::shadowSoft);
     g.drawLine(r.getX() + 4.0f, r.getY() + 1.0f, r.getRight() - 4.0f, r.getY() + 1.0f, 1.5f);
-    g.setColour(juce::Colour(0x0dffffff));
+    g.setColour(Nebula2::Theme::line);
     g.drawLine(r.getX() + 4.0f, r.getBottom() - 0.5f, r.getRight() - 4.0f, r.getBottom() - 0.5f);
 }

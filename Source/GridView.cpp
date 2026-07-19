@@ -1,13 +1,14 @@
+#include "Theme.h"
 #include "GridView.h"
 #include "ParameterIDs.h"
 
 namespace
 {
-    const juce::Colour kWell   { 0xff05070d };
-    const juce::Colour kCell   { 0xff1a2238 };
-    const juce::Colour kAccent { 0xff3fe0d4 };
-    const juce::Colour kSub    { 0xff9aa3bd };
-    const juce::Colour kBeat   { 0xff242c55 };
+    const auto& kWell   = Nebula2::Theme::well;
+    const auto& kCell   = Nebula2::Theme::card3;
+    const auto& kAccent = Nebula2::Theme::accent;
+    const auto& kSub    = Nebula2::Theme::sub;
+    const auto& kBeat   = Nebula2::Theme::card4;
 }
 
 GridView::GridView(Nebula2AudioProcessor& p) : processorRef(p)
@@ -223,7 +224,7 @@ void GridView::paint(juce::Graphics& g)
             {
                 // Same live/at-rest language as the cells: dim when the lane cannot act,
                 // so the bar never looks busy while the lane is silent.
-                g.setColour(starved ? kSub.withAlpha(0.18f) : juce::Colour(0xff1d6e56));
+                g.setColour(starved ? kSub.withAlpha(0.18f) : Nebula2::Theme::accent.darker(0.55f));
                 g.fillRect(cell.withWidth(juce::roundToInt((float) cell.getWidth() * t)));
             }
         }
@@ -237,8 +238,8 @@ void GridView::paint(juce::Graphics& g)
         // The value now shows ALWAYS, not only when starved. It stopped being a warning
         // tag the moment the number became something you drag - a slider you can only read
         // while it is doing nothing is the wrong way round.
-        g.setColour(starved ? juce::Colour(0xffff6a4d).withAlpha(0.85f)
-                            : juce::Colour(0xff9fe1cb).withAlpha(0.9f));
+        g.setColour(starved ? Nebula2::Theme::danger.withAlpha(0.85f)
+                            : Nebula2::Theme::accentLit.withAlpha(0.9f));
         g.setFont(juce::FontOptions(8.5f));
         g.drawText(juce::String(juce::roundToInt(panelAmountFor(r))) + "%",
                    labelW - 28, y, 24, rowH, juce::Justification::centredRight);
@@ -282,7 +283,7 @@ void GridView::paint(juce::Graphics& g)
         auto strip = getLocalBounds().removeFromBottom(18);
         g.setColour(kWell.withAlpha(0.92f));
         g.fillRect(strip);
-        g.setColour(juce::Colour(0xffff6a4d));
+        g.setColour(Nebula2::Theme::danger);
         g.setFont(juce::FontOptions(10.0f, juce::Font::bold));
         g.drawText("Grid is OFF - painted steps won't sound. Tick \"Grid On\".",
                    strip, juce::Justification::centred);
@@ -302,7 +303,7 @@ void GridView::paint(juce::Graphics& g)
             auto strip = getLocalBounds().removeFromBottom(18);
             g.setColour(kWell.withAlpha(0.92f));
             g.fillRect(strip);
-            g.setColour(juce::Colour(0xffff6a4d));
+            g.setColour(Nebula2::Theme::danger);
             g.setFont(juce::FontOptions(10.0f, juce::Font::bold));
             g.drawText("Every painted lane is at 0% - turn its knob up so the steps have something to gate.",
                        strip, juce::Justification::centred);

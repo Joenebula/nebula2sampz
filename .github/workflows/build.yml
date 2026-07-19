@@ -30,6 +30,25 @@ jobs:
           fi
           echo "OK - no raw non-ASCII in string literals."
 
+      # Theme.h's own comment warned that "the eleventh hard-coded 0xff3fe0d4 is how a theme
+      # rots" - and then five separate view files each grew a private kAccent with that exact
+      # value. Changing the theme repainted almost nothing, because almost nothing read it.
+      #
+      # So: no raw ARGB literals outside Theme.h. Colours are tokens or they are nothing.
+      # (Theme.cpp is exempt - it only loads fonts. Shader-ish alpha maths is not a colour.)
+      - name: Colours come from Theme, not from hex literals
+        shell: bash
+        run: |
+          hits=$(grep -rnE 'juce::Colour[ (]*\{? *0x[0-9a-fA-F]{8}' Source/ \
+                   --include=*.cpp --include=*.h \
+                 | grep -v '^Source/Theme.h:' || true)
+          if [ -n "$hits" ]; then
+            echo "$hits"
+            echo "::error::Raw colour literal outside Theme.h (lines above). Add a token to Theme.h and use it."
+            exit 1
+          fi
+          echo "OK - every colour comes from Theme."
+
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 

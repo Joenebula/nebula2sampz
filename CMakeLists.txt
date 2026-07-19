@@ -61,6 +61,7 @@ target_sources(Nebula2 PRIVATE
     Source/Nebula2LookAndFeel.cpp
     Source/Nebula2LookAndFeel.h
     Source/Theme.h
+    Source/Theme.cpp
     Source/Parameters.cpp
     Source/Parameters.h
     Source/ParameterIDs.h
@@ -121,8 +122,28 @@ target_compile_definitions(Nebula2 PUBLIC
     JUCE_VST3_CAN_REPLACE_VST2=0
 )
 
+# --- embedded typefaces ---
+#
+# The Audio UI Kit specifies Chakra Petch and IBM Plex Mono. A plugin cannot fetch Google
+# Fonts at runtime the way the design's HTML does - there is no browser and no network - so
+# the faces are compiled into the binary and registered at startup. Without this the UI
+# silently falls back to whatever the OS has, which is how it ends up looking nothing like
+# the design while every colour is technically correct.
+#
+# Both families are SIL Open Font License, which permits embedding. The licences ship
+# alongside them in Resources/fonts/ rather than living only in a commit message.
+juce_add_binary_data(Nebula2Fonts SOURCES
+    Resources/fonts/ChakraPetch-Regular.ttf
+    Resources/fonts/ChakraPetch-Medium.ttf
+    Resources/fonts/ChakraPetch-SemiBold.ttf
+    Resources/fonts/ChakraPetch-Bold.ttf
+    Resources/fonts/IBMPlexMono-Regular.ttf
+    Resources/fonts/IBMPlexMono-Medium.ttf
+)
+
 target_link_libraries(Nebula2
     PRIVATE
+        Nebula2Fonts
         juce::juce_audio_utils
         juce::juce_dsp
     PUBLIC

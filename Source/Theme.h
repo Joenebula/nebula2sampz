@@ -2,67 +2,115 @@
 
 #include <juce_graphics/juce_graphics.h>
 
-// The prototype's design tokens, carried over verbatim from its CSS custom properties.
+// The AUDIO UI KIT's design tokens.
 //
-// This is the decision log's Phase 5 instruction: "see reference/nebula2-prototype.html
-// for the design tokens and control specs to carry over, NOT the implementation". These
-// are those tokens. If a colour here disagrees with the prototype, the prototype is right.
+// These replace the original HTML prototype's tokens. The two disagree, and the kit wins:
+// it is the later design and the one the user drew. The visible difference is the accent -
+// the prototype was teal #3fe0d4, the kit is electric cyan #2ec5ff - plus real typefaces
+// instead of whatever the OS happened to have.
 //
-// One place, so a colour is never typed twice — the eleventh hard-coded 0xff3fe0d4 is how
+// Values are taken from the kit by FREQUENCY, not by eye: #2ec5ff appears 78 times in it,
+// #6b7a89 29 times, and so on. Where a colour here disagrees with the kit, the kit is right.
+//
+// One place, so a colour is never typed twice - the eleventh hard-coded 0xff2ec5ff is how
 // a theme rots.
 namespace Nebula2::Theme
 {
     // --- surfaces ---
-    inline const juce::Colour bg      { 0xff080b13 };   // --bg
-    inline const juce::Colour card    { 0xff131a2e };   // --card
-    inline const juce::Colour card2   { 0xff0f1526 };   // --card2
-    inline const juce::Colour card3   { 0xff242c55 };   // --card3
-    inline const juce::Colour well    { 0xff05070d };   // --well  (recessed: grids, scopes, pads)
-    inline const juce::Colour chassis { 0xff0d1222 };   // --chassis
+    // The kit's page is a radial gradient, not a flat fill: bg at the edges lifting to
+    // bgLift near the top centre. Drawing it flat is the single easiest way to make a
+    // correct palette still look wrong.
+    inline const juce::Colour bg      { 0xff05080d };   // page base
+    inline const juce::Colour bgLift  { 0xff101d2c };   // radial centre, ~-14% from top
+    inline const juce::Colour card    { 0xff141b24 };   // panel top
+    inline const juce::Colour card2   { 0xff10161d };   // panel bottom
+    inline const juce::Colour card3   { 0xff1a222d };   // raised control
+    inline const juce::Colour card4   { 0xff2a3646 };   // control top edge
+    inline const juce::Colour well    { 0xff080c12 };   // recessed: grids, scopes, pads
+    inline const juce::Colour well2   { 0xff0a0f16 };   // recessed, one step lighter
+    inline const juce::Colour chassis { 0xff0b1017 };   // module bodies
 
     // --- lines ---
-    inline const juce::Colour line   { 0x13ffffff };    // --line   rgba(255,255,255,.075)
-    inline const juce::Colour hiline { 0x1cffffff };    // --hiline rgba(255,255,255,.11)
+    inline const juce::Colour line   { 0x0dffffff };    // rgba(255,255,255,0.05)
+    inline const juce::Colour hiline { 0x17ffffff };    // rgba(255,255,255,0.09)
 
     // --- text ---
-    inline const juce::Colour ink   { 0xffeef1f9 };     // --ink
-    inline const juce::Colour sub   { 0xff9aa3bd };     // --sub
-    inline const juce::Colour faint { 0xff5d6580 };     // --faint
+    inline const juce::Colour ink   { 0xffeaf6ff };     // primary
+    inline const juce::Colour ink2  { 0xffeafaff };     // brightest (LCD readouts)
+    inline const juce::Colour sub   { 0xff9fb0bf };     // secondary
+    inline const juce::Colour sub2  { 0xff8896a5 };
+    inline const juce::Colour faint { 0xff6b7a89 };     // labels, mono captions
+    inline const juce::Colour dim   { 0xff546272 };     // disabled / at-rest
 
     // --- accents ---
-    // Every block (Colour / Space / Morph / Rack) is the same teal in the prototype: it
-    // ships one accent, not four. Don't invent per-block hues — that's a design change,
-    // not a port.
-    inline const juce::Colour teal     { 0xff3fe0d4 };  // --teal / --colour / --space / --morph
-    inline const juce::Colour tealLit  { 0xff9ff2ec };  // --teal-lit
-    inline const juce::Colour coral    { 0xffff6a4d };  // --coral  (warnings, hot states)
-    inline const juce::Colour coralLit { 0xffffa38f };  // --coral-lit
-    inline const juce::Colour cv       { 0xffffd166 };  // the LFO/CV yellow
+    inline const juce::Colour accent    { 0xff2ec5ff };  // electric cyan
+    inline const juce::Colour accentLit { 0xff8fe6ff };  // hover / highlight
+    inline const juce::Colour accentPale{ 0xffbdefff };  // brightest glow
+    inline const juce::Colour onAccent  { 0xff04141d };  // text ON accent
 
-    inline const juce::Colour onAccent { 0xff06121a };  // --on-accent (text ON teal)
+    // The kit's primary button is a vertical gradient, not a flat accent fill.
+    inline const juce::Colour btnTop { 0xff6bb9ec };
+    inline const juce::Colour btnBot { 0xff1f6fae };
+
+    inline const juce::Colour good  { 0xff5ce0a0 };     // live / connected
+    inline const juce::Colour warn  { 0xffffcf4d };     // caution, CV/LFO yellow
+    inline const juce::Colour danger{ 0xffff5468 };     // clipping, refused, errors
+
+    // --- scrims, shadows and glass ---
+    //
+    // Black and white at fixed alphas. These are not brand colours, but they were still
+    // typed as raw literals in 33 places, which is how a "grey" ends up subtly different in
+    // every panel. Tokens mean the whole UI shares one lighting model.
+    inline const juce::Colour shadowFaint { 0x40000000 };
+    inline const juce::Colour shadowSoft  { 0x66000000 };
+    inline const juce::Colour shadowMid   { 0x99000000 };
+    inline const juce::Colour shadowDeep  { 0xa6000000 };
+    inline const juce::Colour glassLow    { 0x0fffffff };   // faint top highlight
+    inline const juce::Colour glassMid    { 0x29ffffff };
+    inline const juce::Colour glassHigh   { 0x30ffffff };
+
+    // --- knob body ---
+    //
+    // The moulded-plastic ramp the rotary control is built from: cap highlight down to
+    // skirt shadow. Tokenised so the AUDIO KIT's knob can replace the prototype's by
+    // editing six values here rather than hunting twenty-one literals in the LookAndFeel.
+    inline const juce::Colour knobCapTop  { 0xff39415f };
+    inline const juce::Colour knobCapBot  { 0xff10142a };
+    inline const juce::Colour knobRim     { 0xff232c4c };
+    inline const juce::Colour knobBody    { 0xff182038 };
+    inline const juce::Colour knobShade   { 0xff151b32 };
+    inline const juce::Colour knobSkirt   { 0xff131a30 };
 
     // --- geometry ---
-    inline constexpr float cardRadius = 14.0f;          // --r
+    inline constexpr float cardRadius = 14.0f;
     inline constexpr float wellRadius = 10.0f;
+    inline constexpr float ctrlRadius = 10.0f;
 
-    // The knob's sweep, from nbKnobSVG: -140deg to +140deg. Not a full circle — you can
-    // see where the ends are, which is the whole point of a pointer knob.
+    // The knob's sweep: -140deg to +140deg. Not a full circle - you can see where the ends
+    // are, which is the whole point of a pointer knob.
     inline constexpr float knobStartDeg = -140.0f;
     inline constexpr float knobEndDeg   =  140.0f;
 
-    inline juce::Font mono (float size, bool bold = false)
-    {
-        // "IBM Plex Mono" in the prototype: values are monospaced so they don't jitter as
-        // digits change. Falls back to whatever mono the OS has.
-        return juce::Font (juce::FontOptions ("Consolas", size,
-                                              bold ? juce::Font::bold : juce::Font::plain));
-    }
+    // --- type ---
+    //
+    // Chakra Petch (UI) and IBM Plex Mono (values), both embedded in the binary - see
+    // Theme.cpp and the juce_add_binary_data block in CMakeLists.txt. A plugin cannot fetch
+    // Google Fonts the way the design's HTML does, and falling back to a system face is how
+    // a UI ends up looking nothing like its design while every colour is correct.
+    //
+    // Weight is the CSS number the kit uses (400/500/600/700), not a bool, because the kit
+    // distinguishes 500 from 600 constantly and a bool cannot express that.
+    juce::Font ui   (float size, int weight = 400);
+    juce::Font mono (float size, int weight = 400);
 
-    inline juce::Font ui (float size, bool bold = false)
-    {
-        // "Chakra Petch" in the prototype. Not safe to assume it's installed, so this is
-        // the nearest ubiquitous face rather than a silent fallback to Times.
-        return juce::Font (juce::FontOptions ("Segoe UI", size,
-                                              bold ? juce::Font::bold : juce::Font::plain));
-    }
+    // These signatures used to take a bool. `true` would now convert silently to weight 1
+    // and land on Regular, so every bold label in the plugin would quietly un-bold with no
+    // warning anywhere. Deleting the bool overloads turns that into a compile error at each
+    // call site, which is the only way to be sure all of them were actually looked at.
+    juce::Font ui   (float size, bool) = delete;
+    juce::Font mono (float size, bool) = delete;
+
+    // True once the embedded faces are registered. False means every call above is falling
+    // back to a system font - worth being able to ASSERT rather than squint at.
+    bool fontsLoaded();
 }
