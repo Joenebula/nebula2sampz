@@ -249,7 +249,51 @@ the source.** It was inferred from a stack trace and then repeated as establishe
 four separate fix attempts, each of which cited it as justification. A stack tells you where
 a program died, not why the code that died is wrong.
 
-**Status: not proven fixed.** A 200-rate-change stress test in the unit suite passes — and
+### RESOLVED — the race was on the PRODUCER side
+
+`BackgroundMessageQueue::push` documents its own rule: *"only safe to call from a single
+thread at a time."* `popMutex` guards the two consumers. Nothing guards the producers, and
+there were two:
+
+```
+Pimpl::reset()          -> destroyPreviousEngine() -> push   [MESSAGE thread]
+Pimpl::processSamples() -> postPendingCommand()    -> push   [AUDIO thread]
+                        -> destroyPreviousEngine() -> push
+```
+
+The queue sits on an `AbstractFifo`, which is single-producer. Two concurrent writers corrupt
+the write index; a reader then pops a slot nobody wrote, finds a default-constructed
+`FixedSizeFunction`, calls it, and throws `std::bad_function_call`. That is the exception,
+and every recorded crash site — Restoring default layout, Non-releasing audio processing,
+Automation — is a test that calls `prepareToPlay` while audio is running, which is exactly
+the overlap required.
+
+`Reverb::reset()` is called from `prepareToPlay`, so **this plugin was the message-thread
+producer**. It no longer calls `conv->reset()`, leaving the audio thread as the only pusher.
+
+**MEASURED: 200/200 clean pluginval runs at strictness 10**, on the exact build carrying the
+fix. At the previously measured ~1.7% rate, P(200 consecutive passes) ≈ 0.03. The threshold
+was set before the run, not chosen after seeing the number.
+
+Two honest caveats, kept rather than dropped now that the news is good:
+
+- A clean sweep is evidence, not proof. ~3% of the time an unchanged build produces this.
+- The in-suite stress test (200 rate changes with loads in flight) passes **and also passes
+  with the fix reverted**, so it does not reproduce the race and is worth nothing as
+  evidence. It is kept as a regression guard against something coarser, not as proof.
+
+If a tester hits `bad_function_call` after changing audio settings, we were wrong — and the
+producer-side analysis above is where to start looking.
+
+### The arc of this entry, which is the actual lesson
+
+Four fixes cited a root cause nobody had checked against the library source. Corrections 1–3
+sharpened claims about *symptoms*. Correction 6 found the stated *mechanism* was impossible
+in the pinned JUCE version. Only then did reading `push`'s own one-line contract produce a
+mechanism that explained the exception, the crash sites and the intermittency together.
+
+**A stack trace tells you where a program died, not why the code that died is wrong.** The
+month between those two facts was spent fixing things that were not broken. A 200-rate-change stress test in the unit suite passes — and
 also passes with the fix reverted, so it does not reproduce the race and is worth nothing as
 evidence. A 60-run pluginval campaign came back 60/60 clean, which sounds convincing and
 isn't: at the measured ~1.7% rate, P(zero failures in 60) ≈ 0.36. A clean 60 is what you'd

@@ -17,11 +17,13 @@ release identity would change the VST3 ID and orphan your projects. That turned 
 wrong: the ID is built from the two four-character codes, and those never changed. Only the
 vendor name did, which no DAW keys anything on.
 
-**Known crash.** Roughly 1 run in 60 under a validator that hammers the plugin with repeated
-audio-setup changes. In normal playing you shouldn't see it. If you get a crash **when
-changing your audio device, sample rate or buffer size**, that's probably this one — say so
-and don't worry about reproducing it precisely. Anything else, please do report exactly what
-you did.
+**The known crash is fixed** — 200 consecutive clean runs under a validator that hammers the
+plugin with repeated audio-setup changes, where it used to fail roughly 1 run in 60.
+
+It's worth knowing what that does and doesn't mean: a clean sweep that size is strong
+evidence, not a proof. So if you ever get a crash **right after changing your audio device,
+sample rate or buffer size**, please say so — that's the one, and it would mean we were
+wrong. Anything else, report exactly what you did.
 
 ---
 
