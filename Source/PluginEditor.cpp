@@ -709,10 +709,17 @@ int Nebula2AudioProcessorEditor::contentHeightFor(Page p) const
 {
     switch (p)
     {
-        case Page::play:  return 858;   // sample + mixer + slice editor + colour + space
+        // sample(258) + gap + colour + gap + space + insets. Derived from the card heights
+        // rather than a magic total, so shrinking a card actually reclaims the space
+        // instead of leaving a hole - which is exactly what happened when the knobs went
+        // from ~88px to 54 and the Colour card stayed 340 tall.
+        case Page::play:  return 258 + 10 + colourCardH + 10 + spaceCardH + 26;
         case Page::morph: return 320;
         case Page::grid:  return gridPageHeight();
-        case Page::rack:  return 470;
+        // Derived from what the modules contain - see RackView::preferredHeight(). It was
+        // 470, which forced five rows of real controls into equal slices too short to hold
+        // them, and the captions ended up over the knobs.
+        case Page::rack:  return RackView::preferredHeight() + 40;
         default:          return 560;
     }
 }
@@ -1034,7 +1041,7 @@ void Nebula2AudioProcessorEditor::paintContent(juce::Graphics& g)
         }
 
         body.removeFromTop(10.0f);
-        Nebula2LookAndFeel::drawCard(g, body.removeFromTop(340.0f), "COLOUR");
+        Nebula2LookAndFeel::drawCard(g, body.removeFromTop((float) colourCardH), "COLOUR");
         body.removeFromTop(10.0f);
 
         // SPACE: REVERB and DELAY SIDE BY SIDE, with a vertical rule between them.
@@ -1044,7 +1051,7 @@ void Nebula2AudioProcessorEditor::paintContent(juce::Graphics& g)
         // balance against each other now sit next to each other. The rule must match the
         // gutter the layout leaves at sp.removeFromLeft(16), or the label and the line
         // disagree about where the halves divide.
-        auto spaceCard = body.removeFromTop(132.0f);
+        auto spaceCard = body.removeFromTop((float) spaceCardH);
         Nebula2LookAndFeel::drawCard(g, spaceCard, "SPACE");
         auto inner = spaceCard.reduced(14.0f, 4.0f);
         inner.removeFromTop(16.0f);                        // clear the SPACE title
@@ -1072,7 +1079,7 @@ void Nebula2AudioProcessorEditor::paintContent(juce::Graphics& g)
     }
     else if (page == Page::rack)
     {
-        Nebula2LookAndFeel::drawCard(g, body.removeFromTop(454.0f), "RACK");
+        Nebula2LookAndFeel::drawCard(g, body.removeFromTop((float) (RackView::preferredHeight() + 24)), "RACK");
     }
 }
 
@@ -1276,7 +1283,7 @@ void Nebula2AudioProcessorEditor::layoutContent()
     body.removeFromTop(8);
 
     // --- Colour panel ---
-    auto colour = body.removeFromTop(340).reduced(10);
+    auto colour = body.removeFromTop(colourCardH).reduced(10);
     colour.removeFromTop(12);
     auto knobRow = colour.removeFromTop(96);
     Knob* cKnobs[] = { &drive, &crush, &squeeze, &tone, &width, &pump, &master };
@@ -1334,7 +1341,7 @@ void Nebula2AudioProcessorEditor::layoutContent()
     // the two things you compare - a wet reverb against a wet delay - next to each other
     // instead of one above the other.
     body.removeFromTop(8);
-    auto sp = body.removeFromTop(132).reduced(14, 4);
+    auto sp = body.removeFromTop(spaceCardH).reduced(14, 4);
     sp.removeFromTop(16);   // SPACE card title
 
     // One knob size, centred in its cell. Cells still vary in width so the columns can

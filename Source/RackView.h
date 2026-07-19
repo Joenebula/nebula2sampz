@@ -75,6 +75,27 @@ private:
     static bool hasScreen (Nebula2::ModuleId) noexcept;
     static constexpr float screenH = 30.0f;
 
+public:
+    // The height this view NEEDS, derived from what its modules actually contain - a name,
+    // maybe a screen, maybe a row of knobs with captions. Same approach as
+    // GridView::preferredHeight().
+    //
+    // The rack was given a fixed 454px and divided it into equal rows, so every module got
+    // the same slice whether it held four knobs or nothing. That is why the captions
+    // collided with the knobs: rows were shorter than their contents and everything
+    // overlapped. Rows are now sized to their tallest module and the total is derived.
+    static int preferredHeight();
+
+    // What one module needs vertically: name + subtitle, its screen if it has one, and a
+    // knob row with captions if it has dials.
+    static float moduleHeightFor (Nebula2::ModuleId) noexcept;
+
+private:
+    static constexpr float headH   = 30.0f;   // name + subtitle
+    static constexpr float capH    = 26.0f;   // caption + value under a knob
+    static constexpr float eqCurveH = 92.0f;  // the EQ's response curve
+    static constexpr float modPadB  = 8.0f;
+
     // Every effect module gets a visible On/Off button, as the prototype has. Bypass has
     // worked all along - it was reachable only by clicking the module's NAME, which is a
     // gesture with nothing on screen to suggest it exists. A feature nobody can find is not

@@ -109,6 +109,17 @@ private:
     void showPage(Page);
     int contentHeightFor(Page) const;
     static int gridPageHeight();   // derived from the lane count, never hardcoded
+
+    // Card heights, declared ONCE. paint() drew each card and resized() laid it out, each
+    // with its own copy of the number - so a card could be painted 340 tall and filled with
+    // 294 of content, leaving a band of dead space that looked like a layout bug because it
+    // was one. Same fact, two places, third time in this project.
+    //
+    // COLOUR: 12 title + 96 knobs + 8 + 96 lanes + 6 + 24 key/scale + 8 + 24 character,
+    //         plus the panel's 10px inset top and bottom.
+    static constexpr int colourCardH = 12 + 96 + 8 + 96 + 6 + 24 + 8 + 24 + 20;
+    // SPACE: 16 title + 14 sub-label + 74 knob row, plus the 4px inset top and bottom.
+    static constexpr int spaceCardH  = 16 + 14 + 74 + 8 + 20;
     void rollGrid();               // the dice: eligible lanes only, at the chosen density
     void refreshAfterStateChange();   // after undo/redo: every view re-reads the state
     void updateUndoButtons();

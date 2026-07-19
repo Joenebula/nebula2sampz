@@ -119,6 +119,34 @@ juce::Rectangle<float> RackView::powerRectFor (ModuleId m) const
                              .withWidth (20.0f).withHeight (11.0f);
 }
 
+float RackView::moduleHeightFor (ModuleId m) noexcept
+{
+    float h = headH + modPadB;
+
+    if (m == ModuleId::eq) return h + eqCurveH;      // the curve IS its content
+    if (hasScreen (m))     h += screenH + 6.0f;
+
+    // Does it own any dials? Asked of the ONE dial table, so a module that gains a knob
+    // gets taller automatically instead of squashing the row it sits in.
+    for (const auto& d : rackDialDefs())
+        if (d.owner == m) { h += (float) Nebula2::Theme::knobSize + capH + 6.0f; break; }
+
+    return h;
+}
+
+int RackView::preferredHeight()
+{
+    float total = 0.0f;
+    for (int ri = 0; ri < numRows; ++ri)
+    {
+        float rowMax = 0.0f;
+        for (int ci = 0; ci < rows[ri].n; ++ci)
+            rowMax = juce::jmax (rowMax, moduleHeightFor (rows[ri].m[ci]));
+        total += rowMax + 8.0f;      // the gap between rows
+    }
+    return (int) total + 18;         // the status strip along the bottom
+}
+
 bool RackView::hasScreen (ModuleId m) noexcept
 {
     // The five modules with something to draw. Everything that lays out a module asks THIS
@@ -271,18 +299,35 @@ void RackView::rebuildLayout()
     jacks.clear();
 
     const float w = (float) getWidth(), h = (float) getHeight() - 18.0f;   // strip at the bottom
-    const float rowH = h / (float) numRows;
     const float pad = 4.0f;
 
+    // Rows are sized to their TALLEST module, not to h/numRows. Equal rows gave the same
+    // slice to a module with four knobs and to one with none, which is why the captions
+    // ended up drawn over the knobs.
+    float needed = 0.0f;
+    float rowHeights[numRows] = {};
+    for (int ri = 0; ri < numRows; ++ri)
+    {
+        for (int ci = 0; ci < rows[ri].n; ++ci)
+            rowHeights[ri] = juce::jmax (rowHeights[ri], moduleHeightFor (rows[ri].m[ci]));
+        needed += rowHeights[ri] + 8.0f;
+    }
+
+    // If the host has given us less than we need, shrink every row in proportion rather
+    // than letting the last one fall off the bottom.
+    const float scale = needed > 0.0f ? juce::jmin (1.0f, h / needed) : 1.0f;
+
+    float y = 0.0f;
     for (int ri = 0; ri < numRows; ++ri)
     {
         const auto& row = rows[ri];
         const float cw = w / (float) juce::jmax (1, row.n);
+        const float rowH = rowHeights[ri] * scale + 8.0f;
 
         for (int ci = 0; ci < row.n; ++ci)
         {
             const auto m = row.m[ci];
-            juce::Rectangle<float> r ((float) ci * cw + pad, (float) ri * rowH + pad,
+            juce::Rectangle<float> r ((float) ci * cw + pad, y + pad,
                                       cw - pad * 2.0f, rowH - pad * 2.0f);
             modBounds[(int) m] = r;
 
@@ -295,6 +340,8 @@ void RackView::rebuildLayout()
             if (hasJack (m, Jack::out))
                 jacks.push_back ({ { m, Jack::out }, { r.getRight() - 8.0f, r.getCentreY() } });
         }
+
+        y += rowH;
     }
 
     // Dials sit in the module's middle, between the jack columns. Clicking a module body
@@ -322,7 +369,11 @@ void RackView::rebuildLayout()
             // takes what's left rather than the whole cell; drawing the text over the knob
             // is the only other way to fit it, and it is unreadable.
             auto cellI = cell.toNearestInt();
-            const int textH = juce::jmin (22, cellI.getHeight() / 3);
+
+            // A FIXED strip, not height/3. Two 9pt lines need about 24px; height/3 in a
+            // squeezed row came out around 12, so the caption and the value were drawn on
+            // top of each other and over the knob - "LEVEL" through "100".
+            const int textH = juce::jmin ((int) capH, juce::jmax (14, cellI.getHeight() / 2));
             mine[i]->textArea = cellI.removeFromBottom (textH);
 
             // The SHARED knob size, centred - not "whatever fits the cell". Rack knobs came
