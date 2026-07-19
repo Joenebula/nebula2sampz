@@ -9,10 +9,13 @@ Install `Nebula2.vst3` into your VST3 folder and rescan. Windows:
 
 ## Read this bit first
 
-**Don't build a track you want to keep yet.** The plugin's release identity isn't set, and
-when it is, its VST3 ID changes. Projects saved against this build will then show Nebula2 as
-a **missing plugin** — not corrupted, just unfound, and that instance's settings go with it.
-Experiment freely; don't commit a session to it.
+**Your projects are safe.** The plugin's identity is settled (Nebula Audio / `Nbla` / `Neb2`)
+and won't change again, so sessions you save will keep finding it.
+
+This used to say the opposite — don't build anything you want to keep, because setting the
+release identity would change the VST3 ID and orphan your projects. That turned out to be
+wrong: the ID is built from the two four-character codes, and those never changed. Only the
+vendor name did, which no DAW keys anything on.
 
 **Known crash.** Roughly 1 run in 60 under a validator that hammers the plugin with repeated
 audio-setup changes. In normal playing you shouldn't see it. If you get a crash **when

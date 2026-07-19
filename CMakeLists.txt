@@ -14,20 +14,24 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(JUCE)
 
-# Phase 0: empty instrument plugin that loads and makes no sound.
-# COMPANY_NAME / PLUGIN_MANUFACTURER_CODE are placeholders — update before Phase 6 (release).
+# RELEASE IDENTITY — SETTLED 2026-07-19 by the user. Do NOT change the two codes.
 #
-# DEFERRED ON PURPOSE (2026-07-18), with the cost understood rather than forgotten: JUCE
-# derives the VST3 unique ID from PLUGIN_MANUFACTURER_CODE + PLUGIN_CODE, so changing the
-# code later CHANGES THE PLUGIN'S IDENTITY. Any DAW project saved against this build will
-# then show Nebula2 as a missing plugin — not corrupted, just unfound, and that instance's
-# settings are gone with it.
+# The VST3 class ID is built from PLUGIN_MANUFACTURER_CODE + PLUGIN_CODE and NOTHING ELSE.
+# Verified, not assumed: the generated moduleinfo.json CID ends
+# ...4E626C61 4E656232, which is "Nbla" "Neb2" in ASCII, and it was byte-identical before and
+# after COMPANY_NAME changed from "YourCompany" to "Nebula Audio".
 #
-# So: fine to experiment with, don't build a track you want to keep. The four-character
-# manufacturer code has to be the user's own choice — picking one already registered to
-# another vendor causes exactly the collision the field exists to prevent.
+# Two consequences, and the second corrects a claim this file used to make:
+#   - Changing either CODE changes the plugin's identity, and every project saved against
+#     the old one shows Nebula2 as a missing plugin. So they are frozen.
+#   - Changing COMPANY_NAME does NOT. This comment previously warned that setting the
+#     release identity would orphan saved projects; that was true only of the codes, and
+#     the codes were already their final values. The vendor string is display text.
+#
+# Codes kept as chosen: four ASCII characters, uppercase first letter - what JUCE requires,
+# and what Audio Units would need if this is ever built for macOS.
 juce_add_plugin(Nebula2
-    COMPANY_NAME "YourCompany"
+    COMPANY_NAME "Nebula Audio"
     PLUGIN_MANUFACTURER_CODE Nbla
     PLUGIN_CODE Neb2
     FORMATS VST3
