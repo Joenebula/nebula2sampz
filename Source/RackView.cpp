@@ -86,6 +86,13 @@ void RackView::timerCallback()
 
 void RackView::resized() { rebuildLayout(); }
 
+juce::Rectangle<float> RackView::powerRectFor (ModuleId m) const
+{
+    if (! hasPower (m)) return {};
+    return modBounds[(int) m].reduced (6.0f, 0.0f).withTrimmedTop (4.0f)
+                             .withWidth (20.0f).withHeight (11.0f);
+}
+
 juce::Rectangle<float> RackView::screenAreaFor (ModuleId m) const
 {
     // A strip under the name, above the dials. Modules with dials get a thin one; the two
@@ -335,14 +342,17 @@ void RackView::mouseDown(const juce::MouseEvent& e)
         return;
     }
 
-    // Clicking a module's NAME toggles its power. Not the whole body: the body now holds
-    // dials, and a stray click that silently bypassed a module would be a nasty surprise
-    // mid-take.
+    // The On/Off button, or anywhere else along the header. The button is the affordance -
+    // something visible that says this can be switched - and the rest of the header stays
+    // live because it always was and it is a far easier target to hit.
+    //
+    // Not the whole body: the body holds dials and a screen, and a stray click that
+    // silently bypassed a module would be a nasty surprise mid-take.
     const auto m = moduleAt (p);
-    if (m != ModuleId::count && m != ModuleId::src && m != ModuleId::out)
+    if (hasPower (m))
     {
         const auto header = modBounds[(int) m].withHeight (16.0f);
-        if (! header.contains (p)) return;
+        if (! header.contains (p) && ! powerRectFor (m).contains (p)) return;
 
         auto& g = processorRef.getRackGraph();
         const juce::SpinLock::ScopedLockType sl (processorRef.getRackLock());
@@ -420,9 +430,29 @@ void RackView::paint(juce::Graphics& g)
         g.setColour (col.withAlpha (st == ModuleState::live ? 0.7f : 0.25f));
         g.drawRoundedRectangle (r, 5.0f, st == ModuleState::live ? 1.4f : 0.8f);
 
+        // The power button, and the name shifted clear of it. Drawn before the name so the
+        // name's inset can depend on whether there IS one.
+        const float nameInset = hasPower (s.m) ? 30.0f : 8.0f;
+        if (hasPower (s.m))
+        {
+            const auto pr = powerRectFor (s.m);
+            const bool off = st == ModuleState::off;
+
+            g.setColour (off ? kSub.withAlpha (0.18f) : kAccent.withAlpha (0.30f));
+            g.fillRoundedRectangle (pr, 3.0f);
+            g.setColour (off ? kSub.withAlpha (0.5f) : kAccent.withAlpha (0.9f));
+            g.drawRoundedRectangle (pr, 3.0f, 0.8f);
+
+            // The word, not just a colour. "Off" beside a dim module is unambiguous;
+            // a dim button on a dim module is two shades of the same guess.
+            g.setFont (juce::FontOptions (7.5f));
+            g.drawText (off ? "Off" : "On", pr, juce::Justification::centred);
+        }
+
         g.setColour (st == ModuleState::off ? kSub.withAlpha (0.45f) : juce::Colours::white.withAlpha (0.85f));
         g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
-        g.drawText (moduleName (s.m), r.reduced (8.0f, 4.0f).removeFromTop (12.0f),
+        g.drawText (moduleName (s.m), r.withTrimmedLeft (nameInset).withTrimmedTop (4.0f)
+                                       .removeFromTop (12.0f),
                     juce::Justification::topLeft);
 
         // Say WHY it isn't sounding, instead of just greying it out.
@@ -436,7 +466,8 @@ void RackView::paint(juce::Graphics& g)
         // module is for.
         g.setColour (kSub.withAlpha (st == ModuleState::off ? 0.35f : 0.7f));
         g.setFont (juce::FontOptions (8.0f));
-        g.drawText (moduleSub (s.m), r.reduced (8.0f, 4.0f).withTrimmedTop (12.0f).removeFromTop (10.0f),
+        g.drawText (moduleSub (s.m), r.withTrimmedLeft (nameInset).withTrimmedTop (16.0f)
+                                      .removeFromTop (10.0f),
                     juce::Justification::topLeft);
 
         // The LFO draws its own moving value along the bottom edge, so its rate and depth

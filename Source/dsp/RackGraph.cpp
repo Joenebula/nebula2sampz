@@ -49,6 +49,11 @@ namespace Nebula2
         return m == ModuleId::count ? "" : defs[idx(m)].sub;
     }
 
+    bool moduleHasPower(ModuleId m) noexcept
+    {
+        return m != ModuleId::count && m != ModuleId::src && m != ModuleId::out;
+    }
+
     // Labels are the prototype's, which name what a knob DOES: Fold not Drive, Bias not
     // Sym, Repeats not Fb, Decay not Fb.
     const std::vector<RackDialDef>& rackDialDefs()

@@ -65,6 +65,16 @@ private:
     void drawModuleScreens (juce::Graphics&) const;
     juce::Rectangle<float> screenAreaFor (Nebula2::ModuleId) const;
 
+    // Every effect module gets a visible On/Off button, as the prototype has. Bypass has
+    // worked all along - it was reachable only by clicking the module's NAME, which is a
+    // gesture with nothing on screen to suggest it exists. A feature nobody can find is not
+    // meaningfully different from one that was never built.
+    //
+    // The RULE is Nebula2::moduleHasPower, in RackGraph, so it can be tested against the
+    // bypass the audio thread honours. This is only the alias the drawing code reads.
+    static bool hasPower (Nebula2::ModuleId m) noexcept { return Nebula2::moduleHasPower (m); }
+    juce::Rectangle<float> powerRectFor (Nebula2::ModuleId) const;
+
     void rebuildLayout();
     juce::Rectangle<float> boundsFor(Nebula2::ModuleId m) const;
     const JackSpot* jackAt(juce::Point<float> p) const;

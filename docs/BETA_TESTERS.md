@@ -83,6 +83,9 @@ fresh corners — that's also the only way to see what it's blending between.
 **RACK** — patch modules together. **Randomise** builds a chain that's guaranteed to make
 sound.
 
+- Every effect module has an **On / Off** button in its corner. Clicking anywhere along a
+  module's title bar does the same thing. Beat Out and Main Out have none — they're the
+  ends of the chain.
 - Modules with something to show now have a **screen**: Beat Out draws the beat going in,
   Main Out its output level (red near clipping), the LFO its shape with a dot riding the
   current value, the Wavefolder its transfer curve, the Vowel its formant peaks and which

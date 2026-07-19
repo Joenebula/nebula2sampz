@@ -1305,6 +1305,50 @@ int main()
             check(layer.activeVoiceCount() > 0, "sample: the root plays slice 1");
         }
 
+        // --- the per-module power buttons ---
+        //
+        // Bypass has worked and been tested since the rack was built; what it lacked was any
+        // visible way to reach it (you had to know to click the module's NAME). So the thing
+        // to prove is not that bypass works - it is that every module offering a button is a
+        // module the ENGINE actually honours the bypass on. A switch the audio thread
+        // ignores is this project's most-repeated bug, in its purest form.
+        {
+            using namespace Nebula2;
+
+            check (! moduleHasPower (ModuleId::src), "rack power: Beat Out has no switch - it is the source");
+            check (! moduleHasPower (ModuleId::out), "rack power: Main Out has no switch - bypassing the output is meaningless");
+            check (! moduleHasPower (ModuleId::count), "rack power: the sentinel is not a module");
+
+            int powered = 0;
+            StringArray ignored;
+            for (int i = 0; i < numRackModules; ++i)
+            {
+                const auto m = (ModuleId) i;
+                if (! moduleHasPower (m)) continue;
+                ++powered;
+
+                // Patch beat -> m -> out, then check the engine's own view of the module
+                // changes when it is bypassed. If it does not, the button would be a lie.
+                RackGraph g;
+                if (! hasJack (m, Jack::in) || ! hasJack (m, Jack::out)) continue;
+                g.addCable (Port { ModuleId::src, Jack::out }, Port { m, Jack::in });
+                g.addCable (Port { m, Jack::out }, Port { ModuleId::out, Jack::in });
+
+                const auto liveState = g.stateOf (m);
+                g.setBypassed (m, true);
+                if (g.stateOf (m) == liveState || ! g.isBypassed (m))
+                    ignored.add (String (moduleName (m)));
+                g.setBypassed (m, false);
+            }
+
+            check (powered == numRackModules - 2,
+                   "rack power: every module except the two endpoints has a switch - got "
+                       + String (powered));
+            check (ignored.isEmpty(),
+                   "rack power: every switch is honoured by the graph - ignored: "
+                       + ignored.joinIntoString (", "));
+        }
+
         // --- the module screens draw the REAL thing ---
         //
         // A screen that draws its own idea of the shape is worse than no screen: it looks

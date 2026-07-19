@@ -65,6 +65,14 @@ namespace Nebula2
 
     // The EQ's params, reached by dragging nodes on the curve rather than by any dial.
     const std::vector<const char*>& eqEditorParamIds();
+
+    // Does this module get an On/Off button? Every effect does. Beat Out and Main Out do
+    // not: they are the endpoints, and "bypass the output" is not a thing you can want.
+    //
+    // The rule lives HERE rather than in the view so it can be tested against the bypass
+    // the audio thread actually honours - a button whose module the engine ignores would
+    // be a switch that does nothing, which is this project's most-repeated bug.
+    bool moduleHasPower(ModuleId m) noexcept;
     ModuleId moduleFromSlug(juce::StringRef slug) noexcept;   // ModuleId::count if unknown
 
     enum class Jack { in, out, cv };
