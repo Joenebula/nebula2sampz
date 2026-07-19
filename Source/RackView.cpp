@@ -17,15 +17,41 @@ namespace
 
     constexpr float jackR = 5.0f;
 
-    // The rack's layout: 4 columns x 3 rows. Beat top-left, Main Out top-right, so signal
-    // reads left-to-right the way you'd wire a real one.
-    struct Slot { ModuleId m; int col, row; };
-    const Slot slots[] =
+    // The rack's layout, as the user specified it - RAGGED rows, not a fixed 4x3 grid:
+    //
+    //   Main Out   Beat Out
+    //   Parametric EQ
+    //   Ladder     LFO       Comb
+    //   Phaser     Chorus    Space Echo
+    //   Wavefolder Vowel
+    //
+    // Each row splits the full width between however many modules it holds, so the EQ gets
+    // the whole width to itself. That is not decoration: it is the only module with a
+    // draggable response curve, and the curve needs the room.
+    //
+    // The grid was 4x3 with every cell the same size, which gave the EQ a quarter of a row
+    // to draw five bands and a frequency axis in.
+    struct Row { ModuleId m[4]; int n; };
+    const Row rows[] =
     {
-        { ModuleId::src, 0, 0 }, { ModuleId::eq,  1, 0 }, { ModuleId::flt, 2, 0 }, { ModuleId::out, 3, 0 },
-        { ModuleId::lfo, 0, 1 }, { ModuleId::phs, 1, 1 }, { ModuleId::cho, 2, 1 }, { ModuleId::cmb, 3, 1 },
-        { ModuleId::fld, 0, 2 }, { ModuleId::vow, 1, 2 }, { ModuleId::ech, 2, 2 },
+        { { ModuleId::out, ModuleId::src },                                     2 },
+        { { ModuleId::eq },                                                     1 },
+        { { ModuleId::flt, ModuleId::lfo, ModuleId::cmb },                      3 },
+        { { ModuleId::phs, ModuleId::cho, ModuleId::ech },                      3 },
+        { { ModuleId::fld, ModuleId::vow },                                     2 },
     };
+    constexpr int numRows = (int) (sizeof (rows) / sizeof (rows[0]));
+
+    // Every module in layout order. The loops that only need "each module" walk this rather
+    // than each keeping its own copy of the row structure - the layout is stated once.
+    std::vector<ModuleId> allModules()
+    {
+        std::vector<ModuleId> v;
+        for (int ri = 0; ri < numRows; ++ri)
+            for (int ci = 0; ci < rows[ri].n; ++ci)
+                v.push_back (rows[ri].m[ci]);
+        return v;
+    }
 
     juce::Colour colourForState(ModuleState s)
     {
@@ -93,13 +119,24 @@ juce::Rectangle<float> RackView::powerRectFor (ModuleId m) const
                              .withWidth (20.0f).withHeight (11.0f);
 }
 
+bool RackView::hasScreen (ModuleId m) noexcept
+{
+    // The five modules with something to draw. Everything that lays out a module asks THIS
+    // rather than each guessing, because the screen and the dials were both claiming the
+    // same strip: the LFO's sine, the Wavefolder's curve and the Vowel's formants all drew
+    // straight over their own knobs.
+    return m == ModuleId::src || m == ModuleId::out || m == ModuleId::lfo
+        || m == ModuleId::fld || m == ModuleId::vow;
+}
+
 juce::Rectangle<float> RackView::screenAreaFor (ModuleId m) const
 {
-    // A strip under the name, above the dials. Modules with dials get a thin one; the two
-    // with no dials at all (Beat Out, LFO has two) can afford more.
-    auto r = modBounds[(int) m].reduced (18.0f, 0.0f).withTrimmedTop (26.0f);
-    const float h = juce::jmin (34.0f, r.getHeight() * 0.45f);
-    return r.withHeight (juce::jmax (12.0f, h));
+    if (! hasScreen (m)) return {};
+
+    // A strip under the name and its subtitle. Height is fixed rather than a fraction of
+    // the module, so the dial row below it starts at a predictable place.
+    auto r = modBounds[(int) m].reduced (14.0f, 0.0f).withTrimmedTop (30.0f);
+    return r.withHeight (juce::jmin (screenH, juce::jmax (12.0f, r.getHeight() * 0.42f)));
 }
 
 void RackView::drawModuleScreens (juce::Graphics& g) const
@@ -234,36 +271,47 @@ void RackView::rebuildLayout()
     jacks.clear();
 
     const float w = (float) getWidth(), h = (float) getHeight() - 18.0f;   // strip at the bottom
-    const float cw = w / 4.0f, chh = h / 3.0f;
+    const float rowH = h / (float) numRows;
     const float pad = 4.0f;
 
-    for (const auto& s : slots)
+    for (int ri = 0; ri < numRows; ++ri)
     {
-        juce::Rectangle<float> r ((float) s.col * cw + pad, (float) s.row * chh + pad,
-                                  cw - pad * 2.0f, chh - pad * 2.0f);
-        modBounds[(int) s.m] = r;
+        const auto& row = rows[ri];
+        const float cw = w / (float) juce::jmax (1, row.n);
 
-        // Inputs down the left edge, outputs down the right — so a cable's direction is
-        // legible at a glance rather than something you have to remember.
-        if (hasJack (s.m, Jack::in))
-            jacks.push_back ({ { s.m, Jack::in },  { r.getX() + 8.0f, r.getCentreY() } });
-        if (hasJack (s.m, Jack::cv))
-            jacks.push_back ({ { s.m, Jack::cv },  { r.getX() + 8.0f, r.getCentreY() + 14.0f } });
-        if (hasJack (s.m, Jack::out))
-            jacks.push_back ({ { s.m, Jack::out }, { r.getRight() - 8.0f, r.getCentreY() } });
+        for (int ci = 0; ci < row.n; ++ci)
+        {
+            const auto m = row.m[ci];
+            juce::Rectangle<float> r ((float) ci * cw + pad, (float) ri * rowH + pad,
+                                      cw - pad * 2.0f, rowH - pad * 2.0f);
+            modBounds[(int) m] = r;
+
+            // Inputs down the left edge, outputs down the right — so a cable's direction is
+            // legible at a glance rather than something you have to remember.
+            if (hasJack (m, Jack::in))
+                jacks.push_back ({ { m, Jack::in },  { r.getX() + 8.0f, r.getCentreY() } });
+            if (hasJack (m, Jack::cv))
+                jacks.push_back ({ { m, Jack::cv },  { r.getX() + 8.0f, r.getCentreY() + 14.0f } });
+            if (hasJack (m, Jack::out))
+                jacks.push_back ({ { m, Jack::out }, { r.getRight() - 8.0f, r.getCentreY() } });
+        }
     }
 
     // Dials sit in the module's middle, between the jack columns. Clicking a module body
     // toggles bypass, so the dials must not sit under that gesture — they're inset, and
     // mouseDown checks for a jack/dial before treating a click as a power toggle.
-    for (const auto& s : slots)
+    for (const auto sm : allModules())
     {
         std::vector<Dial*> mine;
         for (auto& d : dials)
-            if (d.owner == s.m) mine.push_back (&d);
+            if (d.owner == sm) mine.push_back (&d);
         if (mine.empty()) continue;
 
-        auto r = modBounds[(int) s.m].reduced (20.0f, 0.0f).withTrimmedTop (16.0f)
+        // Start BELOW the screen when there is one. This was withTrimmedTop(16), which put
+        // the dial row straight through the middle of the scope/curve/formant drawings.
+        const float top = hasScreen (sm) ? (screenAreaFor (sm).getBottom() - modBounds[(int) sm].getY() + 6.0f)
+                                         : 30.0f;
+        auto r = modBounds[(int) sm].reduced (14.0f, 0.0f).withTrimmedTop (top)
                                      .withTrimmedBottom (4.0f);
         const float w = r.getWidth() / (float) mine.size();
         for (size_t i = 0; i < mine.size(); ++i)
@@ -276,7 +324,14 @@ void RackView::rebuildLayout()
             auto cellI = cell.toNearestInt();
             const int textH = juce::jmin (22, cellI.getHeight() / 3);
             mine[i]->textArea = cellI.removeFromBottom (textH);
-            mine[i]->slider->setBounds (cellI);
+
+            // The SHARED knob size, centred - not "whatever fits the cell". Rack knobs came
+            // out smaller than Space knobs, which came out smaller than Colour knobs, purely
+            // because each panel sized them from leftover room. Knobs that differ in size
+            // read as differing in importance.
+            const int s = juce::jmin (Nebula2::Theme::knobSize,
+                                      juce::jmin (cellI.getWidth(), cellI.getHeight()));
+            mine[i]->slider->setBounds (cellI.withSizeKeepingCentre (s, s));
         }
     }
 
@@ -305,8 +360,8 @@ const RackView::JackSpot* RackView::jackAt(juce::Point<float> p) const
 
 ModuleId RackView::moduleAt(juce::Point<float> p) const
 {
-    for (const auto& s : slots)
-        if (modBounds[(int) s.m].contains (p)) return s.m;
+    for (const auto sm : allModules())
+        if (modBounds[(int) sm].contains (p)) return sm;
     return ModuleId::count;
 }
 
@@ -426,10 +481,10 @@ void RackView::paint(juce::Graphics& g)
     }
 
     // --- modules ---
-    for (const auto& s : slots)
+    for (const auto sm : allModules())
     {
-        const auto r = modBounds[(int) s.m];
-        const auto st = states[(int) s.m];
+        const auto r = modBounds[(int) sm];
+        const auto st = states[(int) sm];
         const auto col = colourForState (st);
 
         g.setColour (kPanel);
@@ -439,10 +494,10 @@ void RackView::paint(juce::Graphics& g)
 
         // The power button, and the name shifted clear of it. Drawn before the name so the
         // name's inset can depend on whether there IS one.
-        const float nameInset = hasPower (s.m) ? 30.0f : 8.0f;
-        if (hasPower (s.m))
+        const float nameInset = hasPower (sm) ? 30.0f : 8.0f;
+        if (hasPower (sm))
         {
-            const auto pr = powerRectFor (s.m);
+            const auto pr = powerRectFor (sm);
             const bool off = st == ModuleState::off;
 
             g.setColour (off ? kSub.withAlpha (0.18f) : kAccent.withAlpha (0.30f));
@@ -458,7 +513,7 @@ void RackView::paint(juce::Graphics& g)
 
         g.setColour (st == ModuleState::off ? kSub.withAlpha (0.45f) : juce::Colours::white.withAlpha (0.85f));
         g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
-        g.drawText (moduleName (s.m), r.withTrimmedLeft (nameInset).withTrimmedTop (4.0f)
+        g.drawText (moduleName (sm), r.withTrimmedLeft (nameInset).withTrimmedTop (4.0f)
                                        .removeFromTop (12.0f),
                     juce::Justification::topLeft);
 
@@ -473,13 +528,13 @@ void RackView::paint(juce::Graphics& g)
         // module is for.
         g.setColour (kSub.withAlpha (st == ModuleState::off ? 0.35f : 0.7f));
         g.setFont (juce::FontOptions (8.0f));
-        g.drawText (moduleSub (s.m), r.withTrimmedLeft (nameInset).withTrimmedTop (16.0f)
+        g.drawText (moduleSub (sm), r.withTrimmedLeft (nameInset).withTrimmedTop (16.0f)
                                       .removeFromTop (10.0f),
                     juce::Justification::topLeft);
 
         // The LFO draws its own moving value along the bottom edge, so its rate and depth
         // are visible rather than implied. Below the dials, not across them.
-        if (s.m == ModuleId::lfo)
+        if (sm == ModuleId::lfo)
         {
             auto strip = r.reduced (22.0f, 0.0f).removeFromBottom (10.0f);
             g.setColour (kLine);

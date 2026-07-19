@@ -39,7 +39,13 @@ jobs:
       - name: Colours come from Theme, not from hex literals
         shell: bash
         run: |
-          hits=$(grep -rnE 'juce::Colour[ (]*\{? *0x[0-9a-fA-F]{8}' Source/ \
+          # ANY 8-digit hex outside Theme.h, not just one immediately after `juce::Colour(`.
+          # The narrower form missed `juce::Colour(down ? 0xff151b32 : 0xff232c4c)` in the
+          # button renderer - two brand colours hiding behind a ternary. A check that only
+          # catches the tidy spelling of a mistake is a check you will out-write.
+          # `0x...u` is excluded: an unsigned suffix marks a sentinel, not a colour
+          # (SampleLayer uses 0xffffffffu for "never reclaimable"). Colours never carry it.
+          hits=$(grep -rnE '0x[0-9a-fA-F]{8}([^uU0-9a-fA-F]|$)' Source/ \
                    --include=*.cpp --include=*.h \
                  | grep -v '^Source/Theme.h:' || true)
           if [ -n "$hits" ]; then

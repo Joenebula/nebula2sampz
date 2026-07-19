@@ -1037,21 +1037,30 @@ void Nebula2AudioProcessorEditor::paintContent(juce::Graphics& g)
         Nebula2LookAndFeel::drawCard(g, body.removeFromTop(340.0f), "COLOUR");
         body.removeFromTop(10.0f);
 
-        // SPACE, split into REVERB and DELAY sub-sections (the user's request). One card,
-        // two labelled halves — a divider makes the separation read at a glance.
-        auto spaceCard = body.removeFromTop(214.0f);
+        // SPACE: REVERB and DELAY SIDE BY SIDE, with a vertical rule between them.
+        //
+        // Stacked, this card was 214px tall for two small groups and pushed the panels
+        // below it out of view. Halved to 132 and split left/right - the two effects you
+        // balance against each other now sit next to each other. The rule must match the
+        // gutter the layout leaves at sp.removeFromLeft(16), or the label and the line
+        // disagree about where the halves divide.
+        auto spaceCard = body.removeFromTop(132.0f);
         Nebula2LookAndFeel::drawCard(g, spaceCard, "SPACE");
         auto inner = spaceCard.reduced(14.0f, 4.0f);
         inner.removeFromTop(16.0f);                        // clear the SPACE title
+
+        auto revHalf = inner.removeFromLeft(inner.getWidth() * 0.5f - 8.0f);
+        auto gutter  = inner.removeFromLeft(16.0f);
+        auto dlyHalf = inner;
+
+        g.setColour(Theme::line);
+        g.drawLine(gutter.getCentreX(), gutter.getY(),
+                   gutter.getCentreX(), gutter.getBottom() - 6.0f);
+
         g.setColour(Theme::accent.withAlpha(0.85f));
         g.setFont(Theme::ui(9.0f, 600));
-        g.drawText("REVERB", inner.removeFromTop(14.0f), juce::Justification::topLeft);
-        auto delayHalf = inner.withTop(inner.getY() + 92.0f);
-        g.setColour(Theme::line);
-        g.drawLine(delayHalf.getX(), delayHalf.getY() - 4.0f,
-                   delayHalf.getRight(), delayHalf.getY() - 4.0f);   // divider
-        g.setColour(Theme::accent.withAlpha(0.85f));
-        g.drawText("DELAY", delayHalf.removeFromTop(14.0f), juce::Justification::topLeft);
+        g.drawText("REVERB", revHalf.removeFromTop(14.0f), juce::Justification::topLeft);
+        g.drawText("DELAY",  dlyHalf.removeFromTop(14.0f), juce::Justification::topLeft);
     }
     else if (page == Page::morph)
     {
@@ -1269,20 +1278,24 @@ void Nebula2AudioProcessorEditor::layoutContent()
     // --- Colour panel ---
     auto colour = body.removeFromTop(340).reduced(10);
     colour.removeFromTop(12);
-    auto knobRow = colour.removeFromTop(120);
+    auto knobRow = colour.removeFromTop(96);
     Knob* cKnobs[] = { &drive, &crush, &squeeze, &tone, &width, &pump, &master };
     const int cw = knobRow.getWidth() / 7;   // drive/crush/squeeze/tone/width/pump/master
     for (auto* k : cKnobs)
     {
         auto cell = knobRow.removeFromLeft(cw);
         k->label.setBounds(cell.removeFromTop(16));
-        k->slider.setBounds(cell.reduced(3));
+        // Centred at the SHARED size rather than filling the cell. Filling is why these
+        // came out around 88px while the Space knobs were 53 and the rack's smaller again:
+        // each panel sized its knobs from whatever room it happened to have.
+        const int s = juce::jmin(Nebula2::Theme::knobSize, juce::jmin(cell.getWidth(), cell.getHeight()));
+        k->slider.setBounds(cell.withSizeKeepingCentre(s, s));
     }
 
     // Second row: the lane knobs. Same count as the row above (7), so they share the
     // column width and the two rows line up rather than looking like a bolted-on strip.
     colour.removeFromTop(8);
-    auto laneRow = colour.removeFromTop(110);
+    auto laneRow = colour.removeFromTop(96);
     if (! laneKnobs.empty())
     {
         const int lw = laneRow.getWidth() / (int) laneKnobs.size();
@@ -1290,7 +1303,8 @@ void Nebula2AudioProcessorEditor::layoutContent()
         {
             auto cell = laneRow.removeFromLeft(lw);
             k->label.setBounds(cell.removeFromTop(16));
-            k->slider.setBounds(cell.reduced(3));
+            const int s = juce::jmin(Nebula2::Theme::knobSize, juce::jmin(cell.getWidth(), cell.getHeight()));
+            k->slider.setBounds(cell.withSizeKeepingCentre(s, s));
         }
     }
 
@@ -1313,50 +1327,61 @@ void Nebula2AudioProcessorEditor::layoutContent()
     cRow.removeFromLeft(10);
     colourRandButton.setBounds(cRow.removeFromLeft(96));
 
-    // --- Space panel: REVERB section over DELAY section ---
+    // --- Space panel: REVERB and DELAY SIDE BY SIDE ---
+    //
+    // They were stacked, which made this card ~214px tall for two small groups and pushed
+    // everything below it off the visible area. Side by side halves the height and puts
+    // the two things you compare - a wet reverb against a wet delay - next to each other
+    // instead of one above the other.
     body.removeFromTop(8);
-    auto sp = body.removeFromTop(214).reduced(14, 4);
+    auto sp = body.removeFromTop(132).reduced(14, 4);
     sp.removeFromTop(16);   // SPACE card title
 
+    // One knob size, centred in its cell. Cells still vary in width so the columns can
+    // breathe; the KNOB never does.
     auto layoutKnob = [](juce::Rectangle<int> cell, Knob& k)
     {
         k.label.setBounds(cell.removeFromTop(15));
-        k.slider.setBounds(cell.reduced(3));
+        const int s = juce::jmin(Nebula2::Theme::knobSize, juce::jmin(cell.getWidth(), cell.getHeight()));
+        k.slider.setBounds(cell.withSizeKeepingCentre(s, s));
     };
 
-    // REVERB: Mix, Size knobs + Character dropdown.
-    sp.removeFromTop(14);   // "REVERB" sub-label
-    auto revRow = sp.removeFromTop(74);
-    layoutKnob(revRow.removeFromLeft(84), revMix);
-    layoutKnob(revRow.removeFromLeft(84), revSize);
-    revRow.removeFromLeft(14);
+    auto revHalf = sp.removeFromLeft(sp.getWidth() / 2 - 8);
+    sp.removeFromLeft(16);              // the gutter the divider is drawn in
+    auto dlyHalf = sp;
+
+    // REVERB: Mix, Size + Character.
+    revHalf.removeFromTop(14);          // "REVERB" sub-label
+    auto revRow = revHalf.removeFromTop(74);
+    layoutKnob(revRow.removeFromLeft(64), revMix);
+    layoutKnob(revRow.removeFromLeft(64), revSize);
+    revRow.removeFromLeft(8);
     auto revRight = revRow.withTrimmedTop(20);
-    revCharLabel.setBounds(revRight.removeFromLeft(56).removeFromTop(24));
-    revCharBox.setBounds(revRight.removeFromLeft(120).removeFromTop(24).reduced(0, 1));
+    revCharLabel.setBounds(revRight.removeFromLeft(48).removeFromTop(24));
+    revCharBox.setBounds(revRight.removeFromLeft(100).removeFromTop(24).reduced(0, 1));
 
-    sp.removeFromTop(4);    // divider gap
-
-    // DELAY: Mix, Feedback, Haunt knobs + Sync/Mode dropdowns + Space On.
+    // DELAY: Mix, Feedback, Haunt + Sync/Mode + Space On.
     // (Haunt is a Space element in the prototype's own grouping: "reverb - delay - haunt".)
-    sp.removeFromTop(14);   // "DELAY" sub-label
-    auto dlyRow = sp.removeFromTop(74);
-    layoutKnob(dlyRow.removeFromLeft(78), dlyMix);
-    layoutKnob(dlyRow.removeFromLeft(78), dlyFb);
-    layoutKnob(dlyRow.removeFromLeft(78), haunt);
-    dlyRow.removeFromLeft(12);
-    auto dlyRight = dlyRow.withTrimmedTop(8);
-    auto dRowA = dlyRight.removeFromTop(24);
-    dlySyncLabel.setBounds(dRowA.removeFromLeft(38));
-    dlySyncBox.setBounds(dRowA.removeFromLeft(72).reduced(0, 1));
-    dRowA.removeFromLeft(12);
-    dlyModeLabel.setBounds(dRowA.removeFromLeft(40));
-    dlyModeBox.setBounds(dRowA.removeFromLeft(96).reduced(0, 1));
+    dlyHalf.removeFromTop(14);          // "DELAY" sub-label
+    auto dlyBody = dlyHalf.removeFromTop(74);
+    auto dlyRow = dlyBody.removeFromLeft(192);
+    layoutKnob(dlyRow.removeFromLeft(64), dlyMix);
+    layoutKnob(dlyRow.removeFromLeft(64), dlyFb);
+    layoutKnob(dlyRow.removeFromLeft(64), haunt);
 
-    dlyRight.removeFromTop(6);
+    auto dlyRight = dlyBody.withTrimmedLeft(8);
+    auto dRowA = dlyRight.removeFromTop(24);
+    dlySyncLabel.setBounds(dRowA.removeFromLeft(34));
+    dlySyncBox.setBounds(dRowA.removeFromLeft(64).reduced(0, 1));
+    dRowA.removeFromLeft(8);
+    dlyModeLabel.setBounds(dRowA.removeFromLeft(36));
+    dlyModeBox.setBounds(dRowA.removeFromLeft(88).reduced(0, 1));
+
+    dlyRight.removeFromTop(4);
     auto dRowB = dlyRight.removeFromTop(24);
-    spaceOnButton.setBounds(dRowB.removeFromLeft(110));
-    dRowB.removeFromLeft(10);
-    spaceRandButton.setBounds(dRowB.removeFromLeft(96));
+    spaceOnButton.setBounds(dRowB.removeFromLeft(96));
+    dRowB.removeFromLeft(8);
+    spaceRandButton.setBounds(dRowB.removeFromLeft(90));
 }
 
 void Nebula2AudioProcessorEditor::refreshAfterStateChange()

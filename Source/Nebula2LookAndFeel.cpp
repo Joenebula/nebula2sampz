@@ -259,19 +259,79 @@ void Nebula2LookAndFeel::drawToggleButton(juce::Graphics& g, juce::ToggleButton&
 void Nebula2LookAndFeel::drawButtonBackground(juce::Graphics& g, juce::Button& b,
                                               const juce::Colour&, bool highlighted, bool down)
 {
-    const auto bounds = b.getLocalBounds().toFloat().reduced(0.5f);
+    // THE AUDIO KIT'S BUTTON. Two states, both 40h with a 9px radius:
+    //
+    //   primary    linear-gradient(180deg,#6bb9ec,#1f6fae)
+    //              0 0 16px rgba(46,197,255,0.45) + inset 0 1px 0 rgba(255,255,255,0.3)
+    //   secondary  a dark bevel: inset 0 1px 0 rgba(255,255,255,0.09)
+    //                          + inset 0 -2px 5px rgba(0,0,0,0.5)
+    //
+    // The old version was close but not the kit: a 7px radius, an accent-to-accentLit fill
+    // for the on state instead of the blue gradient, an outline the kit does not draw, and
+    // two raw hex literals for the off state. Those literals slipped past the colour gate
+    // because they sat behind a ternary - the check has been widened.
+    const auto bounds = b.getLocalBounds().toFloat().reduced (0.5f);
     const bool on = b.getToggleState();
+    const float r = 9.0f;
 
-    juce::ColourGradient grad = on
-        ? juce::ColourGradient(Theme::accentLit, 0.0f, bounds.getY(),
-                               Theme::accent, 0.0f, bounds.getBottom(), false)
-        : juce::ColourGradient(juce::Colour(down ? 0xff151b32 : 0xff232c4c), 0.0f, bounds.getY(),
-                               juce::Colour(down ? 0xff232c4c : 0xff151b32), 0.0f, bounds.getBottom(), false);
-    g.setGradientFill(grad);
-    g.fillRoundedRectangle(bounds, 7.0f);
+    if (on)
+    {
+        // The glow first, under the body - the kit's 16px cyan spread.
+        g.setColour (Theme::accent.withAlpha (0.28f));
+        g.fillRoundedRectangle (bounds.expanded (2.5f), r + 2.0f);
 
-    g.setColour(on ? Theme::accent : (highlighted ? Theme::hiline : Nebula2::Theme::shadowSoft));
-    g.drawRoundedRectangle(bounds, 7.0f, 1.0f);
+        juce::ColourGradient grad (Nebula2::Theme::btnTop, 0.0f, bounds.getY(),
+                                   Nebula2::Theme::btnBot, 0.0f, bounds.getBottom(), false);
+        g.setGradientFill (grad);
+        g.fillRoundedRectangle (bounds, r);
+
+        // inset 0 1px 0 rgba(255,255,255,0.3) - a lit top edge, not a full outline.
+        g.setColour (juce::Colours::white.withAlpha (0.3f));
+        g.drawLine (bounds.getX() + r * 0.6f, bounds.getY() + 1.0f,
+                    bounds.getRight() - r * 0.6f, bounds.getY() + 1.0f, 1.0f);
+    }
+    else
+    {
+        juce::ColourGradient grad (Theme::card3, 0.0f, bounds.getY(),
+                                   Theme::card2, 0.0f, bounds.getBottom(), false);
+        g.setGradientFill (grad);
+        g.fillRoundedRectangle (bounds, r);
+
+        // The bevel: lit along the top, shadowed along the bottom inside edge.
+        g.setColour (juce::Colours::white.withAlpha (highlighted ? 0.16f : 0.09f));
+        g.drawLine (bounds.getX() + r * 0.6f, bounds.getY() + 1.0f,
+                    bounds.getRight() - r * 0.6f, bounds.getY() + 1.0f, 1.0f);
+
+        g.setColour (Nebula2::Theme::shadowSoft);
+        g.drawLine (bounds.getX() + r * 0.6f, bounds.getBottom() - 1.5f,
+                    bounds.getRight() - r * 0.6f, bounds.getBottom() - 1.5f, 2.0f);
+    }
+
+    // Pressed: the kit scales to 0.94. A repaint cannot scale the component, so this is a
+    // darkening wash instead - same "it went down" read, no layout thrash.
+    if (down)
+    {
+        g.setColour (Nebula2::Theme::shadowFaint);
+        g.fillRoundedRectangle (bounds, r);
+    }
+}
+
+void Nebula2LookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b,
+                                         bool /*highlighted*/, bool /*down*/)
+{
+    // The kit sets button labels at 600 11px Chakra with 1.5px of letter-spacing, in CAPS.
+    // The tracking is the part that reads as "hardware" rather than "web form", and JUCE
+    // has no letter-spacing property - withExtraKerningFactor is a FRACTION OF THE FONT
+    // HEIGHT, so 1.5px at 11px is 0.136, not 1.5.
+    auto font = Theme::ui (11.0f, 600).withExtraKerningFactor (1.5f / 11.0f);
+    g.setFont (font);
+
+    const bool on = b.getToggleState();
+    g.setColour (on ? Theme::ink
+                    : b.findColour (juce::TextButton::textColourOffId));
+
+    g.drawText (b.getButtonText().toUpperCase(), b.getLocalBounds(),
+                juce::Justification::centred, false);
 }
 
 void Nebula2LookAndFeel::drawLabel(juce::Graphics& g, juce::Label& label)

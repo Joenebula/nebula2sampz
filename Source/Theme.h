@@ -93,6 +93,16 @@ namespace Nebula2::Theme
     inline const juce::Colour knobInnerRim { 0x217d96af };  // rgba(125,150,175,0.13)
 
     // --- geometry ---
+    //
+    // ONE knob size, everywhere. The kit draws a 54px rotary and draws it the same on every
+    // panel; this build had three different sizes - Colour knobs came out around 88px
+    // because they filled a tall cell, Space around 53, rack knobs smaller again - purely
+    // because each layout sized them from whatever space was left over. Knobs that differ
+    // in size read as differing in importance, which is a claim none of these panels are
+    // making. Layouts now CENTRE a knob of this size in their cell rather than fill it.
+    inline constexpr int knobSize = 54;
+
+    // --- surfaces (radii) ---
     inline constexpr float cardRadius = 14.0f;
     inline constexpr float wellRadius = 10.0f;
     inline constexpr float ctrlRadius = 10.0f;

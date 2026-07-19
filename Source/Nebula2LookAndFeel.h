@@ -39,6 +39,13 @@ public:
                               bool shouldDrawButtonAsHighlighted,
                               bool shouldDrawButtonAsDown) override;
 
+    // Overridden so button labels get the kit's tracking and caps. The default draws the
+    // component's font with no letter-spacing, which is most of why the buttons read as
+    // "web form" next to the design.
+    void drawButtonText(juce::Graphics&, juce::TextButton&,
+                        bool shouldDrawButtonAsHighlighted,
+                        bool shouldDrawButtonAsDown) override;
+
     void drawLabel(juce::Graphics&, juce::Label&) override;
 
     juce::Font getLabelFont(juce::Label&) override;

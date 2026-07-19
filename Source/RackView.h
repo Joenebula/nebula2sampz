@@ -70,6 +70,11 @@ private:
     void drawModuleScreens (juce::Graphics&) const;
     juce::Rectangle<float> screenAreaFor (Nebula2::ModuleId) const;
 
+    // Which modules draw a screen at all. ONE answer, asked by both the painter and the
+    // layout - they disagreed, so screens drew over the knobs they were meant to sit above.
+    static bool hasScreen (Nebula2::ModuleId) noexcept;
+    static constexpr float screenH = 30.0f;
+
     // Every effect module gets a visible On/Off button, as the prototype has. Bypass has
     // worked all along - it was reachable only by clicking the module's NAME, which is a
     // gesture with nothing on screen to suggest it exists. A feature nobody can find is not
